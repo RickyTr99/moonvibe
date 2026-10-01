@@ -1,5 +1,18 @@
 apply plugin: 'com.android.application'
 
+// Release signing: set "signing.properties" in local.properties to the path of a file with
+// storeFile, storePassword, keyAlias and keyPassword. Without it, release builds are unsigned.
+def signingProps = new Properties()
+def localPropsFile = rootProject.file('local.properties')
+if (localPropsFile.exists()) {
+    def localProps = new Properties()
+    localPropsFile.withInputStream { localProps.load(it) }
+    def signingPropsPath = localProps.getProperty('signing.properties')
+    if (signingPropsPath != null && file(signingPropsPath).exists()) {
+        file(signingPropsPath).withInputStream { signingProps.load(it) }
+    }
+}
+
 android {
     ndkVersion "27.0.12077973"
 
@@ -11,8 +24,8 @@ android {
         minSdk 21
         targetSdk 34
 
-        versionName "12.1"
-        versionCode = 314
+        versionName "0.1.0-exp1"
+        versionCode = 1
 
         // Generate native debug symbols to allow Google Play to symbolicate our native crashes
         ndk.debugSymbolLevel = 'FULL'
@@ -79,6 +92,17 @@ android {
         }
     }
 
+    signingConfigs {
+        if (!signingProps.isEmpty()) {
+            release {
+                storeFile file(signingProps.getProperty('storeFile'))
+                storePassword signingProps.getProperty('storePassword')
+                keyAlias signingProps.getProperty('keyAlias')
+                keyPassword signingProps.getProperty('keyPassword')
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix ".debug"
@@ -91,6 +115,10 @@ android {
         release {
             resValue "string", "app_label", "Apollo X"
             resValue "string", "app_label_root", "Apollo X (Root)"
+
+            if (!signingProps.isEmpty()) {
+                signingConfig signingConfigs.release
+            }
 
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
