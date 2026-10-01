@@ -184,6 +184,34 @@
         <item>lb_rb</item>
     </string-array>
 
+    <string-array name="touch_mode_names">
+        <item>@string/touch_mode_multi_touch</item>
+        <item>@string/touch_mode_mouse</item>
+        <item>@string/touch_mode_trackpad</item>
+        <item>@string/touch_mode_disabled</item>
+    </string-array>
+    <string-array name="touch_mode_values" translatable="false">
+        <item>multi_touch</item>
+        <item>mouse</item>
+        <item>trackpad</item>
+        <item>disabled</item>
+    </string-array>
+
+    <string-array name="gesture_action_names">
+        <item>@string/gesture_action_none</item>
+        <item>@string/gesture_action_overlay_menu</item>
+        <item>@string/gesture_action_game_menu</item>
+        <item>@string/gesture_action_soft_keyboard</item>
+        <item>@string/gesture_action_full_keyboard</item>
+    </string-array>
+    <string-array name="gesture_action_values" translatable="false">
+        <item>none</item>
+        <item>overlay_menu</item>
+        <item>game_menu</item>
+        <item>soft_keyboard</item>
+        <item>full_keyboard</item>
+    </string-array>
+
     <string-array name="overlay_hold_duration_names">
         <item>@string/overlay_duration_500</item>
         <item>@string/overlay_duration_1000</item>

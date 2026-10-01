@@ -13,6 +13,7 @@ import com.limelight.binding.input.driver.UsbDriverService;
 import com.limelight.binding.input.evdev.EvdevListener;
 import com.limelight.binding.input.touch.TouchContext;
 import com.limelight.binding.input.virtual_controller.VirtualController;
+import com.limelight.binding.input.virtual_controller.keyboard.KeyBoardLayoutController;
 import com.limelight.binding.video.CrashListener;
 import com.limelight.binding.video.DisplayRefreshMeter;
 import com.limelight.binding.video.MediaCodecDecoderRenderer;
@@ -68,6 +69,7 @@ import android.os.PowerManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.text.Html;
 import android.util.Rational;
 import android.view.Display;
@@ -107,7 +109,9 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
     // Only 2 touches are supported
     private final TouchContext[] touchContextMap = new TouchContext[2];
-    private long threeFingerDownTime = 0;
+    private int multiFingerTapFingers = 0;
+    private long multiFingerTapDownTime = 0;
+    private boolean multiFingerTapConsumed = false;
 
     private static final int REFERENCE_HORIZ_RES = 1280;
     private static final int REFERENCE_VERT_RES = 720;
@@ -118,11 +122,16 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     private static final int STYLUS_UP_DEAD_ZONE_DELAY = 150;
     private static final int STYLUS_UP_DEAD_ZONE_RADIUS = 50;
 
-    private static final int THREE_FINGER_TAP_THRESHOLD = 300;
+    private static final int MULTI_FINGER_TAP_THRESHOLD = 300;
+
+    private static final long SEND_KEYS_UP_DELAY_MS = 25;
 
     private ControllerHandler controllerHandler;
     private KeyboardTranslator keyboardTranslator;
     private VirtualController virtualController;
+    private KeyBoardLayoutController fullKeyboard;
+    private boolean virtualControllerHidden = false;
+    private GameMenu gameMenu;
 
     private PreferenceConfiguration prefConfig;
     private SharedPreferences tombstonePrefs;
@@ -615,17 +624,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         InputManager inputManager = (InputManager) getSystemService(Context.INPUT_SERVICE);
         inputManager.registerInputDeviceListener(keyboardTranslator, null);
 
-        // Initialize touch contexts
-        for (int i = 0; i < touchContextMap.length; i++) {
-            if (!prefConfig.touchscreenTrackpad) {
-                touchContextMap[i] = new AbsoluteTouchContext(conn, i, streamView);
-            }
-            else {
-                touchContextMap[i] = new RelativeTouchContext(conn, i,
-                        REFERENCE_HORIZ_RES, REFERENCE_VERT_RES,
-                        streamView, prefConfig);
-            }
-        }
+        initTouchContexts();
 
         if (prefConfig.onscreenController) {
             // create virtual onscreen controller
@@ -721,6 +720,10 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             virtualController.refreshLayout();
         }
 
+        if (fullKeyboard != null) {
+            fullKeyboard.refreshLayout();
+        }
+
         // Hide on-screen overlays in PiP mode
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             if (isInPictureInPictureMode()) {
@@ -728,6 +731,10 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
                 if (virtualController != null) {
                     virtualController.hide();
+                }
+
+                if (fullKeyboard != null) {
+                    fullKeyboard.hide();
                 }
 
                 performanceOverlayView.setVisibility(View.GONE);
@@ -745,7 +752,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
                 // Restore overlays to previous state when leaving PiP
 
-                if (virtualController != null) {
+                if (virtualController != null && !virtualControllerHidden) {
                     virtualController.show();
                 }
 
@@ -1245,6 +1252,10 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         SpinnerDialog.closeDialogs(this);
         Dialog.closeDialogs();
 
+        if (gameMenu != null) {
+            gameMenu.hideMenu();
+        }
+
         if (virtualController != null) {
             virtualController.hide();
         }
@@ -1697,6 +1708,25 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         }
     }
 
+    public void toggleFullKeyboard() {
+        if (fullKeyboard == null) {
+            fullKeyboard = new KeyBoardLayoutController((FrameLayout)streamView.getParent(), this, prefConfig);
+            fullKeyboard.refreshLayout();
+            fullKeyboard.show();
+            return;
+        }
+        fullKeyboard.toggleVisibility();
+    }
+
+    // Sends a key from the on-screen full keyboard. This uses the same path as evdev keyboards,
+    // because KeyEvents without an input device would be treated as gamepad input by onKey().
+    public void sendVirtualKeyEvent(KeyEvent event) {
+        if (!connected) {
+            return;
+        }
+        keyboardEvent(event.getAction() == KeyEvent.ACTION_DOWN, (short) event.getKeyCode());
+    }
+
     @Override
     public void onTextCommitted(String text) {
         if (conn != null && text != null) {
@@ -2000,6 +2030,135 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         }
     }
 
+    // Detects quick taps with 3, 4 or 5 fingers and runs the action configured for them.
+    // Returns true if the event was consumed.
+    private boolean handleMultiFingerTap(MotionEvent event) {
+        int action = event.getActionMasked();
+        boolean nativeTouch = PreferenceConfiguration.TOUCH_MODE_MULTI_TOUCH.equals(prefConfig.touchMode);
+
+        if (multiFingerTapConsumed) {
+            // Swallow the rest of a recognized tap until every finger is lifted
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                multiFingerTapConsumed = false;
+            }
+            return true;
+        }
+
+        // In multi-touch mode the host may need these touches itself, so gestures can be turned off
+        if (nativeTouch && !prefConfig.enableMultiTouchGestures) {
+            return false;
+        }
+
+        switch (action) {
+            case MotionEvent.ACTION_POINTER_DOWN:
+                if (event.getPointerCount() >= 3) {
+                    multiFingerTapFingers = Math.min(event.getPointerCount(), 5);
+                    multiFingerTapDownTime = event.getEventTime();
+
+                    if (!nativeTouch) {
+                        // Cancel the mouse touches of the first fingers to avoid erroneous clicks
+                        for (TouchContext aTouchContext : touchContextMap) {
+                            aTouchContext.cancelTouch();
+                        }
+                        return true;
+                    }
+                }
+                return false;
+
+            case MotionEvent.ACTION_POINTER_UP:
+            case MotionEvent.ACTION_UP:
+                if (multiFingerTapFingers == 0) {
+                    return false;
+                }
+
+                int fingers = multiFingerTapFingers;
+                multiFingerTapFingers = 0;
+                if (event.getEventTime() - multiFingerTapDownTime >= MULTI_FINGER_TAP_THRESHOLD ||
+                        (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && (event.getFlags() & MotionEvent.FLAG_CANCELED) != 0)) {
+                    // Too slow (or cancelled by the system) to be a tap
+                    return false;
+                }
+
+                // The touches already sent for this tap must not reach the host as real input
+                if (nativeTouch) {
+                    conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_CANCEL_ALL, 0,
+                            0, 0, 0, 0, 0,
+                            MoonBridge.LI_ROT_UNKNOWN);
+                }
+                for (TouchContext aTouchContext : touchContextMap) {
+                    aTouchContext.cancelTouch();
+                }
+
+                multiFingerTapConsumed = action != MotionEvent.ACTION_UP;
+                runGestureAction(fingers == 3 ? prefConfig.gesture3Finger :
+                        fingers == 4 ? prefConfig.gesture4Finger : prefConfig.gesture5Finger);
+                return true;
+
+            case MotionEvent.ACTION_CANCEL:
+                multiFingerTapFingers = 0;
+                return false;
+
+            default:
+                return false;
+        }
+    }
+
+    private void initTouchContexts() {
+        for (int i = 0; i < touchContextMap.length; i++) {
+            if (touchContextMap[i] != null) {
+                touchContextMap[i].cancelTouch();
+            }
+
+            if (!prefConfig.touchscreenTrackpad) {
+                touchContextMap[i] = new AbsoluteTouchContext(conn, i, streamView);
+            }
+            else {
+                touchContextMap[i] = new RelativeTouchContext(conn, i,
+                        REFERENCE_HORIZ_RES, REFERENCE_VERT_RES,
+                        streamView, prefConfig);
+            }
+        }
+    }
+
+    public String getTouchMode() {
+        return prefConfig.touchMode;
+    }
+
+    // Switches the touchscreen mode for this session only, without changing the saved setting
+    public void setTouchMode(String touchMode) {
+        if (PreferenceConfiguration.TOUCH_MODE_MULTI_TOUCH.equals(prefConfig.touchMode)) {
+            // Release any touches still held on the host
+            conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_CANCEL_ALL, 0,
+                    0, 0, 0, 0, 0,
+                    MoonBridge.LI_ROT_UNKNOWN);
+        }
+
+        prefConfig.touchMode = touchMode;
+        prefConfig.touchscreenTrackpad = PreferenceConfiguration.TOUCH_MODE_TRACKPAD.equals(touchMode);
+        multiFingerTapFingers = 0;
+        multiFingerTapConsumed = false;
+        initTouchContexts();
+    }
+
+    private void runGestureAction(String gestureAction) {
+        switch (gestureAction) {
+            case PreferenceConfiguration.GESTURE_ACTION_OVERLAY_MENU:
+                showOverlayMenu();
+                break;
+            case PreferenceConfiguration.GESTURE_ACTION_GAME_MENU:
+                showGameMenu();
+                break;
+            case PreferenceConfiguration.GESTURE_ACTION_SOFT_KEYBOARD:
+                toggleKeyboard();
+                break;
+            case PreferenceConfiguration.GESTURE_ACTION_FULL_KEYBOARD:
+                toggleFullKeyboard();
+                break;
+            default:
+                break;
+        }
+    }
+
     // Returns true if the event was consumed
     // NB: View is only present if called from a view callback
     private boolean handleMotionEvent(View view, MotionEvent event) {
@@ -2237,29 +2396,20 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                 int eventX = (int)(event.getX(actionIndex) + xOffset);
                 int eventY = (int)(event.getY(actionIndex) + yOffset);
 
-                // Special handling for 3 finger gesture
-                if (event.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN &&
-                        event.getPointerCount() == 3) {
-                    // Three fingers down
-                    threeFingerDownTime = event.getEventTime();
-
-                    // Cancel the first and second touches to avoid
-                    // erroneous events
-                    for (TouchContext aTouchContext : touchContextMap) {
-                        aTouchContext.cancelTouch();
-                    }
-
+                if (handleMultiFingerTap(event)) {
                     return true;
                 }
 
-                // TODO: Re-enable native touch when have a better solution for handling
-                // cancelled touches from Android gestures and 3 finger taps to activate
-                // the overlay menu.
-                /*if (!prefConfig.touchscreenTrackpad && trySendTouchEvent(view, event)) {
-                    // If this host supports touch events and absolute touch is enabled,
-                    // send it directly as a touch event.
+                if (PreferenceConfiguration.TOUCH_MODE_DISABLED.equals(prefConfig.touchMode)) {
                     return true;
-                }*/
+                }
+
+                if (PreferenceConfiguration.TOUCH_MODE_MULTI_TOUCH.equals(prefConfig.touchMode) &&
+                        trySendTouchEvent(view, event)) {
+                    // The host supports touch events, so send the touch as is. Otherwise we
+                    // fall back to controlling the mouse with absolute touch contexts.
+                    return true;
+                }
 
                 TouchContext context = getTouchContext(actionIndex);
                 if (context == null) {
@@ -2277,16 +2427,6 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                     break;
                 case MotionEvent.ACTION_POINTER_UP:
                 case MotionEvent.ACTION_UP:
-                    if (event.getPointerCount() == 1 &&
-                            (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || (event.getFlags() & MotionEvent.FLAG_CANCELED) == 0)) {
-                        // All fingers up
-                        if (event.getEventTime() - threeFingerDownTime < THREE_FINGER_TAP_THRESHOLD) {
-                            // This is a 3 finger tap to bring up the overlay menu
-                            runOnUiThread(() -> overlayMenuView.show());
-                            return true;
-                        }
-                    }
-
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && (event.getFlags() & MotionEvent.FLAG_CANCELED) != 0) {
                         context.cancelTouch();
                     }
@@ -2980,6 +3120,119 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         }
     }
 
+    public void disconnectFromMenu() {
+        userInitiatedDisconnect = true;
+        stopConnection();
+        finish();
+    }
+
+    public void quitSessionFromMenu() {
+        userInitiatedDisconnect = true;
+        controllerHandler.pendingApplicationQuit = true;
+        stopConnection();
+        finish();
+    }
+
+    public void toggleStatsOverlay() {
+        prefConfig.enablePerfOverlay = !prefConfig.enablePerfOverlay;
+
+        // Toggle performance overlay visibility
+        if (performanceOverlayView.getVisibility() == View.VISIBLE) {
+            performanceOverlayView.setVisibility(View.GONE);
+        } else {
+            performanceOverlayView.setVisibility(View.VISIBLE);
+        }
+    }
+
+    public void showOverlayMenu() {
+        overlayMenuView.show();
+    }
+
+    public void showGameMenu() {
+        if (gameMenu == null) {
+            gameMenu = new GameMenu(this);
+        }
+        gameMenu.showMenu();
+    }
+
+    public void toggleVirtualController() {
+        if (virtualController == null) {
+            // Count the on-screen controller as an attached gamepad from now on
+            prefConfig.onscreenController = true;
+            virtualController = new VirtualController(controllerHandler,
+                    (FrameLayout)streamView.getParent(),
+                    this);
+            virtualController.refreshLayout();
+            virtualController.show();
+            controllerHandler.setControllerInputListener(virtualController);
+            virtualControllerHidden = false;
+            return;
+        }
+
+        virtualControllerHidden = !virtualControllerHidden;
+        if (virtualControllerHidden) {
+            virtualController.hide();
+        } else {
+            virtualController.show();
+        }
+    }
+
+    // Presses the given keys in order and releases them in reverse order shortly after,
+    // like a person typing a shortcut
+    public void sendKeys(int... androidKeyCodes) {
+        if (!connected) {
+            return;
+        }
+
+        final short[] keys = new short[androidKeyCodes.length];
+        for (int i = 0; i < androidKeyCodes.length; i++) {
+            keys[i] = keyboardTranslator.translate(androidKeyCodes[i], -1);
+            if (keys[i] == 0) {
+                LimeLog.warning("No key mapping for Android keycode: " + androidKeyCodes[i]);
+                return;
+            }
+        }
+
+        // Each key after a modifier is sent with that modifier applied
+        byte modifiers = 0;
+        for (int i = 0; i < keys.length; i++) {
+            conn.sendKeyboardInput(keys[i], KeyboardPacket.KEY_DOWN, modifiers, (byte) 0);
+            modifiers |= getModifierForKey(androidKeyCodes[i]);
+        }
+
+        final byte heldModifiers = modifiers;
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            if (!connected) {
+                return;
+            }
+
+            byte remainingModifiers = heldModifiers;
+            for (int i = keys.length - 1; i >= 0; i--) {
+                remainingModifiers &= (byte) ~getModifierForKey(androidKeyCodes[i]);
+                conn.sendKeyboardInput(keys[i], KeyboardPacket.KEY_UP, remainingModifiers, (byte) 0);
+            }
+        }, SEND_KEYS_UP_DELAY_MS);
+    }
+
+    private static byte getModifierForKey(int androidKeyCode) {
+        switch (androidKeyCode) {
+            case KeyEvent.KEYCODE_CTRL_LEFT:
+            case KeyEvent.KEYCODE_CTRL_RIGHT:
+                return KeyboardPacket.MODIFIER_CTRL;
+            case KeyEvent.KEYCODE_SHIFT_LEFT:
+            case KeyEvent.KEYCODE_SHIFT_RIGHT:
+                return KeyboardPacket.MODIFIER_SHIFT;
+            case KeyEvent.KEYCODE_ALT_LEFT:
+            case KeyEvent.KEYCODE_ALT_RIGHT:
+                return KeyboardPacket.MODIFIER_ALT;
+            case KeyEvent.KEYCODE_META_LEFT:
+            case KeyEvent.KEYCODE_META_RIGHT:
+                return KeyboardPacket.MODIFIER_META;
+            default:
+                return 0;
+        }
+    }
+
     /**
      * Setup overlay menu and its listeners
      */
@@ -3001,29 +3254,17 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         overlayMenuView.setMenuActionListener(new OverlayMenuView.MenuActionListener() {
             @Override
             public void onDisconnect() {
-                userInitiatedDisconnect = true;
-                stopConnection();
-                finish();
+                disconnectFromMenu();
             }
 
             @Override
             public void onQuitSession() {
-                userInitiatedDisconnect = true;
-                controllerHandler.pendingApplicationQuit = true;
-                stopConnection();
-                finish();
+                quitSessionFromMenu();
             }
 
             @Override
             public void onToggleStats() {
-                prefConfig.enablePerfOverlay = !prefConfig.enablePerfOverlay;
-
-                // Toggle performance overlay visibility
-                if (performanceOverlayView.getVisibility() == View.VISIBLE) {
-                    performanceOverlayView.setVisibility(View.GONE);
-                } else {
-                    performanceOverlayView.setVisibility(View.VISIBLE);
-                }
+                toggleStatsOverlay();
             }
 
             @Override

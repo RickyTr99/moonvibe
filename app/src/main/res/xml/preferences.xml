@@ -161,11 +161,38 @@
     </PreferenceCategory>
     <PreferenceCategory android:title="@string/category_input_settings"
         android:key="category_input_settings">
+        <ListPreference
+            android:key="list_touch_mode"
+            android:title="@string/title_list_touch_mode"
+            android:summary="%s"
+            android:entries="@array/touch_mode_names"
+            android:entryValues="@array/touch_mode_values" />
         <CheckBoxPreference
-            android:key="checkbox_touchscreen_trackpad"
-            android:title="@string/title_checkbox_touchscreen_trackpad"
-            android:summary="@string/summary_checkbox_touchscreen_trackpad"
+            android:key="checkbox_multi_touch_gestures"
+            android:title="@string/title_checkbox_multi_touch_gestures"
+            android:summary="@string/summary_checkbox_multi_touch_gestures"
             android:defaultValue="true" />
+        <ListPreference
+            android:key="list_gesture_3_finger"
+            android:title="@string/title_list_gesture_3_finger"
+            android:summary="%s"
+            android:entries="@array/gesture_action_names"
+            android:entryValues="@array/gesture_action_values"
+            android:defaultValue="overlay_menu" />
+        <ListPreference
+            android:key="list_gesture_4_finger"
+            android:title="@string/title_list_gesture_4_finger"
+            android:summary="%s"
+            android:entries="@array/gesture_action_names"
+            android:entryValues="@array/gesture_action_values"
+            android:defaultValue="full_keyboard" />
+        <ListPreference
+            android:key="list_gesture_5_finger"
+            android:title="@string/title_list_gesture_5_finger"
+            android:summary="%s"
+            android:entries="@array/gesture_action_names"
+            android:entryValues="@array/gesture_action_values"
+            android:defaultValue="game_menu" />
         <CheckBoxPreference
             android:key="checkbox_mouse_nav_buttons"
             android:title="@string/title_checkbox_mouse_nav_buttons"
@@ -224,6 +251,29 @@
             android:negativeButtonText="@string/no"
             />
 
+    </PreferenceCategory>
+    <PreferenceCategory android:title="@string/category_full_keyboard"
+        android:key="category_full_keyboard">
+        <CheckBoxPreference
+            android:key="checkbox_enable_sticky_modifier_key_virtual_keyboard"
+            android:title="@string/title_checkbox_sticky_modifier_keys"
+            android:summary="@string/summary_checkbox_sticky_modifier_keys"
+            android:defaultValue="true" />
+        <CheckBoxPreference
+            android:key="checkbox_vibrate_keyboard"
+            android:title="@string/title_checkbox_vibrate_keyboard"
+            android:summary="@string/summary_checkbox_vibrate_keyboard"
+            android:defaultValue="false" />
+        <com.limelight.preferences.SeekBarPreference
+            android:key="seekbar_keyboard_axi_opacity"
+            android:dialogMessage="@string/summary_full_keyboard_opacity"
+            seekbar:min="10"
+            seekbar:step="1"
+            android:max="100"
+            android:defaultValue="90"
+            android:summary="@string/summary_full_keyboard_opacity"
+            android:text="@string/suffix_osc_opacity"
+            android:title="@string/title_full_keyboard_opacity" />
     </PreferenceCategory>
     <PreferenceCategory android:title="@string/category_host_settings">
         <CheckBoxPreference

@@ -50,6 +50,9 @@ public class PreferenceConfiguration {
     private static final String HOST_AUDIO_PREF_STRING = "checkbox_host_audio";
     private static final String DEADZONE_PREF_STRING = "seekbar_deadzone";
     private static final String OSC_OPACITY_PREF_STRING = "seekbar_osc_opacity";
+    private static final String FULL_KEYBOARD_OPACITY_PREF_STRING = "seekbar_keyboard_axi_opacity";
+    private static final String STICKY_MODIFIER_KEY_PREF_STRING = "checkbox_enable_sticky_modifier_key_virtual_keyboard";
+    private static final String KEYBOARD_VIBRATE_PREF_STRING = "checkbox_vibrate_keyboard";
     private static final String LANGUAGE_PREF_STRING = "list_languages";
     private static final String SMALL_ICONS_PREF_STRING = "checkbox_small_icon_mode";
     private static final String MULTI_CONTROLLER_PREF_STRING = "checkbox_multi_controller";
@@ -73,6 +76,11 @@ public class PreferenceConfiguration {
     private static final String VIBRATE_FALLBACK_STRENGTH_PREF_STRING = "seekbar_vibrate_fallback_strength";
     private static final String FLIP_FACE_BUTTONS_PREF_STRING = "checkbox_flip_face_buttons";
     private static final String TOUCHSCREEN_TRACKPAD_PREF_STRING = "checkbox_touchscreen_trackpad";
+    private static final String TOUCH_MODE_PREF_STRING = "list_touch_mode";
+    private static final String MULTI_TOUCH_GESTURES_PREF_STRING = "checkbox_multi_touch_gestures";
+    private static final String GESTURE_3_FINGER_PREF_STRING = "list_gesture_3_finger";
+    private static final String GESTURE_4_FINGER_PREF_STRING = "list_gesture_4_finger";
+    private static final String GESTURE_5_FINGER_PREF_STRING = "list_gesture_5_finger";
     private static final String LATENCY_TOAST_PREF_STRING = "checkbox_enable_post_stream_toast";
     private static final String FRAME_PACING_PREF_STRING = "frame_pacing";
     private static final String ABSOLUTE_MOUSE_MODE_PREF_STRING = "checkbox_absolute_mouse_mode";
@@ -123,6 +131,21 @@ public class PreferenceConfiguration {
     private static final int DEFAULT_VIBRATE_FALLBACK_STRENGTH = 100;
     private static final boolean DEFAULT_FLIP_FACE_BUTTONS = false;
     private static final boolean DEFAULT_TOUCHSCREEN_TRACKPAD = true;
+    private static final boolean DEFAULT_MULTI_TOUCH_GESTURES = true;
+    private static final String DEFAULT_GESTURE_3_FINGER = "overlay_menu";
+    private static final String DEFAULT_GESTURE_4_FINGER = "full_keyboard";
+    private static final String DEFAULT_GESTURE_5_FINGER = "game_menu";
+
+    public static final String TOUCH_MODE_MULTI_TOUCH = "multi_touch";
+    public static final String TOUCH_MODE_MOUSE = "mouse";
+    public static final String TOUCH_MODE_TRACKPAD = "trackpad";
+    public static final String TOUCH_MODE_DISABLED = "disabled";
+
+    public static final String GESTURE_ACTION_NONE = "none";
+    public static final String GESTURE_ACTION_OVERLAY_MENU = "overlay_menu";
+    public static final String GESTURE_ACTION_GAME_MENU = "game_menu";
+    public static final String GESTURE_ACTION_SOFT_KEYBOARD = "soft_keyboard";
+    public static final String GESTURE_ACTION_FULL_KEYBOARD = "full_keyboard";
     private static final String DEFAULT_AUDIO_CONFIG = "2"; // Stereo
     private static final boolean DEFAULT_LATENCY_TOAST = false;
     private static final String DEFAULT_FRAME_PACING = "balanced";
@@ -166,6 +189,9 @@ public class PreferenceConfiguration {
     public SpatialDitheringOption spatialDithering;
     public int deadzonePercentage;
     public int oscOpacity;
+    public int oscKeyboardOpacity;
+    public boolean stickyModifierKey;
+    public boolean enableKeyboardVibrate;
     public boolean stretchVideo, enableSops, playHostAudio, disableWarnings;
     public String language;
     public boolean smallIconMode, multiController, usbDriver, flipFaceButtons;
@@ -185,6 +211,11 @@ public class PreferenceConfiguration {
     public boolean vibrateFallbackToDevice;
     public int vibrateFallbackToDeviceStrength;
     public boolean touchscreenTrackpad;
+    public String touchMode;
+    public boolean enableMultiTouchGestures;
+    public String gesture3Finger;
+    public String gesture4Finger;
+    public String gesture5Finger;
     public MoonBridge.AudioConfiguration audioConfiguration;
     public int framePacing;
     public int jitterBuffer;
@@ -640,6 +671,14 @@ public class PreferenceConfiguration {
             prefs.edit().putBoolean(GAMEPAD_MOTION_SENSORS_PREF_STRING, false).apply();
         }
 
+        if (!prefs.contains(TOUCH_MODE_PREF_STRING)) {
+            // The touch mode list replaces the old trackpad checkbox, so carry its value over
+            // and write it to disk for the settings page to display it
+            prefs.edit().putString(TOUCH_MODE_PREF_STRING,
+                    prefs.getBoolean(TOUCHSCREEN_TRACKPAD_PREF_STRING, DEFAULT_TOUCHSCREEN_TRACKPAD) ?
+                            TOUCH_MODE_TRACKPAD : TOUCH_MODE_MOUSE).apply();
+        }
+
         // This must happen after the preferences migration to ensure the preferences are populated
         config.bitrate = prefs.getInt(BITRATE_PREF_STRING, prefs.getInt(BITRATE_PREF_OLD_STRING, 0) * 1000);
         if (config.bitrate == 0) {
@@ -668,6 +707,9 @@ public class PreferenceConfiguration {
         config.deadzonePercentage = prefs.getInt(DEADZONE_PREF_STRING, DEFAULT_DEADZONE);
 
         config.oscOpacity = prefs.getInt(OSC_OPACITY_PREF_STRING, DEFAULT_OPACITY);
+        config.oscKeyboardOpacity = prefs.getInt(FULL_KEYBOARD_OPACITY_PREF_STRING, DEFAULT_OPACITY);
+        config.stickyModifierKey = prefs.getBoolean(STICKY_MODIFIER_KEY_PREF_STRING, true);
+        config.enableKeyboardVibrate = prefs.getBoolean(KEYBOARD_VIBRATE_PREF_STRING, false);
 
         config.language = prefs.getString(LANGUAGE_PREF_STRING, DEFAULT_LANGUAGE);
 
@@ -694,7 +736,12 @@ public class PreferenceConfiguration {
         config.vibrateFallbackToDevice = prefs.getBoolean(VIBRATE_FALLBACK_PREF_STRING, DEFAULT_VIBRATE_FALLBACK);
         config.vibrateFallbackToDeviceStrength = prefs.getInt(VIBRATE_FALLBACK_STRENGTH_PREF_STRING, DEFAULT_VIBRATE_FALLBACK_STRENGTH);
         config.flipFaceButtons = prefs.getBoolean(FLIP_FACE_BUTTONS_PREF_STRING, DEFAULT_FLIP_FACE_BUTTONS);
-        config.touchscreenTrackpad = prefs.getBoolean(TOUCHSCREEN_TRACKPAD_PREF_STRING, DEFAULT_TOUCHSCREEN_TRACKPAD);
+        config.touchMode = prefs.getString(TOUCH_MODE_PREF_STRING, TOUCH_MODE_TRACKPAD);
+        config.touchscreenTrackpad = TOUCH_MODE_TRACKPAD.equals(config.touchMode);
+        config.enableMultiTouchGestures = prefs.getBoolean(MULTI_TOUCH_GESTURES_PREF_STRING, DEFAULT_MULTI_TOUCH_GESTURES);
+        config.gesture3Finger = prefs.getString(GESTURE_3_FINGER_PREF_STRING, DEFAULT_GESTURE_3_FINGER);
+        config.gesture4Finger = prefs.getString(GESTURE_4_FINGER_PREF_STRING, DEFAULT_GESTURE_4_FINGER);
+        config.gesture5Finger = prefs.getString(GESTURE_5_FINGER_PREF_STRING, DEFAULT_GESTURE_5_FINGER);
         config.enableLatencyToast = prefs.getBoolean(LATENCY_TOAST_PREF_STRING, DEFAULT_LATENCY_TOAST);
         config.absoluteMouseMode = prefs.getBoolean(ABSOLUTE_MOUSE_MODE_PREF_STRING, DEFAULT_ABSOLUTE_MOUSE_MODE);
         config.enableAudioFx = prefs.getBoolean(ENABLE_AUDIO_FX_PREF_STRING, DEFAULT_ENABLE_AUDIO_FX);

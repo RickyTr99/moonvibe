@@ -176,6 +176,21 @@
     <string name="summary_audio_config_list">Abilita il sourround 5.1 o 7.1 per sistemi home-theater</string>
     <string name="title_fps_list">Frame rate video</string>
     <string name="summary_checkbox_touchscreen_trackpad">Se abilitato, lo schermo touch si comporta come un trackpad. Se disabilitato, lo schermo touch controlla direttamente il cursore del mouse.</string>
+    <string name="title_list_touch_mode">Modalità touchscreen</string>
+    <string name="touch_mode_multi_touch">Multi-touch (tocco nativo sull\'host)</string>
+    <string name="touch_mode_mouse">Mouse (tocca dove vuoi cliccare)</string>
+    <string name="touch_mode_trackpad">Trackpad</string>
+    <string name="touch_mode_disabled">Disattivato</string>
+    <string name="title_checkbox_multi_touch_gestures">Gesture multi-dito in modalità multi-touch</string>
+    <string name="summary_checkbox_multi_touch_gestures">Riconosce i tap a 3, 4 e 5 dita in modalità multi-touch. Disattivala se un\'app sull\'host ha bisogno di quei tocchi. Nelle altre modalità le gesture funzionano sempre.</string>
+    <string name="title_list_gesture_3_finger">Tap a 3 dita</string>
+    <string name="title_list_gesture_4_finger">Tap a 4 dita</string>
+    <string name="title_list_gesture_5_finger">Tap a 5 dita</string>
+    <string name="gesture_action_none">Nessuna azione</string>
+    <string name="gesture_action_overlay_menu">Apri il menu overlay</string>
+    <string name="gesture_action_game_menu">Apri il menu di gioco</string>
+    <string name="gesture_action_soft_keyboard">Mostra la tastiera Android</string>
+    <string name="gesture_action_full_keyboard">Mostra la tastiera PC completa</string>
     <string name="title_checkbox_vibrate_fallback">Emula il supporto per la vibrazione</string>
     <string name="title_checkbox_mouse_nav_buttons">Abilita i bottoni avanti e indietro del mouse</string>
     <string name="title_osc_opacity">Cambia l\'opavità dei controlli a schermo</string>
@@ -278,4 +293,33 @@
     <string name="pair_pairing_help">Se il tuo PC host sta eseguendo Sunshine, vai nella pagina web locale di Sunshine ed inserisci il PIN.</string>
     <string name="title_checkbox_gamepad_touchpad_as_mouse">Controlla sempre il mouse col touchpad</string>
     <string name="perf_overlay_hostprocessinglatency">Latenza di codifica da parte dell\'host min/max/average: %1$.1f/%2$.1f/%3$.1f ms</string>
+
+    <!-- Tastiera PC completa (da Artemis) -->
+    <string name="category_full_keyboard">Tastiera PC completa</string>
+    <string name="title_checkbox_sticky_modifier_keys">Tasti modificatori fissi</string>
+    <string name="summary_checkbox_sticky_modifier_keys">Tieni premuto Ctrl, Shift, Alt o Win per bloccarlo premuto finché non lo tocchi di nuovo</string>
+    <string name="title_checkbox_vibrate_keyboard">Vibrazione alla pressione dei tasti</string>
+    <string name="summary_checkbox_vibrate_keyboard">Vibra quando premi un tasto della tastiera completa</string>
+    <string name="title_full_keyboard_opacity">Opacità della tastiera completa</string>
+    <string name="summary_full_keyboard_opacity">Quanto è opaca la tastiera PC completa</string>
+    <string name="virtual_keyboard_hide">Nascondi\ntastiera</string>
+
+    <!-- Menu di gioco (da Artemis) -->
+    <string name="game_menu_title">Menu di gioco</string>
+    <string name="game_menu_cancel">Annulla</string>
+    <string name="game_menu_disconnect">Disconnetti</string>
+    <string name="game_menu_quit_session">Termina sessione</string>
+    <string name="game_menu_quit_confirm_title">Terminare la sessione?</string>
+    <string name="game_menu_quit_confirm_message">L\'app in esecuzione sull\'host verrà chiusa.</string>
+    <string name="game_menu_toggle_keyboard">Tastiera Android</string>
+    <string name="game_menu_toggle_full_keyboard">Tastiera PC completa</string>
+    <string name="game_menu_send_keys">Invia tasti…</string>
+    <string name="game_menu_advanced">Altro…</string>
+    <string name="game_menu_touch_mode">Modalità touchscreen…</string>
+    <string name="game_menu_task_manager">Gestione attività (Ctrl+Shift+Esc)</string>
+    <string name="game_menu_toggle_stats">Mostra/nascondi statistiche</string>
+    <string name="game_menu_toggle_virtual_controller">Mostra/nascondi gamepad a schermo</string>
+    <string name="game_menu_open_overlay_menu">Apri il menu overlay</string>
+    <string name="game_menu_send_keys_win_shift_left">Win+Shift+Freccia sinistra</string>
+    <string name="game_menu_send_keys_win_alt_b">Win+Alt+B (attiva/disattiva HDR)</string>
 </resources>

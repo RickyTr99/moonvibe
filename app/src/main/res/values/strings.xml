@@ -209,6 +209,21 @@
     <string name="category_input_settings">Input Settings</string>
     <string name="title_checkbox_touchscreen_trackpad">Use the touchscreen as a trackpad</string>
     <string name="summary_checkbox_touchscreen_trackpad">If enabled, the touchscreen acts like a trackpad. If disabled, the touchscreen directly controls the mouse cursor.</string>
+    <string name="title_list_touch_mode">Touchscreen mode</string>
+    <string name="touch_mode_multi_touch">Multi-touch (native touch on the host)</string>
+    <string name="touch_mode_mouse">Mouse (tap where you want to click)</string>
+    <string name="touch_mode_trackpad">Trackpad</string>
+    <string name="touch_mode_disabled">Disabled</string>
+    <string name="title_checkbox_multi_touch_gestures">Multi-finger gestures in multi-touch mode</string>
+    <string name="summary_checkbox_multi_touch_gestures">Recognize 3, 4 and 5 finger taps in multi-touch mode. Turn this off if a host app needs those touches itself. Gestures always work in the other modes.</string>
+    <string name="title_list_gesture_3_finger">3-finger tap</string>
+    <string name="title_list_gesture_4_finger">4-finger tap</string>
+    <string name="title_list_gesture_5_finger">5-finger tap</string>
+    <string name="gesture_action_none">Do nothing</string>
+    <string name="gesture_action_overlay_menu">Open the overlay menu</string>
+    <string name="gesture_action_game_menu">Open the game menu</string>
+    <string name="gesture_action_soft_keyboard">Show the Android keyboard</string>
+    <string name="gesture_action_full_keyboard">Show the full PC keyboard</string>
     <string name="title_checkbox_absolute_mouse_mode">Remote desktop mouse mode</string>
     <string name="summary_checkbox_absolute_mouse_mode">This can make mouse acceleration behave more naturally for remote desktop usage, but it is incompatible with many games.</string>
     <string name="title_checkbox_mouse_nav_buttons">Enable back and forward mouse buttons</string>
@@ -430,4 +445,46 @@
     <string name="summary_overlay_menu">Configure custom commands for the in-game overlay menu</string>
     <string name="title_enable_overlay_menu">Enable overlay menu</string>
     <string name="summary_enable_overlay_menu">Hold select button for 5 seconds during streaming to open the overlay menu</string>
+
+    <!-- Full PC keyboard (ported from Artemis) -->
+    <string name="category_full_keyboard">Full PC keyboard</string>
+    <string name="title_checkbox_sticky_modifier_keys">Sticky modifier keys</string>
+    <string name="summary_checkbox_sticky_modifier_keys">Long press Ctrl, Shift, Alt or Win to keep it held down until you tap it again</string>
+    <string name="title_checkbox_vibrate_keyboard">Vibrate on key press</string>
+    <string name="summary_checkbox_vibrate_keyboard">Give haptic feedback when a key on the full keyboard is pressed</string>
+    <string name="title_full_keyboard_opacity">Full keyboard opacity</string>
+    <string name="summary_full_keyboard_opacity">How opaque the full PC keyboard is</string>
+    <string name="virtual_keyboard_hide">Hide\nKBD</string>
+
+    <!-- Game menu (ported from Artemis) -->
+    <string name="game_menu_title">Game menu</string>
+    <string name="game_menu_cancel">Cancel</string>
+    <string name="game_menu_disconnect">Disconnect</string>
+    <string name="game_menu_quit_session">Quit session</string>
+    <string name="game_menu_quit_confirm_title">Quit session?</string>
+    <string name="game_menu_quit_confirm_message">The app running on the host will be closed.</string>
+    <string name="game_menu_toggle_keyboard">Android keyboard</string>
+    <string name="game_menu_toggle_full_keyboard">Full PC keyboard</string>
+    <string name="game_menu_send_keys">Send keys…</string>
+    <string name="game_menu_advanced">More…</string>
+    <string name="game_menu_touch_mode">Touchscreen mode…</string>
+    <string name="game_menu_task_manager">Task Manager (Ctrl+Shift+Esc)</string>
+    <string name="game_menu_toggle_stats">Show/hide performance stats</string>
+    <string name="game_menu_toggle_virtual_controller">Show/hide on-screen gamepad</string>
+    <string name="game_menu_open_overlay_menu">Open the overlay menu</string>
+    <string name="game_menu_send_keys_esc">Esc</string>
+    <string name="game_menu_send_keys_f11">F11</string>
+    <string name="game_menu_send_keys_alt_f4">Alt+F4</string>
+    <string name="game_menu_send_keys_alt_enter">Alt+Enter</string>
+    <string name="game_menu_send_keys_alt_tab">Alt+Tab</string>
+    <string name="game_menu_send_keys_ctrl_v">Ctrl+V</string>
+    <string name="game_menu_send_keys_win">Win</string>
+    <string name="game_menu_send_keys_win_d">Win+D</string>
+    <string name="game_menu_send_keys_win_g">Win+G</string>
+    <string name="game_menu_send_keys_ctrl_alt_tab">Ctrl+Alt+Tab</string>
+    <string name="game_menu_send_keys_shift_tab">Shift+Tab</string>
+    <string name="game_menu_send_keys_win_shift_left">Win+Shift+Left</string>
+    <string name="game_menu_send_keys_ctrl_alt_shift_f1">Ctrl+Alt+Shift+F1</string>
+    <string name="game_menu_send_keys_ctrl_alt_shift_f12">Ctrl+Alt+Shift+F12</string>
+    <string name="game_menu_send_keys_win_alt_b">Win+Alt+B (toggle HDR)</string>
 </resources>
