@@ -199,14 +199,12 @@
 
     <string-array name="gesture_action_names">
         <item>@string/gesture_action_none</item>
-        <item>@string/gesture_action_overlay_menu</item>
         <item>@string/gesture_action_game_menu</item>
         <item>@string/gesture_action_soft_keyboard</item>
         <item>@string/gesture_action_full_keyboard</item>
     </string-array>
     <string-array name="gesture_action_values" translatable="false">
         <item>none</item>
-        <item>overlay_menu</item>
         <item>game_menu</item>
         <item>soft_keyboard</item>
         <item>full_keyboard</item>

@@ -178,7 +178,7 @@
             android:summary="%s"
             android:entries="@array/gesture_action_names"
             android:entryValues="@array/gesture_action_values"
-            android:defaultValue="overlay_menu" />
+            android:defaultValue="soft_keyboard" />
         <ListPreference
             android:key="list_gesture_4_finger"
             android:title="@string/title_list_gesture_4_finger"

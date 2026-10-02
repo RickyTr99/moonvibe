@@ -36,7 +36,7 @@ import com.limelight.ui.BrightnessSliderView;
 import com.limelight.ui.GameGestures;
 import com.limelight.ui.StreamView;
 import com.limelight.ui.overlay.CustomCommand;
-import com.limelight.ui.overlay.OverlayMenuView;
+import com.limelight.ui.gamemenu.GameMenuView;
 import com.limelight.utils.Dialog;
 import com.limelight.utils.ServerHelper;
 import com.limelight.utils.SessionResumeManager;
@@ -124,8 +124,6 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
     private static final int MULTI_FINGER_TAP_THRESHOLD = 300;
 
-    private static final long SEND_KEYS_UP_DELAY_MS = 25;
-
     private ControllerHandler controllerHandler;
     private KeyboardTranslator keyboardTranslator;
     private VirtualController virtualController;
@@ -171,7 +169,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     private int requestedNotificationOverlayVisibility = View.GONE;
     private TextView performanceOverlayView;
     private BrightnessSliderView brightnessSliderView;
-    private OverlayMenuView overlayMenuView;
+    private GameMenuView gameMenuView;
     private boolean isImeVisible = false;
     private boolean isAndroidTV = false;
 
@@ -364,9 +362,10 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         // Initialize brightness slider
         brightnessSliderView = new BrightnessSliderView(this);
 
-        // Initialize overlay menu view (setup will be done after controllerHandler is initialized)
-        overlayMenuView = findViewById(R.id.overlayMenuView);
-        overlayMenuView.setFlipFaceButtons(prefConfig.flipFaceButtons);
+        // Initialize the game menu (the gamepad trigger is set up after controllerHandler is initialized)
+        gameMenuView = findViewById(R.id.gameMenuView);
+        gameMenuView.setFlipFaceButtons(prefConfig.flipFaceButtons);
+        gameMenu = new GameMenu(this, gameMenuView);
 
         inputCaptureProvider = InputCaptureManager.getInputCaptureProvider(this, this);
 
@@ -1253,7 +1252,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         Dialog.closeDialogs();
 
         if (gameMenu != null) {
-            gameMenu.hideMenu();
+            gameMenu.hide();
         }
 
         if (virtualController != null) {
@@ -1482,6 +1481,16 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     }
 
     @Override
+    public void onBackPressed() {
+        // The navigation bar back button closes the game menu instead of leaving the stream
+        if (gameMenu != null && gameMenu.isOpen()) {
+            gameMenu.hide();
+            return;
+        }
+        super.onBackPressed();
+    }
+
+    @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         return handleKeyDown(event) || super.onKeyDown(keyCode, event);
     }
@@ -1508,9 +1517,9 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             return false;
         }
 
-        // If overlay menu is visible, route all key events to it
-        if (overlayMenuView != null && overlayMenuView.getVisibility() == View.VISIBLE) {
-            return overlayMenuView.dispatchKeyEvent(event);
+        // While the game menu is open, all key events go to it
+        if (gameMenu != null && gameMenu.isOpen()) {
+            return gameMenu.dispatchKeyEvent(event);
         }
 
         // Handle a synthetic back button event that some Android OS versions
@@ -1610,9 +1619,9 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             return false;
         }
 
-        // If overlay menu is visible, route all key events to it
-        if (overlayMenuView != null && overlayMenuView.getVisibility() == View.VISIBLE) {
-            return overlayMenuView.dispatchKeyEvent(event);
+        // While the game menu is open, all key events go to it
+        if (gameMenu != null && gameMenu.isOpen()) {
+            return gameMenu.dispatchKeyEvent(event);
         }
 
         // Handle a synthetic back button event that some Android OS versions
@@ -2142,11 +2151,8 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
     private void runGestureAction(String gestureAction) {
         switch (gestureAction) {
-            case PreferenceConfiguration.GESTURE_ACTION_OVERLAY_MENU:
-                showOverlayMenu();
-                break;
             case PreferenceConfiguration.GESTURE_ACTION_GAME_MENU:
-                showGameMenu();
+                showGameMenu(false);
                 break;
             case PreferenceConfiguration.GESTURE_ACTION_SOFT_KEYBOARD:
                 toggleKeyboard();
@@ -2494,9 +2500,9 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
     @Override
     public boolean onGenericMotionEvent(MotionEvent event) {
-        // If overlay menu is visible, route all motion events to it
-        if (overlayMenuView != null && overlayMenuView.getVisibility() == View.VISIBLE) {
-            return overlayMenuView.onGenericMotionEvent(event);
+        // While the game menu is open, all gamepad motion events go to it
+        if (gameMenu != null && gameMenu.isOpen()) {
+            return gameMenu.onGenericMotionEvent(event);
         }
 
         if (isImeVisible && isAndroidTV) {
@@ -2561,6 +2567,11 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
     @Override
     public boolean onGenericMotion(View view, MotionEvent event) {
+        // The stream view gets gamepad motion first: a D-pad reported as a hat axis must reach the menu
+        if (gameMenu != null && gameMenu.isOpen()) {
+            return gameMenu.onGenericMotionEvent(event);
+        }
+
         if (isImeVisible && isAndroidTV) {
             return false;
         }
@@ -3144,15 +3155,13 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         }
     }
 
-    public void showOverlayMenu() {
-        overlayMenuView.show();
+    public boolean isStatsOverlayVisible() {
+        return performanceOverlayView.getVisibility() == View.VISIBLE;
     }
 
-    public void showGameMenu() {
-        if (gameMenu == null) {
-            gameMenu = new GameMenu(this);
-        }
-        gameMenu.showMenu();
+    // fromGamepad shows the menu selection right away
+    public void showGameMenu(boolean fromGamepad) {
+        gameMenu.show(fromGamepad);
     }
 
     public void toggleVirtualController() {
@@ -3177,127 +3186,45 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         }
     }
 
-    // Presses the given keys in order and releases them in reverse order shortly after,
-    // like a person typing a shortcut
-    public void sendKeys(int... androidKeyCodes) {
+    public boolean isVirtualControllerVisible() {
+        return virtualController != null && !virtualControllerHidden;
+    }
+
+    // Toggles mouse emulation for the primary controller
+    public void toggleMouseEmulation() {
+        controllerHandler.toggleMouseEmulationForController0();
+    }
+
+    public boolean isMouseEmulationActive() {
+        return controllerHandler.isMouseEmulationActiveForController0();
+    }
+
+    public void runCustomCommand(CustomCommand command) {
         if (!connected) {
             return;
         }
 
-        final short[] keys = new short[androidKeyCodes.length];
-        for (int i = 0; i < androidKeyCodes.length; i++) {
-            keys[i] = keyboardTranslator.translate(androidKeyCodes[i], -1);
-            if (keys[i] == 0) {
-                LimeLog.warning("No key mapping for Android keycode: " + androidKeyCodes[i]);
-                return;
-            }
-        }
-
-        // Each key after a modifier is sent with that modifier applied
-        byte modifiers = 0;
-        for (int i = 0; i < keys.length; i++) {
-            conn.sendKeyboardInput(keys[i], KeyboardPacket.KEY_DOWN, modifiers, (byte) 0);
-            modifiers |= getModifierForKey(androidKeyCodes[i]);
-        }
-
-        final byte heldModifiers = modifiers;
-        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            if (!connected) {
-                return;
-            }
-
-            byte remainingModifiers = heldModifiers;
-            for (int i = keys.length - 1; i >= 0; i--) {
-                remainingModifiers &= (byte) ~getModifierForKey(androidKeyCodes[i]);
-                conn.sendKeyboardInput(keys[i], KeyboardPacket.KEY_UP, remainingModifiers, (byte) 0);
-            }
-        }, SEND_KEYS_UP_DELAY_MS);
-    }
-
-    private static byte getModifierForKey(int androidKeyCode) {
-        switch (androidKeyCode) {
-            case KeyEvent.KEYCODE_CTRL_LEFT:
-            case KeyEvent.KEYCODE_CTRL_RIGHT:
-                return KeyboardPacket.MODIFIER_CTRL;
-            case KeyEvent.KEYCODE_SHIFT_LEFT:
-            case KeyEvent.KEYCODE_SHIFT_RIGHT:
-                return KeyboardPacket.MODIFIER_SHIFT;
-            case KeyEvent.KEYCODE_ALT_LEFT:
-            case KeyEvent.KEYCODE_ALT_RIGHT:
-                return KeyboardPacket.MODIFIER_ALT;
-            case KeyEvent.KEYCODE_META_LEFT:
-            case KeyEvent.KEYCODE_META_RIGHT:
-                return KeyboardPacket.MODIFIER_META;
-            default:
-                return 0;
+        if (command.getPostAction() == CustomCommand.POST_ACTION_CLOSE_MENU) {
+            gameMenu.hide();
+            sendCustomKeyCommand(command, null);
+        } else {
+            sendCustomKeyCommand(command, buildPostActionRunnable(command));
         }
     }
 
     /**
-     * Setup overlay menu and its listeners
+     * Opens the game menu when the overlay trigger button is held on a gamepad
      */
     private void setupOverlayMenu() {
-        // Set up the overlay menu listener for select button hold detection
         controllerHandler.setOverlayMenuListener(new ControllerHandler.OverlayMenuListener() {
             @Override
             public void onOverlayMenuOpen() {
-                runOnUiThread(() -> overlayMenuView.show());
+                runOnUiThread(() -> showGameMenu(true));
             }
 
             @Override
             public void onOverlayMenuCancel() {
                 // Nothing to do - no progress indicator to hide
-            }
-        });
-
-        // Set up menu action listener
-        overlayMenuView.setMenuActionListener(new OverlayMenuView.MenuActionListener() {
-            @Override
-            public void onDisconnect() {
-                disconnectFromMenu();
-            }
-
-            @Override
-            public void onQuitSession() {
-                quitSessionFromMenu();
-            }
-
-            @Override
-            public void onToggleStats() {
-                toggleStatsOverlay();
-            }
-
-            @Override
-            public void onToggleMouseEmulation() {
-                // Toggle mouse emulation mode for the primary controller
-                controllerHandler.toggleMouseEmulationForController0();
-            }
-
-            @Override
-            public void onShowKeyboard() {
-                // Toggle Android soft keyboard
-                toggleKeyboard();
-            }
-
-            @Override
-            public void onSendGuideButton() {
-                // Send Guide button press to the host
-                sendGuideButton();
-            }
-
-            @Override
-            public void onCustomCommand(CustomCommand command) {
-                if (command.getPostAction() == CustomCommand.POST_ACTION_CLOSE_MENU) {
-                    overlayMenuView.closeMenu();
-                    sendCustomKeyCommand(command, null);
-                } else {
-                    sendCustomKeyCommand(command, buildPostActionRunnable(command));
-                }
-            }
-
-            @Override
-            public void onMenuClosed() {
-                // Menu closed, no additional action needed
             }
         });
     }
@@ -3335,7 +3262,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     private Runnable buildPostActionRunnable(CustomCommand command) {
         switch (command.getPostAction()) {
             case CustomCommand.POST_ACTION_CLOSE_MENU:
-                return () -> overlayMenuView.closeMenu();
+                return () -> gameMenu.hide();
             case CustomCommand.POST_ACTION_DISCONNECT:
                 return () -> {
                     stopConnection();
@@ -3454,7 +3381,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     /**
      * Send Guide button press to the server
      */
-    private void sendGuideButton() {
+    public void sendGuideButton() {
         // Send Guide button down using ControllerHandler
         controllerHandler.reportOscState(
             ControllerPacket.SPECIAL_BUTTON_FLAG, // buttonFlags - Guide button

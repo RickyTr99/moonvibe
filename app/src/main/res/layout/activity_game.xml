@@ -55,19 +55,10 @@
 
     <include layout="@layout/brightness_slider" />
 
-    <com.limelight.ui.overlay.OverlayMenuView
-        android:id="@+id/overlayMenuView"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="20dp"
-        android:layout_marginLeft="20dp"
-        android:layout_marginStart="20dp"
-        android:layout_gravity="bottom|left"
-        android:background="@null"
-        android:focusable="true"
-        android:focusableInTouchMode="true"
-        android:defaultFocusHighlightEnabled="false"
-        android:preferKeepClear="true"
+    <com.limelight.ui.gamemenu.GameMenuView
+        android:id="@+id/gameMenuView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
         android:visibility="gone" />
 
 </merge>

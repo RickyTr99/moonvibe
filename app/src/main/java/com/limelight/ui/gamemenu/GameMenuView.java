@@ -1,0 +1,1691 @@
+package com.limelight.ui.gamemenu;
+
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ArgbEvaluator;
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
+import android.annotation.SuppressLint;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.res.ColorStateList;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.net.NetworkInfo;
+import android.net.wifi.WifiManager;
+import android.os.BatteryManager;
+import android.os.Build;
+import android.provider.Settings;
+import android.text.format.DateFormat;
+import android.util.AttributeSet;
+import android.util.TypedValue;
+import android.view.DisplayCutout;
+import android.view.Gravity;
+import android.view.InputDevice;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.WindowInsets;
+import android.view.animation.LinearInterpolator;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import com.limelight.R;
+import com.limelight.ui.theme.ApolloColors;
+import com.limelight.ui.theme.ApolloMotion;
+
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+
+/**
+ * In-stream menu shown as a side panel over the left part of the stream.
+ *
+ * The first tab holds the quick actions: each one is bound to a gamepad button and runs as soon
+ * as that button is pressed. The other tabs are lists, navigated with the D-pad and confirmed
+ * with A. LB/RB switch tab and B closes the menu everywhere. Everything also works by touch.
+ */
+public class GameMenuView extends FrameLayout {
+    private static final int PANEL_MIN_WIDTH_DP = 300;
+    private static final int PANEL_MAX_WIDTH_DP = 360;
+    private static final float PANEL_SCREEN_FRACTION = 0.42f;
+    private static final long HOLD_TO_CONFIRM_MS = 1000;
+    private static final long STATUS_REFRESH_MS = 10000;
+    private static final float ANALOG_STICK_THRESHOLD = 0.5f;
+    private static final long ANALOG_NAV_THROTTLE_MS = 200;
+    private static final int LOW_BATTERY_PERCENT = 15;
+    private static final float PRESSED_SCALE = 0.96f;
+    private static final int TAB_SLIDE_DP = 24;
+
+    private static final int COLOR_SCRIM = 0x52000000;
+    private static final int COLOR_RIPPLE = 0x33FFFFFF;
+    private static final ArgbEvaluator ARGB = new ArgbEvaluator();
+
+    public interface Toggle {
+        boolean isOn();
+    }
+
+    public interface Selection {
+        int get();
+        void set(int index);
+    }
+
+    /** An action bound to a gamepad button, shown in the quick actions tab. */
+    public static class QuickAction {
+        final int keyCode;
+        final String label;
+        final Runnable action;
+        boolean keepOpen;
+        boolean danger;
+        boolean holdToConfirm;
+        Toggle active;
+
+        public QuickAction(int keyCode, String label, Runnable action) {
+            this.keyCode = keyCode;
+            this.label = label;
+            this.action = action;
+        }
+
+        // The menu stays open after the action and shows the new state
+        public QuickAction keepOpen() {
+            keepOpen = true;
+            return this;
+        }
+
+        // The tile is highlighted while this is on
+        public QuickAction active(Toggle active) {
+            this.active = active;
+            return this;
+        }
+
+        // Runs only after holding the button, or after a confirmation when tapped
+        public QuickAction holdToConfirm() {
+            holdToConfirm = true;
+            danger = true;
+            return this;
+        }
+    }
+
+    /** A row of a list tab. */
+    public static class Item {
+        final int iconResId;
+        final String label;
+        final Runnable action;
+        final boolean header;
+        boolean keepOpen;
+        boolean accent;
+        Toggle toggle;
+        String trailingText;
+        String[] options;
+        Selection selection;
+        Runnable longPressAction;
+
+        private Item(int iconResId, String label, Runnable action, boolean header) {
+            this.iconResId = iconResId;
+            this.label = label;
+            this.action = action;
+            this.header = header;
+        }
+
+        public static Item header(String label) {
+            return new Item(0, label, null, true);
+        }
+
+        public static Item action(int iconResId, String label, Runnable action) {
+            return new Item(iconResId, label, action, false);
+        }
+
+        // A switch showing the state, the action toggles it
+        public static Item toggle(int iconResId, String label, Toggle toggle, Runnable action) {
+            Item item = new Item(iconResId, label, action, false);
+            item.toggle = toggle;
+            item.keepOpen = true;
+            return item;
+        }
+
+        // A dropdown to pick one of the options
+        public static Item dropdown(int iconResId, String label, String[] options, Selection selection) {
+            Item item = new Item(iconResId, label, null, false);
+            item.options = options;
+            item.selection = selection;
+            item.keepOpen = true;
+            return item;
+        }
+
+        public Item keepOpen() {
+            keepOpen = true;
+            return this;
+        }
+
+        public Item accent() {
+            accent = true;
+            return this;
+        }
+
+        public Item trailingText(String text) {
+            trailingText = text;
+            return this;
+        }
+
+        public Item onLongPress(Runnable action) {
+            longPressAction = action;
+            return this;
+        }
+    }
+
+    public static class Tab {
+        final String title;
+        final List<Item> items;
+
+        public Tab(String title, List<Item> items) {
+            this.title = title;
+            this.items = items;
+        }
+    }
+
+    public interface Listener {
+        List<QuickAction> buildQuickActions();
+        // The tabs after the quick actions one
+        List<Tab> buildTabs();
+        void onMenuClosed();
+    }
+
+    // A quick action tile and the views that follow its state
+    private static class Tile {
+        final QuickAction action;
+        final View view;
+        final GradientDrawable background;
+        final TextView label;
+        boolean active;
+
+        Tile(QuickAction action, View view, GradientDrawable background, TextView label, boolean active) {
+            this.action = action;
+            this.view = view;
+            this.background = background;
+            this.label = label;
+            this.active = active;
+        }
+    }
+
+    // A list row and the views that follow the selection and the state
+    private static class Row {
+        final Item item;
+        final View view;
+        final GradientDrawable background;
+        final TextView label;
+        final ImageView icon;
+        MenuWidgets.SwitchView toggle;
+        TextView value;
+        int backgroundColor = Color.TRANSPARENT;
+        int strokeColor = Color.TRANSPARENT;
+        int labelColor;
+        int iconColor;
+        ValueAnimator animator;
+
+        Row(Item item, View view, GradientDrawable background, TextView label, ImageView icon) {
+            this.item = item;
+            this.view = view;
+            this.background = background;
+            this.label = label;
+            this.icon = icon;
+        }
+    }
+
+    private final float density;
+    private final ApolloColors colors;
+    private Listener listener;
+    private boolean flipFaceButtons;
+
+    private View scrim;
+    private FrameLayout panelFrame;
+    private LinearLayout panel;
+    private TextView clockView;
+    private MenuWidgets.WifiView wifiView;
+    private ImageView networkIcon;
+    private ImageView bluetoothIcon;
+    private MenuWidgets.BatteryView batteryView;
+    private TextView batteryText;
+    private LinearLayout tabsRow;
+    private View tabIndicator;
+    private final List<TextView> tabViews = new ArrayList<>();
+    private ScrollView scrollView;
+    private LinearLayout content;
+    private LinearLayout hintRow;
+    private LinearLayout dropdownCard;
+    private FrameLayout dialogLayer;
+    private View dialogCard;
+    private TextView dialogTitle;
+    private Runnable dialogConfirm;
+
+    private List<QuickAction> quickActions = new ArrayList<>();
+    private List<Tab> tabs = new ArrayList<>();
+    private final List<Tile> tiles = new ArrayList<>();
+    private final List<Row> rows = new ArrayList<>();
+    private int currentTab = 0;
+    private int selectedRow = 0;
+    // The list selection is only drawn while the menu is driven by a gamepad
+    private boolean gamepadMode;
+    // Set while the close animation runs: the menu no longer takes input
+    private boolean closing;
+
+    private Row dropdownRow;
+    private int dropdownIndex;
+    private int dropdownGeneration;
+    private final List<View> dropdownOptions = new ArrayList<>();
+
+    private QuickAction holdingAction;
+    private Tile holdTile;
+    private MenuWidgets.RingView holdRing;
+    private ValueAnimator holdAnimator;
+    private boolean holdCompleted;
+
+    private int lastHatX, lastHatY;
+    private long lastAnalogNavTime;
+
+    private final Runnable statusUpdater = new Runnable() {
+        @Override
+        public void run() {
+            refreshStatus();
+            postDelayed(this, STATUS_REFRESH_MS);
+        }
+    };
+
+    public GameMenuView(Context context) {
+        this(context, null);
+    }
+
+    public GameMenuView(Context context, AttributeSet attrs) {
+        this(context, attrs, 0);
+    }
+
+    public GameMenuView(Context context, AttributeSet attrs, int defStyleAttr) {
+        super(context, attrs, defStyleAttr);
+        density = context.getResources().getDisplayMetrics().density;
+        colors = ApolloColors.dark(context);
+        init(context);
+    }
+
+    private int dp(float value) {
+        return (int) (value * density + 0.5f);
+    }
+
+    private String str(int id) {
+        return getContext().getString(id);
+    }
+
+    private void init(Context context) {
+        // Never take focus away from the stream view, key events are routed here by Game
+        setFocusable(false);
+        setDescendantFocusability(FOCUS_BLOCK_DESCENDANTS);
+        setVisibility(GONE);
+
+        scrim = new View(context);
+        scrim.setBackgroundColor(COLOR_SCRIM);
+        scrim.setOnClickListener(v -> close());
+        addView(scrim, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+
+        panelFrame = new FrameLayout(context);
+        panelFrame.setClickable(true);
+        addView(panelFrame, new LayoutParams(dp(PANEL_MAX_WIDTH_DP), LayoutParams.MATCH_PARENT, Gravity.START));
+
+        panel = new LinearLayout(context);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable panelBackground = new GradientDrawable();
+        panelBackground.setColor(colors.surfaceContainerLow);
+        float radius = dp(24);
+        panelBackground.setCornerRadii(new float[] {0, 0, radius, radius, radius, radius, 0, 0});
+        panel.setBackground(panelBackground);
+        panel.setPadding(dp(10), dp(10), dp(10), dp(6));
+        panelFrame.addView(panel, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+
+        panel.addView(createStatusRow(context), new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(36)));
+
+        tabsRow = new LinearLayout(context);
+        tabsRow.setOrientation(LinearLayout.HORIZONTAL);
+        tabsRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams tabsParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        tabsParams.topMargin = dp(8);
+        panel.addView(tabsRow, tabsParams);
+
+        scrollView = new ScrollView(context);
+        scrollView.setVerticalScrollBarEnabled(false);
+        scrollView.setOverScrollMode(OVER_SCROLL_NEVER);
+        LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1);
+        scrollParams.topMargin = dp(8);
+        panel.addView(scrollView, scrollParams);
+
+        content = new LinearLayout(context);
+        content.setOrientation(LinearLayout.VERTICAL);
+        scrollView.addView(content, new ScrollView.LayoutParams(
+                ScrollView.LayoutParams.MATCH_PARENT, ScrollView.LayoutParams.WRAP_CONTENT));
+
+        hintRow = new LinearLayout(context);
+        hintRow.setOrientation(LinearLayout.HORIZONTAL);
+        hintRow.setGravity(Gravity.CENTER);
+        panel.addView(hintRow, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(30)));
+
+        dropdownCard = new LinearLayout(context);
+        dropdownCard.setOrientation(LinearLayout.VERTICAL);
+        dropdownCard.setPadding(0, dp(6), 0, dp(6));
+        dropdownCard.setBackground(roundRect(colors.surfaceContainerHigh, dp(16)));
+        dropdownCard.setClipToOutline(true);
+        dropdownCard.setClickable(true);
+        dropdownCard.setVisibility(GONE);
+        panelFrame.addView(dropdownCard, new LayoutParams(dp(200), LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END));
+
+        addView(createDialogLayer(context), new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+    }
+
+    // ---- Building blocks ----
+
+    private GradientDrawable roundRect(int color, float radius) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(color);
+        drawable.setCornerRadius(radius);
+        return drawable;
+    }
+
+    private RippleDrawable ripple(GradientDrawable content, float radius) {
+        GradientDrawable mask = roundRect(Color.WHITE, radius);
+        return new RippleDrawable(ColorStateList.valueOf(COLOR_RIPPLE), content, mask);
+    }
+
+    private TextView text(String value, float sizeSp, int color, boolean bold) {
+        TextView view = new TextView(getContext());
+        view.setText(value);
+        view.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp);
+        view.setTextColor(color);
+        if (bold) {
+            view.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        }
+        return view;
+    }
+
+    private ImageView icon(int resId, int color, int sizeDp) {
+        ImageView view = new ImageView(getContext());
+        view.setImageResource(resId);
+        view.setImageTintList(ColorStateList.valueOf(color));
+        view.setLayoutParams(new LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp)));
+        return view;
+    }
+
+    private TextView sectionHeader(String label) {
+        TextView header = text(label.toUpperCase(), 11, colors.primary, true);
+        header.setLetterSpacing(0.08f);
+        header.setPadding(dp(8), dp(8), dp(8), dp(6));
+        return header;
+    }
+
+    private static String badgeLabel(int keyCode) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_BUTTON_A: return "A";
+            case KeyEvent.KEYCODE_BUTTON_B: return "B";
+            case KeyEvent.KEYCODE_BUTTON_X: return "X";
+            case KeyEvent.KEYCODE_BUTTON_Y: return "Y";
+            case KeyEvent.KEYCODE_BUTTON_START: return "Start";
+            case KeyEvent.KEYCODE_DPAD_UP: return "▲";
+            case KeyEvent.KEYCODE_DPAD_DOWN: return "▼";
+            case KeyEvent.KEYCODE_DPAD_LEFT: return "◀";
+            case KeyEvent.KEYCODE_DPAD_RIGHT: return "▶";
+            default: return "?";
+        }
+    }
+
+    // The badge of a gamepad button: Xbox colors for the face buttons, neutral for the others
+    private TextView buttonBadge(int keyCode) {
+        String label = badgeLabel(keyCode);
+        int background = colors.surfaceContainerHighest;
+        int foreground = colors.onSurface;
+
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_BUTTON_A: background = 0xFF5DBB3C; foreground = 0xFF0B1A05; break;
+            case KeyEvent.KEYCODE_BUTTON_B: background = 0xFFE0453A; foreground = Color.WHITE; break;
+            case KeyEvent.KEYCODE_BUTTON_X: background = 0xFF3B7BE0; foreground = Color.WHITE; break;
+            case KeyEvent.KEYCODE_BUTTON_Y: background = 0xFFF0B428; foreground = 0xFF231A00; break;
+        }
+
+        boolean wide = label.length() > 1;
+        TextView badge = text(label, wide ? 9 : 10, foreground, true);
+        badge.setGravity(Gravity.CENTER);
+        badge.setIncludeFontPadding(false);
+        badge.setMinWidth(dp(20));
+        badge.setPadding(wide ? dp(5) : 0, 0, wide ? dp(5) : 0, 0);
+        badge.setBackground(roundRect(background, isDpad(keyCode) ? dp(6) : dp(10)));
+        return badge;
+    }
+
+    private View hint(int keyCode, String label) {
+        LinearLayout hint = new LinearLayout(getContext());
+        hint.setOrientation(LinearLayout.HORIZONTAL);
+        hint.setGravity(Gravity.CENTER_VERTICAL);
+        hint.addView(buttonBadge(keyCode), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(17)));
+        TextView text = text(label, 12, colors.onSurfaceVariant, false);
+        text.setPadding(dp(6), 0, 0, 0);
+        hint.addView(text);
+        return hint;
+    }
+
+    private TextView shoulderChip(String label, int direction) {
+        TextView chip = text(label, 10, colors.onSurfaceVariant, true);
+        chip.setGravity(Gravity.CENTER);
+        chip.setPadding(dp(7), 0, dp(7), 0);
+        chip.setBackground(ripple(roundRect(colors.surfaceContainerHighest, dp(6)), dp(6)));
+        chip.setOnClickListener(v -> {
+            gamepadMode = false;
+            switchTab(direction);
+        });
+        return chip;
+    }
+
+    // Scales the view down while it is touched, like a Material pressed state
+    @SuppressLint("ClickableViewAccessibility")
+    private void addPressFeedback(View view) {
+        view.setOnTouchListener((v, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    v.animate().scaleX(PRESSED_SCALE).scaleY(PRESSED_SCALE)
+                            .setDuration(ApolloMotion.SHORT).setInterpolator(ApolloMotion.STANDARD).start();
+                    break;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    v.animate().scaleX(1).scaleY(1)
+                            .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
+                    break;
+            }
+            return false;
+        });
+    }
+
+    // The same feedback for a press made with a gamepad button
+    private void pulse(View view) {
+        view.animate().scaleX(PRESSED_SCALE).scaleY(PRESSED_SCALE)
+                .setDuration(ApolloMotion.SHORT / 2).setInterpolator(ApolloMotion.STANDARD)
+                .withEndAction(() -> view.animate().scaleX(1).scaleY(1)
+                        .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start())
+                .start();
+    }
+
+    private void shake(View view) {
+        float d = dp(6);
+        ObjectAnimator animator = ObjectAnimator.ofFloat(view, View.TRANSLATION_X, 0, d, -d, d * 0.6f, -d * 0.6f, d * 0.3f, 0);
+        animator.setDuration(ApolloMotion.LONG);
+        animator.start();
+    }
+
+    private View createStatusRow(Context context) {
+        LinearLayout row = new LinearLayout(context);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(10), 0, dp(8), 0);
+
+        clockView = text("", 26, colors.onSurface, false);
+        clockView.setIncludeFontPadding(false);
+        row.addView(clockView, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+
+        wifiView = new MenuWidgets.WifiView(context);
+        row.addView(wifiView);
+
+        networkIcon = icon(R.drawable.ic_menu_ethernet, colors.onSurfaceVariant, 18);
+        row.addView(networkIcon);
+
+        bluetoothIcon = icon(R.drawable.ic_menu_bluetooth, colors.onSurfaceVariant, 18);
+        LinearLayout.LayoutParams btParams = new LinearLayout.LayoutParams(dp(18), dp(18));
+        btParams.leftMargin = dp(10);
+        row.addView(bluetoothIcon, btParams);
+
+        batteryView = new MenuWidgets.BatteryView(context);
+        LinearLayout.LayoutParams batteryParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        batteryParams.leftMargin = dp(10);
+        row.addView(batteryView, batteryParams);
+
+        batteryText = text("", 13, colors.onSurfaceVariant, true);
+        batteryText.setPadding(dp(4), 0, 0, 0);
+        row.addView(batteryText);
+
+        return row;
+    }
+
+    private View createDialogLayer(Context context) {
+        dialogLayer = new FrameLayout(context);
+        dialogLayer.setBackgroundColor(0x80000000);
+        dialogLayer.setClickable(true);
+        dialogLayer.setVisibility(GONE);
+
+        LinearLayout card = new LinearLayout(context);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(24), dp(24), dp(24), dp(16));
+        card.setBackground(roundRect(colors.surfaceContainerHigh, dp(28)));
+        dialogLayer.addView(card, new LayoutParams(dp(312), LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+        dialogCard = card;
+
+        dialogTitle = text("", 22, colors.onSurface, false);
+        card.addView(dialogTitle);
+
+        TextView message = text(str(R.string.game_menu_quit_confirm_message), 14, colors.onSurfaceVariant, false);
+        message.setLineSpacing(0, 1.15f);
+        LinearLayout.LayoutParams messageParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        messageParams.topMargin = dp(12);
+        card.addView(message, messageParams);
+
+        LinearLayout buttons = new LinearLayout(context);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        buttons.setGravity(Gravity.END);
+        LinearLayout.LayoutParams buttonsParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        buttonsParams.topMargin = dp(20);
+        card.addView(buttons, buttonsParams);
+
+        View cancel = dialogButton(KeyEvent.KEYCODE_BUTTON_B, str(R.string.game_menu_cancel), false);
+        cancel.setOnClickListener(v -> dismissDialog());
+        buttons.addView(cancel);
+
+        View confirm = dialogButton(KeyEvent.KEYCODE_BUTTON_A, str(R.string.game_menu_quit_confirm), true);
+        confirm.setOnClickListener(v -> confirmDialog());
+        LinearLayout.LayoutParams confirmParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        confirmParams.leftMargin = dp(8);
+        buttons.addView(confirm, confirmParams);
+
+        return dialogLayer;
+    }
+
+    private View dialogButton(int keyCode, String label, boolean filled) {
+        LinearLayout button = new LinearLayout(getContext());
+        button.setOrientation(LinearLayout.HORIZONTAL);
+        button.setGravity(Gravity.CENTER_VERTICAL);
+        button.setMinimumHeight(dp(40));
+        button.setPadding(dp(14), 0, dp(16), 0);
+        button.setBackground(ripple(roundRect(filled ? colors.primary : Color.TRANSPARENT, dp(20)), dp(20)));
+        button.addView(buttonBadge(keyCode), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(17)));
+        TextView text = text(label, 14, filled ? colors.onPrimary : colors.primary, true);
+        text.setPadding(dp(8), 0, 0, 0);
+        button.addView(text);
+        addPressFeedback(button);
+        return button;
+    }
+
+    // ---- Public API ----
+
+    public void setListener(Listener listener) {
+        this.listener = listener;
+    }
+
+    public void setFlipFaceButtons(boolean flip) {
+        this.flipFaceButtons = flip;
+    }
+
+    public boolean isOpen() {
+        return getVisibility() == VISIBLE && !closing;
+    }
+
+    // fromGamepad shows the list selection right away, for menus opened with a gamepad button
+    public void show(boolean fromGamepad) {
+        if (listener == null) {
+            return;
+        }
+
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        int width = Math.min(dp(PANEL_MAX_WIDTH_DP),
+                Math.max(dp(PANEL_MIN_WIDTH_DP), (int) (screenWidth * PANEL_SCREEN_FRACTION)));
+        width = Math.min(width, screenWidth);
+        panelFrame.getLayoutParams().width = width;
+
+        closing = false;
+        gamepadMode = fromGamepad;
+        currentTab = 0;
+        selectedRow = 0;
+        lastHatX = lastHatY = 0;
+        hideDropdown(false);
+        dialogLayer.setVisibility(GONE);
+        rebuild();
+        scrollView.scrollTo(0, 0);
+
+        // The on-screen gamepad and keyboard are added to the same parent later, stay above them
+        bringToFront();
+        setVisibility(VISIBLE);
+
+        // Slide in from the left edge
+        panelFrame.animate().cancel();
+        scrim.animate().cancel();
+        panelFrame.setTranslationX(-width);
+        scrim.setAlpha(0);
+        panelFrame.animate().translationX(0)
+                .setDuration(ApolloMotion.LONG).setInterpolator(ApolloMotion.EMPHASIZED_DECELERATE).start();
+        scrim.animate().alpha(1)
+                .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
+
+        removeCallbacks(statusUpdater);
+        statusUpdater.run();
+    }
+
+    public void close() {
+        if (!isOpen()) {
+            return;
+        }
+        closing = true;
+        cancelHold(false);
+        hideDropdown(false);
+        dialogConfirm = null;
+        dialogLayer.animate().cancel();
+        dialogLayer.setVisibility(GONE);
+        removeCallbacks(statusUpdater);
+        if (listener != null) {
+            listener.onMenuClosed();
+        }
+
+        panelFrame.animate().translationX(-panelFrame.getWidth())
+                .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.EMPHASIZED_ACCELERATE)
+                .withEndAction(() -> {
+                    if (closing) {
+                        setVisibility(GONE);
+                        closing = false;
+                    }
+                })
+                .start();
+        scrim.animate().alpha(0)
+                .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
+    }
+
+    // Rebuilds the content after a change of the items, keeping the tab and the selection
+    public void refresh() {
+        if (isOpen()) {
+            int scroll = scrollView.getScrollY();
+            rebuild();
+            scrollView.scrollTo(0, scroll);
+            // An action may have just added the on-screen gamepad on top of us
+            bringToFront();
+        }
+    }
+
+    // ---- Content ----
+
+    private int tabCount() {
+        return 1 + tabs.size();
+    }
+
+    private void rebuild() {
+        quickActions = listener.buildQuickActions();
+        tabs = listener.buildTabs();
+        if (currentTab >= tabCount()) {
+            currentTab = 0;
+        }
+
+        buildTabsRow();
+        rebuildContent();
+    }
+
+    private void rebuildContent() {
+        content.removeAllViews();
+        rows.clear();
+        tiles.clear();
+        holdRing = null;
+        holdTile = null;
+        if (currentTab == 0) {
+            buildQuickActionsContent();
+        } else {
+            buildListContent(tabs.get(currentTab - 1));
+        }
+
+        buildHintRow();
+    }
+
+    private void buildTabsRow() {
+        tabsRow.removeAllViews();
+        tabViews.clear();
+
+        tabsRow.addView(shoulderChip("LB", -1), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(24)));
+
+        // The selected tab pill is a separate view that slides from tab to tab
+        FrameLayout segmentsFrame = new FrameLayout(getContext());
+        segmentsFrame.setPadding(dp(4), dp(4), dp(4), dp(4));
+        segmentsFrame.setBackground(roundRect(colors.surfaceContainer, dp(22)));
+        LinearLayout.LayoutParams segmentsParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+        segmentsParams.leftMargin = dp(6);
+        segmentsParams.rightMargin = dp(6);
+        tabsRow.addView(segmentsFrame, segmentsParams);
+
+        tabIndicator = new View(getContext());
+        tabIndicator.setBackground(roundRect(colors.secondaryContainer, dp(17)));
+        segmentsFrame.addView(tabIndicator, new LayoutParams(0, dp(34)));
+
+        LinearLayout segments = new LinearLayout(getContext());
+        segments.setOrientation(LinearLayout.HORIZONTAL);
+        segmentsFrame.addView(segments, new LayoutParams(LayoutParams.MATCH_PARENT, dp(34)));
+
+        for (int i = 0; i < tabCount(); i++) {
+            final int index = i;
+            String title = i == 0 ? str(R.string.game_menu_tab_quick) : tabs.get(i - 1).title;
+
+            TextView tab = text(title, 12.5f, colors.onSurfaceVariant, true);
+            tab.setGravity(Gravity.CENTER);
+            tab.setSingleLine(true);
+            tab.setBackground(ripple(roundRect(Color.TRANSPARENT, dp(17)), dp(17)));
+            tab.setOnClickListener(v -> {
+                gamepadMode = false;
+                selectTab(index);
+            });
+
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1);
+            if (i > 0) {
+                params.leftMargin = dp(4);
+            }
+            segments.addView(tab, params);
+            tabViews.add(tab);
+        }
+
+        tabsRow.addView(shoulderChip("RB", 1), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(24)));
+
+        updateTabs(false);
+    }
+
+    private void updateTabs(boolean animate) {
+        for (int i = 0; i < tabViews.size(); i++) {
+            tabViews.get(i).setTextColor(i == currentTab ? colors.onSecondaryContainer : colors.onSurfaceVariant);
+        }
+
+        tabIndicator.post(() -> {
+            if (currentTab >= tabViews.size()) {
+                return;
+            }
+            View tab = tabViews.get(currentTab);
+            if (tab.getWidth() == 0) {
+                return;
+            }
+            if (tabIndicator.getLayoutParams().width != tab.getWidth()) {
+                tabIndicator.getLayoutParams().width = tab.getWidth();
+                tabIndicator.requestLayout();
+            }
+            tabIndicator.animate().cancel();
+            if (animate) {
+                tabIndicator.animate().translationX(tab.getLeft())
+                        .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
+            } else {
+                tabIndicator.setTranslationX(tab.getLeft());
+            }
+        });
+    }
+
+    private static boolean isDpad(int keyCode) {
+        return keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_DOWN ||
+                keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT;
+    }
+
+    private void buildQuickActionsContent() {
+        List<QuickAction> buttons = new ArrayList<>();
+        List<QuickAction> dpad = new ArrayList<>();
+        for (QuickAction action : quickActions) {
+            (isDpad(action.keyCode) ? dpad : buttons).add(action);
+        }
+
+        if (!buttons.isEmpty()) {
+            content.addView(sectionHeader(str(R.string.game_menu_section_buttons)));
+            addTileGrid(buttons);
+        }
+        if (!dpad.isEmpty()) {
+            content.addView(sectionHeader(str(R.string.game_menu_section_dpad)));
+            addTileGrid(dpad);
+        }
+    }
+
+    private void addTileGrid(List<QuickAction> actions) {
+        for (int i = 0; i < actions.size(); i += 2) {
+            LinearLayout line = new LinearLayout(getContext());
+            line.setOrientation(LinearLayout.HORIZONTAL);
+            for (int j = i; j < i + 2; j++) {
+                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(48), 1);
+                if (j > i) {
+                    params.leftMargin = dp(6);
+                }
+                if (j < actions.size()) {
+                    Tile tile = createTile(actions.get(j));
+                    tiles.add(tile);
+                    line.addView(tile.view, params);
+                } else {
+                    line.addView(new View(getContext()), params);
+                }
+            }
+            LinearLayout.LayoutParams lineParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            lineParams.bottomMargin = dp(6);
+            content.addView(line, lineParams);
+        }
+    }
+
+    private int tileLabelColor(QuickAction action, boolean active) {
+        return action.danger ? colors.error : active ? colors.onSecondaryContainer : colors.onSurface;
+    }
+
+    private Tile createTile(QuickAction action) {
+        boolean active = action.active != null && action.active.isOn();
+
+        LinearLayout view = new LinearLayout(getContext());
+        view.setOrientation(LinearLayout.HORIZONTAL);
+        view.setGravity(Gravity.CENTER_VERTICAL);
+        view.setPadding(dp(10), 0, dp(10), 0);
+        GradientDrawable background = roundRect(active ? colors.secondaryContainer : colors.surfaceContainerHigh, dp(16));
+        view.setBackground(ripple(background, dp(16)));
+
+        FrameLayout badgeBox = new FrameLayout(getContext());
+        if (action.holdToConfirm) {
+            // Square and centered like the badge, so the ring is a circle around it
+            holdRing = new MenuWidgets.RingView(getContext(), colors.error);
+            badgeBox.addView(holdRing, new LayoutParams(dp(28), dp(28), Gravity.CENTER));
+        }
+        badgeBox.addView(buttonBadge(action.keyCode), new LayoutParams(LayoutParams.WRAP_CONTENT, dp(20), Gravity.CENTER));
+        view.addView(badgeBox, new LinearLayout.LayoutParams(dp(isDpad(action.keyCode) ? 24 : 34), dp(28)));
+
+        TextView label = text(action.label, 13, tileLabelColor(action, active), true);
+        label.setMaxLines(2);
+        label.setPadding(dp(8), 0, 0, 0);
+        view.addView(label, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+
+        Tile tile = new Tile(action, view, background, label, active);
+        if (action.holdToConfirm) {
+            holdTile = tile;
+        }
+
+        addPressFeedback(view);
+        view.setOnClickListener(v -> {
+            gamepadMode = false;
+            if (action.holdToConfirm) {
+                showConfirmDialog(action);
+            } else {
+                runQuickAction(action);
+            }
+        });
+        return tile;
+    }
+
+    private void buildListContent(Tab tab) {
+        for (Item item : tab.items) {
+            if (item.header) {
+                content.addView(sectionHeader(item.label));
+            } else {
+                Row row = createRow(item);
+                rows.add(row);
+                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                params.bottomMargin = dp(2);
+                content.addView(row.view, params);
+            }
+        }
+
+        if (selectedRow >= rows.size()) {
+            selectedRow = Math.max(0, rows.size() - 1);
+        }
+        updateSelection(false);
+    }
+
+    private String dropdownValue(Item item) {
+        int current = item.selection.get();
+        return current >= 0 && current < item.options.length ? item.options[current] : "";
+    }
+
+    private Row createRow(Item item) {
+        LinearLayout view = new LinearLayout(getContext());
+        view.setOrientation(LinearLayout.HORIZONTAL);
+        view.setGravity(Gravity.CENTER_VERTICAL);
+        view.setMinimumHeight(dp(46));
+        view.setPadding(dp(14), 0, dp(12), 0);
+
+        GradientDrawable background = roundRect(Color.TRANSPARENT, dp(23));
+        view.setBackground(ripple(background, dp(23)));
+
+        ImageView icon = null;
+        if (item.iconResId != 0) {
+            icon = icon(item.iconResId, item.accent ? colors.primary : colors.onSurfaceVariant, 22);
+            view.addView(icon);
+        }
+
+        TextView label = text(item.label, 14, item.accent ? colors.primary : colors.onSurface, true);
+        label.setMaxLines(2);
+        label.setPadding(icon != null ? dp(14) : 0, 0, dp(8), 0);
+        view.addView(label, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+
+        Row row = new Row(item, view, background, label, icon);
+        row.labelColor = item.accent ? colors.primary : colors.onSurface;
+        row.iconColor = item.accent ? colors.primary : colors.onSurfaceVariant;
+
+        if (item.toggle != null) {
+            row.toggle = new MenuWidgets.SwitchView(getContext());
+            row.toggle.setColors(colors.primary, colors.onPrimary, colors.surfaceContainerHighest, colors.outline);
+            row.toggle.setChecked(item.toggle.isOn(), false);
+            view.addView(row.toggle);
+        } else if (item.options != null) {
+            LinearLayout chip = new LinearLayout(getContext());
+            chip.setOrientation(LinearLayout.HORIZONTAL);
+            chip.setGravity(Gravity.CENTER_VERTICAL);
+            chip.setPadding(dp(12), 0, dp(6), 0);
+            chip.setBackground(roundRect(colors.surfaceContainerHighest, dp(8)));
+            row.value = text(dropdownValue(item), 13, colors.onSurface, true);
+            chip.addView(row.value);
+            chip.addView(icon(R.drawable.ic_menu_dropdown, colors.onSurfaceVariant, 18));
+            view.addView(chip, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(30)));
+        } else if (item.trailingText != null) {
+            TextView keys = text(item.trailingText, 11, colors.onSurfaceVariant, false);
+            keys.setTypeface(Typeface.MONOSPACE);
+            keys.setSingleLine(true);
+            keys.setPadding(dp(7), dp(3), dp(7), dp(3));
+            GradientDrawable outline = roundRect(Color.TRANSPARENT, dp(6));
+            outline.setStroke(dp(1), colors.outlineVariant);
+            keys.setBackground(outline);
+            view.addView(keys);
+        }
+
+        addPressFeedback(view);
+        view.setOnClickListener(v -> {
+            gamepadMode = false;
+            selectedRow = rows.indexOf(row);
+            updateSelection(true);
+            activate(row);
+        });
+        if (item.longPressAction != null) {
+            view.setOnLongClickListener(v -> {
+                gamepadMode = false;
+                updateSelection(true);
+                item.longPressAction.run();
+                return true;
+            });
+        }
+        return row;
+    }
+
+    private void buildHintRow() {
+        hintRow.removeAllViews();
+        if (currentTab != 0) {
+            addHint(hint(KeyEvent.KEYCODE_BUTTON_A, str(R.string.game_menu_hint_select)));
+        }
+        addHint(hint(KeyEvent.KEYCODE_BUTTON_B, str(R.string.game_menu_hint_close)));
+
+        LinearLayout tabsHint = new LinearLayout(getContext());
+        tabsHint.setGravity(Gravity.CENTER_VERTICAL);
+        TextView chip = text("LB RB", 9, colors.onSurfaceVariant, true);
+        chip.setPadding(dp(5), dp(2), dp(5), dp(2));
+        chip.setBackground(roundRect(colors.surfaceContainerHighest, dp(5)));
+        tabsHint.addView(chip);
+        TextView label = text(str(R.string.game_menu_hint_tabs), 12, colors.onSurfaceVariant, false);
+        label.setPadding(dp(6), 0, 0, 0);
+        tabsHint.addView(label);
+        addHint(tabsHint);
+    }
+
+    private void addHint(View hint) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        if (hintRow.getChildCount() > 0) {
+            params.leftMargin = dp(16);
+        }
+        hintRow.addView(hint, params);
+    }
+
+    // Moves the selection highlight, fading the rows that change
+    private void updateSelection(boolean animate) {
+        for (int i = 0; i < rows.size(); i++) {
+            Row row = rows.get(i);
+            boolean selected = gamepadMode && i == selectedRow;
+            int background = selected ? colors.secondaryContainer : Color.TRANSPARENT;
+            int stroke = selected && dropdownRow == null ? colors.primary : Color.TRANSPARENT;
+            int label = row.item.accent ? colors.primary : selected ? colors.onSecondaryContainer : colors.onSurface;
+            int icon = row.item.accent ? colors.primary : selected ? colors.onSecondaryContainer : colors.onSurfaceVariant;
+
+            if (background == row.backgroundColor && stroke == row.strokeColor && label == row.labelColor) {
+                continue;
+            }
+            if (row.animator != null) {
+                row.animator.cancel();
+            }
+
+            int fromBackground = row.backgroundColor, fromStroke = row.strokeColor;
+            int fromLabel = row.labelColor, fromIcon = row.iconColor;
+            row.backgroundColor = background;
+            row.strokeColor = stroke;
+            row.labelColor = label;
+            row.iconColor = icon;
+
+            if (!animate) {
+                applyRowColors(row, background, stroke, label, icon);
+                continue;
+            }
+            row.animator = ValueAnimator.ofFloat(0, 1);
+            row.animator.setDuration(ApolloMotion.SHORT);
+            row.animator.setInterpolator(ApolloMotion.STANDARD);
+            row.animator.addUpdateListener(animation -> {
+                float f = animation.getAnimatedFraction();
+                applyRowColors(row,
+                        (int) ARGB.evaluate(f, fromBackground, background),
+                        (int) ARGB.evaluate(f, fromStroke, stroke),
+                        (int) ARGB.evaluate(f, fromLabel, label),
+                        (int) ARGB.evaluate(f, fromIcon, icon));
+            });
+            row.animator.start();
+        }
+
+        if (gamepadMode && selectedRow < rows.size()) {
+            View view = rows.get(selectedRow).view;
+            scrollView.post(() -> {
+                int top = view.getTop();
+                int bottom = view.getBottom();
+                int scrollY = scrollView.getScrollY();
+                int height = scrollView.getHeight();
+                if (top < scrollY) {
+                    scrollView.smoothScrollTo(0, Math.max(0, top - dp(28)));
+                } else if (bottom > scrollY + height) {
+                    scrollView.smoothScrollTo(0, bottom - height + dp(4));
+                }
+            });
+        }
+    }
+
+    private void applyRowColors(Row row, int background, int stroke, int label, int icon) {
+        row.background.setColor(background);
+        row.background.setStroke(dp(2), stroke);
+        row.label.setTextColor(label);
+        if (row.icon != null) {
+            row.icon.setImageTintList(ColorStateList.valueOf(icon));
+        }
+    }
+
+    // Updates switches, dropdown values and active tiles in place, so the changes can animate
+    private void updateStates() {
+        for (Tile tile : tiles) {
+            boolean active = tile.action.active != null && tile.action.active.isOn();
+            if (active == tile.active) {
+                continue;
+            }
+            tile.active = active;
+            int fromBackground = active ? colors.surfaceContainerHigh : colors.secondaryContainer;
+            int toBackground = active ? colors.secondaryContainer : colors.surfaceContainerHigh;
+            int fromLabel = tileLabelColor(tile.action, !active);
+            int toLabel = tileLabelColor(tile.action, active);
+            ValueAnimator animator = ValueAnimator.ofFloat(0, 1);
+            animator.setDuration(ApolloMotion.MEDIUM);
+            animator.setInterpolator(ApolloMotion.STANDARD);
+            animator.addUpdateListener(animation -> {
+                float f = animation.getAnimatedFraction();
+                tile.background.setColor((int) ARGB.evaluate(f, fromBackground, toBackground));
+                tile.label.setTextColor((int) ARGB.evaluate(f, fromLabel, toLabel));
+            });
+            animator.start();
+        }
+
+        for (Row row : rows) {
+            if (row.toggle != null) {
+                row.toggle.setChecked(row.item.toggle.isOn(), true);
+            }
+            if (row.value != null) {
+                row.value.setText(dropdownValue(row.item));
+            }
+        }
+    }
+
+    // ---- Actions ----
+
+    private void selectTab(int index) {
+        int target = (index + tabCount()) % tabCount();
+        if (target == currentTab) {
+            return;
+        }
+        // Content slides in from the side we are moving towards
+        int direction = target > currentTab ? 1 : -1;
+
+        hideDropdown(false);
+        currentTab = target;
+        selectedRow = 0;
+        updateTabs(true);
+        rebuildContent();
+        scrollView.scrollTo(0, 0);
+
+        content.animate().cancel();
+        content.setAlpha(0);
+        content.setTranslationX(direction * dp(TAB_SLIDE_DP));
+        content.animate().alpha(1).translationX(0)
+                .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.EMPHASIZED_DECELERATE).start();
+    }
+
+    private void switchTab(int delta) {
+        selectTab(currentTab + delta);
+    }
+
+    private void runAndMaybeClose(Runnable action, boolean keepOpen) {
+        if (action == null) {
+            return;
+        }
+        if (keepOpen) {
+            action.run();
+            updateStates();
+            // An action may have just added the on-screen gamepad on top of us
+            bringToFront();
+        } else {
+            close();
+            // Let the stream view get its focus back first, the soft keyboard needs it
+            post(action);
+        }
+    }
+
+    private void runQuickAction(QuickAction action) {
+        runAndMaybeClose(action.action, action.keepOpen);
+    }
+
+    private void activate(Row row) {
+        Item item = row.item;
+        if (item.options != null) {
+            showDropdown(row);
+            return;
+        }
+        runAndMaybeClose(item.action, item.keepOpen);
+    }
+
+    private Tile findTile(int keyCode) {
+        for (Tile tile : tiles) {
+            if (tile.action.keyCode == keyCode) {
+                return tile;
+            }
+        }
+        return null;
+    }
+
+    private QuickAction findQuickAction(int keyCode) {
+        for (QuickAction action : quickActions) {
+            if (action.keyCode == keyCode) {
+                return action;
+            }
+        }
+        return null;
+    }
+
+    private void startHold(QuickAction action) {
+        cancelHold(false);
+        holdingAction = action;
+        holdCompleted = false;
+
+        holdAnimator = ValueAnimator.ofFloat(0, 1);
+        holdAnimator.setDuration(HOLD_TO_CONFIRM_MS);
+        holdAnimator.setInterpolator(new LinearInterpolator());
+        holdAnimator.addUpdateListener(animation -> {
+            if (holdRing != null) {
+                holdRing.setProgress((float) animation.getAnimatedValue());
+            }
+        });
+        holdAnimator.addListener(new AnimatorListenerAdapter() {
+            private boolean cancelled;
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                cancelled = true;
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (!cancelled && holdingAction == action) {
+                    holdCompleted = true;
+                    holdingAction = null;
+                    runAndMaybeClose(action.action, false);
+                }
+            }
+        });
+        holdAnimator.start();
+    }
+
+    // Called when the held button is released, too early unless the action already ran
+    private void cancelHold(boolean showHint) {
+        if (holdAnimator != null) {
+            holdAnimator.cancel();
+            holdAnimator = null;
+        }
+        if (holdRing != null) {
+            holdRing.setProgress(0);
+        }
+        if (holdingAction != null && showHint && !holdCompleted) {
+            if (holdTile != null) {
+                shake(holdTile.view);
+            }
+            Toast.makeText(getContext(), getContext().getString(R.string.game_menu_hold_hint,
+                    badgeLabel(holdingAction.keyCode)), Toast.LENGTH_SHORT).show();
+        }
+        holdingAction = null;
+    }
+
+    private void showConfirmDialog(QuickAction action) {
+        dialogTitle.setText(action.label + "?");
+        dialogConfirm = action.action;
+
+        dialogLayer.animate().cancel();
+        dialogCard.animate().cancel();
+        dialogLayer.setAlpha(0);
+        dialogCard.setScaleX(0.9f);
+        dialogCard.setScaleY(0.9f);
+        dialogLayer.setVisibility(VISIBLE);
+        dialogLayer.animate().alpha(1)
+                .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
+        dialogCard.animate().scaleX(1).scaleY(1)
+                .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.EMPHASIZED_DECELERATE).start();
+    }
+
+    private boolean isDialogShown() {
+        return dialogLayer.getVisibility() == VISIBLE && dialogConfirm != null;
+    }
+
+    private void dismissDialog() {
+        dialogConfirm = null;
+        dialogLayer.animate().alpha(0)
+                .setDuration(ApolloMotion.SHORT).setInterpolator(ApolloMotion.STANDARD)
+                .withEndAction(() -> {
+                    if (dialogConfirm == null) {
+                        dialogLayer.setVisibility(GONE);
+                    }
+                })
+                .start();
+    }
+
+    private void confirmDialog() {
+        Runnable action = dialogConfirm;
+        dialogConfirm = null;
+        dialogLayer.setVisibility(GONE);
+        runAndMaybeClose(action, false);
+    }
+
+    private void showDropdown(Row row) {
+        hideDropdown(false);
+        dropdownRow = row;
+        dropdownIndex = Math.max(0, row.item.selection.get());
+        int generation = ++dropdownGeneration;
+
+        for (int i = 0; i < row.item.options.length; i++) {
+            final int index = i;
+            LinearLayout option = new LinearLayout(getContext());
+            option.setOrientation(LinearLayout.HORIZONTAL);
+            option.setGravity(Gravity.CENTER_VERTICAL);
+            option.setPadding(dp(14), 0, dp(14), 0);
+            option.setBackground(ripple(roundRect(Color.TRANSPARENT, 0), 0));
+
+            ImageView check = icon(R.drawable.ic_menu_check, colors.primary, 18);
+            check.setVisibility(i == row.item.selection.get() ? VISIBLE : INVISIBLE);
+            option.addView(check);
+
+            TextView label = text(row.item.options[i], 14, colors.onSurface, false);
+            label.setPadding(dp(10), 0, 0, 0);
+            option.addView(label);
+
+            option.setOnClickListener(v -> selectDropdownOption(index));
+            dropdownCard.addView(option, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(42)));
+            dropdownOptions.add(option);
+        }
+
+        updateDropdownSelection();
+        updateSelection(true);
+        dropdownCard.animate().cancel();
+        dropdownCard.setVisibility(INVISIBLE);
+
+        // Below the row if it fits, otherwise above it. It unfolds from the row.
+        dropdownCard.post(() -> {
+            if (dropdownGeneration != generation) {
+                return;
+            }
+            int[] frameLocation = new int[2];
+            int[] rowLocation = new int[2];
+            panelFrame.getLocationInWindow(frameLocation);
+            row.view.getLocationInWindow(rowLocation);
+            int rowTop = rowLocation[1] - frameLocation[1];
+            int rowBottom = rowTop + row.view.getHeight();
+            int cardHeight = dropdownCard.getHeight();
+
+            int top = rowBottom + dp(4);
+            boolean above = top + cardHeight > panelFrame.getHeight() - dp(8);
+            if (above) {
+                top = Math.max(dp(8), rowTop - cardHeight - dp(4));
+            }
+            LayoutParams params = (LayoutParams) dropdownCard.getLayoutParams();
+            params.topMargin = top;
+            params.rightMargin = dp(18);
+            dropdownCard.setLayoutParams(params);
+
+            dropdownCard.setPivotX(dropdownCard.getWidth());
+            dropdownCard.setPivotY(above ? cardHeight : 0);
+            dropdownCard.setScaleY(0.6f);
+            dropdownCard.setAlpha(0);
+            dropdownCard.setVisibility(VISIBLE);
+            dropdownCard.animate().scaleY(1).alpha(1)
+                    .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.EMPHASIZED_DECELERATE).start();
+        });
+    }
+
+    private void hideDropdown(boolean animate) {
+        if (dropdownRow == null && dropdownCard.getVisibility() == GONE) {
+            return;
+        }
+        dropdownRow = null;
+        dropdownOptions.clear();
+        int generation = ++dropdownGeneration;
+
+        if (!animate) {
+            dropdownCard.animate().cancel();
+            dropdownCard.removeAllViews();
+            dropdownCard.setVisibility(GONE);
+            return;
+        }
+        dropdownCard.animate().alpha(0)
+                .setDuration(ApolloMotion.SHORT).setInterpolator(ApolloMotion.STANDARD)
+                .withEndAction(() -> {
+                    if (dropdownGeneration == generation) {
+                        dropdownCard.removeAllViews();
+                        dropdownCard.setVisibility(GONE);
+                    }
+                })
+                .start();
+    }
+
+    private void updateDropdownSelection() {
+        for (int i = 0; i < dropdownOptions.size(); i++) {
+            dropdownOptions.get(i).setBackground(ripple(roundRect(
+                    gamepadMode && i == dropdownIndex ? colors.surfaceContainerHighest : Color.TRANSPARENT, 0), 0));
+        }
+    }
+
+    private void selectDropdownOption(int index) {
+        Row row = dropdownRow;
+        hideDropdown(true);
+        if (row != null) {
+            row.item.selection.set(index);
+        }
+        updateStates();
+        updateSelection(true);
+    }
+
+    // ---- Status row ----
+
+    private void refreshStatus() {
+        Context context = getContext();
+        clockView.setText(DateFormat.getTimeFormat(context).format(new Date()));
+
+        refreshNetwork(context);
+
+        boolean bluetoothOn = false;
+        try {
+            bluetoothOn = Settings.Global.getInt(context.getContentResolver(), Settings.Global.BLUETOOTH_ON, 0) == 1;
+        } catch (Exception ignored) {
+        }
+        bluetoothIcon.setVisibility(bluetoothOn ? VISIBLE : GONE);
+
+        Intent battery = context.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        if (battery != null) {
+            int level = battery.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+            int scale = battery.getIntExtra(BatteryManager.EXTRA_SCALE, 100);
+            int status = battery.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+            boolean charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL;
+            int percent = level >= 0 && scale > 0 ? Math.round(level * 100f / scale) : 100;
+            int fill = charging ? colors.primary : percent <= LOW_BATTERY_PERCENT ? colors.error : colors.onSurfaceVariant;
+            batteryView.setState(percent, colors.onSurfaceVariant, fill);
+            batteryText.setText(percent + "%");
+            batteryView.setVisibility(VISIBLE);
+            batteryText.setVisibility(VISIBLE);
+        } else {
+            batteryView.setVisibility(GONE);
+            batteryText.setVisibility(GONE);
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private void refreshNetwork(Context context) {
+        int wifiLevel = -1;
+        int otherIcon = 0;
+
+        try {
+            ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Network network = cm.getActiveNetwork();
+                NetworkCapabilities caps = network != null ? cm.getNetworkCapabilities(network) : null;
+                if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                    int rssi = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ? caps.getSignalStrength() : Integer.MIN_VALUE;
+                    if (rssi == Integer.MIN_VALUE) {
+                        WifiManager wm = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                        rssi = wm.getConnectionInfo().getRssi();
+                    }
+                    wifiLevel = WifiManager.calculateSignalLevel(rssi, 5);
+                } else if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) {
+                    otherIcon = R.drawable.ic_menu_ethernet;
+                } else if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
+                    otherIcon = R.drawable.ic_menu_cellular;
+                }
+            } else {
+                NetworkInfo info = cm.getActiveNetworkInfo();
+                if (info != null && info.getType() == ConnectivityManager.TYPE_WIFI) {
+                    wifiLevel = 4;
+                } else if (info != null && info.getType() == ConnectivityManager.TYPE_ETHERNET) {
+                    otherIcon = R.drawable.ic_menu_ethernet;
+                } else if (info != null && info.getType() == ConnectivityManager.TYPE_MOBILE) {
+                    otherIcon = R.drawable.ic_menu_cellular;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        if (otherIcon != 0) {
+            wifiView.setVisibility(GONE);
+            networkIcon.setImageResource(otherIcon);
+            networkIcon.setVisibility(VISIBLE);
+        } else {
+            // No connection shows an empty Wi-Fi fan
+            wifiView.setState(Math.max(0, wifiLevel), colors.onSurfaceVariant);
+            wifiView.setVisibility(VISIBLE);
+            networkIcon.setVisibility(GONE);
+        }
+    }
+
+    // ---- Gamepad and keyboard input ----
+
+    @Override
+    public boolean onInterceptTouchEvent(MotionEvent ev) {
+        if (ev.getActionMasked() == MotionEvent.ACTION_DOWN && gamepadMode) {
+            gamepadMode = false;
+            updateSelection(true);
+            updateDropdownSelection();
+        }
+        return super.onInterceptTouchEvent(ev);
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        int keyCode = flipFaceButtons ? flipFaceButton(event.getKeyCode()) : event.getKeyCode();
+
+        if (event.getAction() == KeyEvent.ACTION_UP) {
+            if (holdingAction != null && keyCode == holdingAction.keyCode) {
+                cancelHold(true);
+            }
+            return true;
+        }
+        if (event.getAction() != KeyEvent.ACTION_DOWN || event.getRepeatCount() > 0 && !isDpad(keyCode)) {
+            return true;
+        }
+
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            keyCode = KeyEvent.KEYCODE_BUTTON_B;
+        }
+        handleButton(keyCode, event.getRepeatCount() == 0);
+        return true;
+    }
+
+    private void handleButton(int keyCode, boolean firstPress) {
+        boolean confirm = keyCode == KeyEvent.KEYCODE_BUTTON_A || keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                keyCode == KeyEvent.KEYCODE_ENTER;
+        boolean back = keyCode == KeyEvent.KEYCODE_BUTTON_B || keyCode == KeyEvent.KEYCODE_ESCAPE;
+
+        if (isDialogShown()) {
+            if (confirm) {
+                confirmDialog();
+            } else if (back) {
+                dismissDialog();
+            }
+            return;
+        }
+
+        if (!gamepadMode) {
+            gamepadMode = true;
+            updateSelection(true);
+        }
+
+        if (dropdownRow != null) {
+            int count = dropdownRow.item.options.length;
+            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                dropdownIndex = Math.max(0, dropdownIndex - 1);
+                updateDropdownSelection();
+            } else if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                dropdownIndex = Math.min(count - 1, dropdownIndex + 1);
+                updateDropdownSelection();
+            } else if (confirm) {
+                selectDropdownOption(dropdownIndex);
+            } else if (back) {
+                hideDropdown(true);
+                updateSelection(true);
+            }
+            return;
+        }
+
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_BUTTON_L1:
+                switchTab(-1);
+                return;
+            case KeyEvent.KEYCODE_BUTTON_R1:
+                switchTab(1);
+                return;
+            case KeyEvent.KEYCODE_BUTTON_B:
+            case KeyEvent.KEYCODE_ESCAPE:
+                close();
+                return;
+            case KeyEvent.KEYCODE_MENU:
+                keyCode = KeyEvent.KEYCODE_BUTTON_START;
+                break;
+        }
+
+        // Start works from every tab
+        if (currentTab == 0 || keyCode == KeyEvent.KEYCODE_BUTTON_START) {
+            QuickAction action = findQuickAction(keyCode);
+            if (action != null && firstPress) {
+                Tile tile = findTile(keyCode);
+                if (tile != null && !action.holdToConfirm) {
+                    pulse(tile.view);
+                }
+                if (action.holdToConfirm) {
+                    startHold(action);
+                } else {
+                    runQuickAction(action);
+                }
+            }
+            return;
+        }
+
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_UP:
+                moveSelection(-1);
+                break;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                moveSelection(1);
+                break;
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+                switchTab(-1);
+                break;
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                switchTab(1);
+                break;
+            default:
+                if (confirm && firstPress && selectedRow < rows.size()) {
+                    Row row = rows.get(selectedRow);
+                    pulse(row.view);
+                    activate(row);
+                }
+                break;
+        }
+    }
+
+    private void moveSelection(int delta) {
+        if (rows.isEmpty()) {
+            return;
+        }
+        selectedRow = (selectedRow + delta + rows.size()) % rows.size();
+        updateSelection(true);
+    }
+
+    @Override
+    public boolean onGenericMotionEvent(MotionEvent event) {
+        if ((event.getSource() & InputDevice.SOURCE_JOYSTICK) != InputDevice.SOURCE_JOYSTICK) {
+            return super.onGenericMotionEvent(event);
+        }
+
+        // A D-pad reported as a hat axis acts like the D-pad buttons, once per press
+        int hatX = Math.round(event.getAxisValue(MotionEvent.AXIS_HAT_X));
+        int hatY = Math.round(event.getAxisValue(MotionEvent.AXIS_HAT_Y));
+        if (hatX != lastHatX || hatY != lastHatY) {
+            if (hatX != 0 && hatX != lastHatX) {
+                handleButton(hatX < 0 ? KeyEvent.KEYCODE_DPAD_LEFT : KeyEvent.KEYCODE_DPAD_RIGHT, true);
+            } else if (hatY != 0 && hatY != lastHatY) {
+                handleButton(hatY < 0 ? KeyEvent.KEYCODE_DPAD_UP : KeyEvent.KEYCODE_DPAD_DOWN, true);
+            }
+            lastHatX = hatX;
+            lastHatY = hatY;
+            return true;
+        }
+
+        // The left stick only navigates lists, it would trigger quick actions by accident
+        if (currentTab == 0 && dropdownRow == null) {
+            return true;
+        }
+
+        float x = event.getAxisValue(MotionEvent.AXIS_X);
+        float y = event.getAxisValue(MotionEvent.AXIS_Y);
+        long now = System.currentTimeMillis();
+        if (now - lastAnalogNavTime < ANALOG_NAV_THROTTLE_MS) {
+            return true;
+        }
+
+        // The dominant axis wins, so diagonals don't switch tab by accident
+        if (Math.abs(x) >= Math.abs(y)) {
+            if (Math.abs(x) > ANALOG_STICK_THRESHOLD && dropdownRow == null) {
+                handleButton(x < 0 ? KeyEvent.KEYCODE_DPAD_LEFT : KeyEvent.KEYCODE_DPAD_RIGHT, true);
+                lastAnalogNavTime = now;
+            }
+        } else if (Math.abs(y) > ANALOG_STICK_THRESHOLD) {
+            handleButton(y < 0 ? KeyEvent.KEYCODE_DPAD_UP : KeyEvent.KEYCODE_DPAD_DOWN, true);
+            lastAnalogNavTime = now;
+        }
+        return true;
+    }
+
+    @Override
+    public WindowInsets onApplyWindowInsets(WindowInsets insets) {
+        // Keep the panel content clear of a notch on the left side
+        int left = 0;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            DisplayCutout cutout = insets.getDisplayCutout();
+            if (cutout != null) {
+                left = cutout.getSafeInsetLeft();
+            }
+        }
+        panel.setPadding(dp(10) + left, dp(10), dp(10), dp(6));
+        return super.onApplyWindowInsets(insets);
+    }
+
+    private static int flipFaceButton(int keyCode) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_BUTTON_A: return KeyEvent.KEYCODE_BUTTON_B;
+            case KeyEvent.KEYCODE_BUTTON_B: return KeyEvent.KEYCODE_BUTTON_A;
+            case KeyEvent.KEYCODE_BUTTON_X: return KeyEvent.KEYCODE_BUTTON_Y;
+            case KeyEvent.KEYCODE_BUTTON_Y: return KeyEvent.KEYCODE_BUTTON_X;
+            default: return keyCode;
+        }
+    }
+}
