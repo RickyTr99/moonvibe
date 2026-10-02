@@ -1,4 +1,4 @@
-package com.limelight.ui.gamemenu;
+package com.limelight.ui.apollo;
 
 import android.animation.ArgbEvaluator;
 import android.animation.ValueAnimator;
@@ -13,10 +13,10 @@ import android.view.View;
 import com.limelight.ui.theme.ApolloMotion;
 
 /**
- * Small views drawn in code for the game menu, in the Material 3 style.
+ * Small views drawn in code for the MoonVibe UI, in the Material 3 style.
  */
-final class MenuWidgets {
-    private MenuWidgets() {
+public final class ApolloWidgets {
+    private ApolloWidgets() {
     }
 
     private static float dp(View view, float value) {
@@ -24,7 +24,7 @@ final class MenuWidgets {
     }
 
     /** Material 3 switch, display only: the whole row is the touch target. */
-    static class SwitchView extends View {
+    public static class SwitchView extends View {
         private static final ArgbEvaluator ARGB = new ArgbEvaluator();
 
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -34,11 +34,11 @@ final class MenuWidgets {
         private ValueAnimator animator;
         private int checkedTrack, checkedKnob, uncheckedTrack, uncheckedOutline;
 
-        SwitchView(Context context) {
+        public SwitchView(Context context) {
             super(context);
         }
 
-        void setColors(int checkedTrack, int checkedKnob, int uncheckedTrack, int uncheckedOutline) {
+        public void setColors(int checkedTrack, int checkedKnob, int uncheckedTrack, int uncheckedOutline) {
             this.checkedTrack = checkedTrack;
             this.checkedKnob = checkedKnob;
             this.uncheckedTrack = uncheckedTrack;
@@ -46,7 +46,7 @@ final class MenuWidgets {
             invalidate();
         }
 
-        void setChecked(boolean checked, boolean animate) {
+        public void setChecked(boolean checked, boolean animate) {
             float target = checked ? 1 : 0;
             if (animator != null) {
                 animator.cancel();
@@ -100,12 +100,12 @@ final class MenuWidgets {
     }
 
     /** Progress ring around a gamepad button badge, for hold-to-confirm actions. */
-    static class RingView extends View {
+    public static class RingView extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF rect = new RectF();
         private float progress;
 
-        RingView(Context context, int color) {
+        public RingView(Context context, int color) {
             super(context);
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeCap(Paint.Cap.ROUND);
@@ -113,7 +113,7 @@ final class MenuWidgets {
             paint.setColor(color);
         }
 
-        void setProgress(float progress) {
+        public void setProgress(float progress) {
             this.progress = progress;
             invalidate();
         }
@@ -130,17 +130,17 @@ final class MenuWidgets {
     }
 
     /** Horizontal battery icon whose fill follows the charge level. */
-    static class BatteryView extends View {
+    public static class BatteryView extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF rect = new RectF();
         private int level = 100;
         private int outlineColor, fillColor;
 
-        BatteryView(Context context) {
+        public BatteryView(Context context) {
             super(context);
         }
 
-        void setState(int level, int outlineColor, int fillColor) {
+        public void setState(int level, int outlineColor, int fillColor) {
             this.level = Math.max(0, Math.min(100, level));
             this.outlineColor = outlineColor;
             this.fillColor = fillColor;
@@ -173,18 +173,18 @@ final class MenuWidgets {
     }
 
     /** Wi-Fi fan icon showing the signal level from 0 to 4. */
-    static class WifiView extends View {
+    public static class WifiView extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Path fan = new Path();
         private final Path clip = new Path();
         private int level = 4;
         private int color;
 
-        WifiView(Context context) {
+        public WifiView(Context context) {
             super(context);
         }
 
-        void setState(int level, int color) {
+        public void setState(int level, int color) {
             this.level = Math.max(0, Math.min(4, level));
             this.color = color;
             invalidate();

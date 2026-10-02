@@ -68,6 +68,8 @@ public class ServerHelper {
     public static Intent createStartIntent(Activity parent, NvApp app, ComputerDetails computer,
                                            ComputerManagerService.ComputerManagerBinder managerBinder,
                                            String quickLaunchAppKey, boolean applyPreferenceOverrides) {
+        RecentGames.add(parent, computer.uuid, app.getAppId(), app.getAppName());
+
         Intent intent = new Intent(parent, Game.class);
         intent.putExtra(Game.EXTRA_HOST, computer.activeAddress.address);
         intent.putExtra(Game.EXTRA_PORT, computer.activeAddress.port);

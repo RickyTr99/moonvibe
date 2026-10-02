@@ -35,6 +35,7 @@ import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.ui.BrightnessSliderView;
 import com.limelight.ui.GameGestures;
 import com.limelight.ui.StreamView;
+import com.limelight.ui.apollo.launch.LaunchOverlayView;
 import com.limelight.ui.overlay.CustomCommand;
 import com.limelight.ui.gamemenu.GameMenuView;
 import com.limelight.utils.Dialog;
@@ -135,7 +136,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     private SharedPreferences tombstonePrefs;
 
     private NvConnection conn;
-    private SpinnerDialog spinner;
+    private LaunchOverlayView launchOverlay;
     private boolean displayedFailureDialog = false;
     private boolean connecting = false;
     private boolean connected = false;
@@ -289,10 +290,6 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         // Inflate the content
         setContentView(R.layout.activity_game);
 
-        // Start the spinner
-        spinner = SpinnerDialog.displayDialog(this, getResources().getString(R.string.conn_establishing_title),
-                getResources().getString(R.string.conn_establishing_msg), true);
-
         // Get the app ID
         int appId = Game.this.getIntent().getIntExtra(EXTRA_APP_ID, StreamConfiguration.INVALID_APP_ID);
 
@@ -305,6 +302,11 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         boolean applyPreferenceOverrides = Game.this.getIntent().getBooleanExtra(EXTRA_APPLY_PREFERENCE_OVERRIDES, true);
         prefConfig = AppPreferences.getEffectivePreferences(this, appKey, quickLaunchAppKey, applyPreferenceOverrides);
         tombstonePrefs = Game.this.getSharedPreferences("DecoderTombstone", 0);
+
+        // Show the launch screen, it stays until the stream starts
+        launchOverlay = findViewById(R.id.launchOverlay);
+        launchOverlay.show(getIntent().getStringExtra(EXTRA_APP_NAME), getIntent().getStringExtra(EXTRA_PC_NAME),
+                computerId, appId, prefConfig, this::finish);
 
         // Enter landscape unless we're on a square screen
         setPreferredOrientationForCurrentDisplay();
@@ -644,10 +646,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         }
 
         if (!decoderRenderer.isAvcSupported()) {
-            if (spinner != null) {
-                spinner.dismiss();
-                spinner = null;
-            }
+            launchOverlay.fail();
 
             // If we can't find an AVC decoder, we can't proceed
             Dialog.displayDialog(this, getResources().getString(R.string.conn_error_title),
@@ -1481,10 +1480,32 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     }
 
     @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        // While the launch screen shows, keys go to it and not to the host
+        if (launchOverlay != null && launchOverlay.isShowing() && launchOverlay.handleKeyEvent(event)) {
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    @Override
+    public boolean dispatchGenericMotionEvent(MotionEvent event) {
+        if (launchOverlay != null && launchOverlay.isShowing()) {
+            return true;
+        }
+        return super.dispatchGenericMotionEvent(event);
+    }
+
+    @Override
     public void onBackPressed() {
-        // The navigation bar back button closes the game menu instead of leaving the stream
-        if (gameMenu != null && gameMenu.isOpen()) {
-            gameMenu.hide();
+        // The back gesture toggles the game menu instead of leaving the stream:
+        // touch-only devices have no Select button, and the menu offers Disconnect/Quit
+        if (gameMenu != null) {
+            if (gameMenu.isOpen()) {
+                gameMenu.hide();
+            } else {
+                showGameMenu(false);
+            }
             return;
         }
         super.onBackPressed();
@@ -2602,9 +2623,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                if (spinner != null) {
-                    spinner.setMessage(getResources().getString(R.string.conn_starting) + " " + stage);
-                }
+                launchOverlay.setStage(stage);
             }
         });
     }
@@ -2671,10 +2690,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                if (spinner != null) {
-                    spinner.dismiss();
-                    spinner = null;
-                }
+                launchOverlay.fail();
 
                 if (!displayedFailureDialog) {
                     displayedFailureDialog = true;
@@ -2720,6 +2736,9 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
                 // Ungrab input
                 setInputGrabState(false);
+
+                // A stream that ends before it starts leaves the launch screen showing the failure
+                launchOverlay.fail();
 
                 if (!displayedFailureDialog) {
                     displayedFailureDialog = true;
@@ -2796,10 +2815,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                if (spinner != null) {
-                    spinner.dismiss();
-                    spinner = null;
-                }
+                launchOverlay.dismiss();
 
                 connected = true;
                 connecting = false;
@@ -2930,7 +2946,8 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             }
         }
 
-        // Show stream configuration to user, with the exact rate the host was asked for
+        // Log the stream configuration, with the exact rate the host was asked for
+        // (the launch screen already shows the settings, so no toast)
         String hostRateText = "";
         if (streamConfig.getClientRefreshRateX100() > 0) {
             hostRateText = String.format(Locale.getDefault(), " (%.2fHz)", streamConfig.getClientRefreshRateX100() / 100.0);
@@ -2944,7 +2961,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             prefConfig.bitrate / 1000,
             decoderRenderer.getRendererName(),
             prefConfig.enableHdr ? " HDR" : "");
-        Toast.makeText(Game.this, configMessage, Toast.LENGTH_LONG).show();
+        LimeLog.info(configMessage);
 
         decoderRenderer.setRenderTarget(streamView.getHolder());
         conn.start(new AndroidAudioRenderer(Game.this, prefConfig.enableAudioFx),

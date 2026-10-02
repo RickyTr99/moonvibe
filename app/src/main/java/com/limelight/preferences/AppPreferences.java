@@ -232,7 +232,8 @@ public class AppPreferences {
         // Apply global overrides only if overrides are enabled (highest priority)
         // This override applies to all streams regardless of other settings
         SharedPreferences defaultPrefs = PreferenceManager.getDefaultSharedPreferences(context);
-        boolean overridesEnabled = defaultPrefs.getBoolean(PREF_OVERRIDES_ENABLED, false);
+        // MoonVibe: no global overrides any more, the quick settings change the settings themselves
+        boolean overridesEnabled = false;
 
         if (overridesEnabled) {
             // Apply global bitrate override

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tag with the gamepad hints of a focusable view -->
+    <item name="apollo_hints" type="id" />
+</resources>

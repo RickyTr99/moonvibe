@@ -247,6 +247,12 @@ public class AddComputerManually extends Activity {
     }
 
     @Override
+    public void finish() {
+        super.finish();
+        overridePendingTransition(R.anim.apollo_fade_in, R.anim.apollo_fade_out);
+    }
+
+    @Override
     protected void onStop() {
         super.onStop();
 
@@ -302,6 +308,14 @@ public class AddComputerManually extends Activity {
                 handleDoneEvent();
             }
         });
+
+        // MoonVibe: the card keeps a dialog width, within the screen on phones
+        overridePendingTransition(R.anim.apollo_fade_in, R.anim.apollo_fade_out);
+        findViewById(R.id.cancelAddPcButton).setOnClickListener(v -> finish());
+        View card = findViewById(R.id.addPcCard);
+        float density = getResources().getDisplayMetrics().density;
+        card.getLayoutParams().width = (int) Math.min(440 * density,
+                getResources().getDisplayMetrics().widthPixels - 32 * density);
 
         // Bind to the ComputerManager service
         bindService(new Intent(AddComputerManually.this,

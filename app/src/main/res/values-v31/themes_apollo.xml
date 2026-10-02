@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material You: colors from the wallpaper. The primary color is one tone darker than the M3 default. -->
+    <style name="Base.Apollo" parent="Theme.Material3.DynamicColors.Dark.NoActionBar">
+        <item name="colorPrimary">@android:color/system_accent1_300</item>
+        <item name="colorOnPrimary">@android:color/system_accent1_900</item>
+        <item name="colorError">#FFB4AB</item>
+        <item name="colorOnError">#690005</item>
+        <item name="colorErrorContainer">#93000A</item>
+        <item name="colorOnErrorContainer">#FFDAD6</item>
+    </style>
+</resources>

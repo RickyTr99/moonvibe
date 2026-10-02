@@ -6,7 +6,7 @@ import android.content.res.Resources;
 import android.os.Build;
 
 /**
- * Material 3 dark color roles for the Apollo X UI. On Android 12+ they come from the system's
+ * Material 3 dark color roles for the MoonVibe UI, the same as Theme.Apollo. On Android 12+ they come from the system's
  * dynamic palette (Material You, derived from the wallpaper), otherwise from a fixed blue palette.
  */
 public final class ApolloColors {
@@ -25,7 +25,7 @@ public final class ApolloColors {
     public final int error;
 
     private static final ApolloColors FALLBACK = new ApolloColors(
-            0xFFADC6FF, 0xFF102F60, 0xFF3E4759, 0xFFDAE2F9,
+            0xFF82A6E8, 0xFF001B3F, 0xFF3E4759, 0xFFDAE2F9,
             0xFF1A1B20, 0xFF1E1F25, 0xFF282A2F, 0xFF33353A,
             0xFFE2E2E9, 0xFFC4C6D0, 0xFF8E9099, 0xFF44474F,
             0xFFFFB4AB);
@@ -65,8 +65,8 @@ public final class ApolloColors {
         int neutralTone30 = res.getColor(android.R.color.system_neutral1_700, null);
 
         return new ApolloColors(
-                res.getColor(android.R.color.system_accent1_200, null),
-                res.getColor(android.R.color.system_accent1_800, null),
+                res.getColor(android.R.color.system_accent1_300, null),
+                res.getColor(android.R.color.system_accent1_900, null),
                 res.getColor(android.R.color.system_accent2_700, null),
                 res.getColor(android.R.color.system_accent2_100, null),
                 neutralTone10,
@@ -80,7 +80,7 @@ public final class ApolloColors {
                 FALLBACK.error);
     }
 
-    private static int blend(int from, int to, float amount) {
+    public static int blend(int from, int to, float amount) {
         int a = Math.round(((from >>> 24) & 0xFF) + (((to >>> 24) & 0xFF) - ((from >>> 24) & 0xFF)) * amount);
         int r = Math.round(((from >> 16) & 0xFF) + (((to >> 16) & 0xFF) - ((from >> 16) & 0xFF)) * amount);
         int g = Math.round(((from >> 8) & 0xFF) + (((to >> 8) & 0xFF) - ((from >> 8) & 0xFF)) * amount);

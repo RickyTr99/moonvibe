@@ -11,13 +11,22 @@ import android.preference.ListPreference;
 import android.preference.Preference;
 import android.preference.PreferenceCategory;
 import android.preference.PreferenceFragment;
+import android.os.Build;
+import android.view.KeyEvent;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 
 import com.limelight.R;
+import com.limelight.ui.apollo.ApolloUi;
+import com.limelight.ui.apollo.hints.HintRow;
+import com.limelight.ui.apollo.hints.ScreenHints;
+import com.limelight.ui.apollo.settings.SettingsView;
+import com.limelight.ui.theme.ApolloColors;
 import com.limelight.utils.UiHelper;
 
 public class AppStreamSettings extends Activity {
@@ -47,7 +56,80 @@ public class AppStreamSettings extends Activity {
                 R.id.stream_settings, new AppSettingsFragment()
         ).commitAllowingStateLoss();
 
+        initializeApolloViews();
+
         UiHelper.notifyNewRootView(this);
+    }
+
+    private SettingsView settingsView;
+
+    // MoonVibe: one page with the settings of this game, drawn from the preferences of AppSettingsFragment
+    private void initializeApolloViews() {
+        overridePendingTransition(R.anim.apollo_fade_in, R.anim.apollo_fade_out);
+        ApolloColors colors = ApolloColors.dark(this);
+        boolean quickLaunch = appKey.split(":").length == 3;
+
+        findViewById(R.id.topBarContainer).setVisibility(View.GONE);
+        settingsView = SettingsView.singlePage(this, colors, appName, "checkbox_use_global_settings",
+                "pref_app_resolution", "text_app_fps", "text_app_bitrate_kbps", "list_app_frame_pacing",
+                "text_app_actual_display_refresh_rate", "list_app_enable_hdr", "list_app_enable_perf_overlay");
+        // The labels written in English in this screen, translated
+        settingsView.setTitleOverride("checkbox_use_global_settings",
+                getString(quickLaunch ? R.string.apollo_game_use_game : R.string.apollo_game_use_global));
+        CharSequence defaultOption = getString(quickLaunch ? R.string.apollo_option_game_default : R.string.apollo_option_global_default);
+        for (String key : new String[] {"list_app_frame_pacing", "list_app_enable_hdr", "list_app_enable_perf_overlay"}) {
+            settingsView.setOptionOverride(key, "", defaultOption);
+        }
+        FrameLayout container = findViewById(R.id.settingsContainer);
+        container.setPadding(0, ApolloUi.dp(this, 16), 0, 0);
+        container.addView(settingsView);
+
+        HintRow hintRow = ScreenHints.attach(this, findViewById(R.id.settingsColumn));
+        hintRow.setFallback(HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_back));
+
+        // Keep the content clear of a notch, the window draws under it
+        findViewById(R.id.settingsColumn).setOnApplyWindowInsetsListener((v, insets) -> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && insets.getDisplayCutout() != null) {
+                v.setPadding(insets.getDisplayCutout().getSafeInsetLeft(), 0,
+                        insets.getDisplayCutout().getSafeInsetRight(), 0);
+            }
+            return insets;
+        });
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_BUTTON_B && event.getRepeatCount() == 0 && settingsView.onButtonB()) {
+            return true;
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (settingsView.onBackPressed()) {
+            return;
+        }
+        super.onBackPressed();
+    }
+
+    @Override
+    public void finish() {
+        super.finish();
+        overridePendingTransition(R.anim.apollo_fade_in, R.anim.apollo_fade_out);
+    }
+
+    // The gamepad hints show while keys are used and hide at the first touch
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        ScreenHints.onKeyEvent(event);
+        return super.dispatchKeyEvent(event);
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        ScreenHints.onTouchEvent(event);
+        return super.dispatchTouchEvent(event);
     }
 
     public static class AppSettingsFragment extends PreferenceFragment {
@@ -185,6 +267,14 @@ public class AppStreamSettings extends Activity {
             View view = super.onCreateView(inflater, container, savedInstanceState);
             UiHelper.applyStatusBarPadding(view);
             return view;
+        }
+
+        @Override
+        public void onActivityCreated(Bundle savedInstanceState) {
+            super.onActivityCreated(savedInstanceState);
+
+            // MoonVibe: the settings view draws the preferences built here
+            ((AppStreamSettings) getActivity()).settingsView.setScreen(getPreferenceScreen());
         }
 
         @Override

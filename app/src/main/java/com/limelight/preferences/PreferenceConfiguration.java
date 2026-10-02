@@ -683,11 +683,14 @@ public class PreferenceConfiguration {
         }
 
         if (!prefs.contains(TOUCH_MODE_PREF_STRING)) {
-            // The touch mode list replaces the old trackpad checkbox, so carry its value over
-            // and write it to disk for the settings page to display it
-            prefs.edit().putString(TOUCH_MODE_PREF_STRING,
-                    prefs.getBoolean(TOUCHSCREEN_TRACKPAD_PREF_STRING, DEFAULT_TOUCHSCREEN_TRACKPAD) ?
-                            TOUCH_MODE_TRACKPAD : TOUCH_MODE_MOUSE).apply();
+            // The touch mode list replaces the old trackpad checkbox: carry its value over when it was set,
+            // otherwise start with multi-touch. Written to disk for the settings page to display it
+            String touchMode = TOUCH_MODE_MULTI_TOUCH;
+            if (prefs.contains(TOUCHSCREEN_TRACKPAD_PREF_STRING)) {
+                touchMode = prefs.getBoolean(TOUCHSCREEN_TRACKPAD_PREF_STRING, DEFAULT_TOUCHSCREEN_TRACKPAD) ?
+                        TOUCH_MODE_TRACKPAD : TOUCH_MODE_MOUSE;
+            }
+            prefs.edit().putString(TOUCH_MODE_PREF_STRING, touchMode).apply();
         }
 
         // This must happen after the preferences migration to ensure the preferences are populated
@@ -747,7 +750,7 @@ public class PreferenceConfiguration {
         config.vibrateFallbackToDevice = prefs.getBoolean(VIBRATE_FALLBACK_PREF_STRING, DEFAULT_VIBRATE_FALLBACK);
         config.vibrateFallbackToDeviceStrength = prefs.getInt(VIBRATE_FALLBACK_STRENGTH_PREF_STRING, DEFAULT_VIBRATE_FALLBACK_STRENGTH);
         config.flipFaceButtons = prefs.getBoolean(FLIP_FACE_BUTTONS_PREF_STRING, DEFAULT_FLIP_FACE_BUTTONS);
-        config.touchMode = prefs.getString(TOUCH_MODE_PREF_STRING, TOUCH_MODE_TRACKPAD);
+        config.touchMode = prefs.getString(TOUCH_MODE_PREF_STRING, TOUCH_MODE_MULTI_TOUCH);
         config.touchscreenTrackpad = TOUCH_MODE_TRACKPAD.equals(config.touchMode);
         config.enableMultiTouchGestures = prefs.getBoolean(MULTI_TOUCH_GESTURES_PREF_STRING, DEFAULT_MULTI_TOUCH_GESTURES);
         config.gesture3Finger = readGestureAction(prefs, GESTURE_3_FINGER_PREF_STRING, DEFAULT_GESTURE_3_FINGER);

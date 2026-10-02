@@ -2,6 +2,7 @@ package com.limelight;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 
@@ -13,8 +14,15 @@ import com.limelight.nvstream.http.NvApp;
 import com.limelight.nvstream.http.NvHTTP;
 import com.limelight.nvstream.http.PairingManager;
 import com.limelight.preferences.PreferenceConfiguration;
-import com.limelight.ui.AdapterFragment;
-import com.limelight.ui.AdapterFragmentCallbacks;
+import com.limelight.preferences.StreamSettings;
+import com.limelight.ui.apollo.ActionSheet;
+import com.limelight.ui.apollo.ApolloTopBar;
+import com.limelight.ui.apollo.hints.HintRow;
+import com.limelight.ui.apollo.hints.ScreenHints;
+import com.limelight.ui.apollo.ApolloUi;
+import com.limelight.ui.apollo.GameCardView;
+import com.limelight.ui.apollo.settings.QuickSettingsPanel;
+import com.limelight.ui.theme.ApolloColors;
 import com.limelight.utils.QuickLaunchManager;
 import com.limelight.utils.CacheHelper;
 import com.limelight.utils.Dialog;
@@ -29,29 +37,40 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.SharedPreferences;
+import android.content.res.ColorStateList;
 import android.content.res.Configuration;
+import android.database.DataSetObserver;
 import android.graphics.Bitmap;
+import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
-import android.view.ContextMenu;
-import android.view.Menu;
-import android.view.MenuItem;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
-import android.view.ContextMenu.ContextMenuInfo;
-import android.widget.AbsListView;
-import android.widget.AdapterView;
-import android.widget.AdapterView.OnItemClickListener;
+import android.view.ViewGroup;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.widget.AdapterView.AdapterContextMenuInfo;
+
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import org.xmlpull.v1.XmlPullParserException;
 
-public class AppView extends Activity implements AdapterFragmentCallbacks {
+public class AppView extends Activity {
+    private static final int COLOR_ONLINE = 0xFF6DD58C;
+    private static final int LARGE_CARD_DP = 124;
+    private static final int SMALL_CARD_DP = 96;
+
     private AppGridAdapter appGridAdapter;
+    private ApolloTopBar topBar;
+    private RecyclerView libraryGrid;
+    private GridLayoutManager layoutManager;
+    private LibraryAdapter libraryAdapter;
+    private int cardWidth = 1;
     private String uuidString;
     private ShortcutHelper shortcutHelper;
     private QuickLaunchManager quickLaunchManager;
@@ -142,16 +161,7 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
                                 return;
                             }
 
-                            // Despite my best efforts to catch all conditions that could
-                            // cause the activity to be destroyed when we try to commit
-                            // I haven't been able to, so we have this try-catch block.
-                            try {
-                                getFragmentManager().beginTransaction()
-                                        .replace(R.id.appFragmentContainer, new AdapterFragment())
-                                        .commitAllowingStateLoss();
-                            } catch (IllegalStateException e) {
-                                e.printStackTrace();
-                            }
+                            setupLibraryGrid();
                         }
                     });
                 }
@@ -173,13 +183,10 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
             // Update the app grid adapter to create grid items with the correct layout
             appGridAdapter.updateLayoutWithPreferences(this, PreferenceConfiguration.readPreferences(this));
 
-            try {
-                // Reinflate the app grid itself to pick up the layout change
-                getFragmentManager().beginTransaction()
-                        .replace(R.id.appFragmentContainer, new AdapterFragment())
-                        .commitAllowingStateLoss();
-            } catch (IllegalStateException e) {
-                e.printStackTrace();
+            // The number of columns follows the new width
+            if (libraryAdapter != null) {
+                libraryGrid.requestLayout();
+                libraryAdapter.notifyDataSetChanged();
             }
         }
     }
@@ -299,6 +306,7 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
         UiHelper.setLocale(this);
 
         setContentView(R.layout.activity_app_view);
+        overridePendingTransition(R.anim.apollo_fade_in, R.anim.apollo_fade_out);
 
         // Allow floating expanded PiP overlays while browsing apps
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -320,6 +328,7 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
         TextView label = findViewById(R.id.appListText);
         setTitle(computerName);
         label.setText(computerName);
+        initializeHeader();
 
         // Bind to the computer manager service
         bindService(new Intent(this, ComputerManagerService.class), serviceConnection,
@@ -384,7 +393,16 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
         UiHelper.showDecoderCrashDialog(this);
 
         inForeground = true;
-        startComputerUpdates();
+        // Back from Settings the tab pill slides: the updates wait for it, or it stutters
+        if (topBar.onResume()) {
+            topBar.postDelayed(() -> {
+                if (inForeground) {
+                    startComputerUpdates();
+                }
+            }, ApolloTopBar.SLIDE_SETTLE_MS);
+        } else {
+            startComputerUpdates();
+        }
     }
 
     @Override
@@ -393,6 +411,7 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
 
         inForeground = false;
         stopComputerUpdates();
+        topBar.onPause();
     }
 
     @Override
@@ -407,60 +426,55 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
         }
     }
 
-    @Override
-    public void onCreateContextMenu(ContextMenu menu, View v, ContextMenuInfo menuInfo) {
-        super.onCreateContextMenu(menu, v, menuInfo);
-
-        AdapterContextMenuInfo info = (AdapterContextMenuInfo) menuInfo;
-        AppObject selectedApp = (AppObject) appGridAdapter.getItem(info.position);
-
-        menu.setHeaderTitle(selectedApp.app.getAppName());
+    // Options of a game, in the side sheet opened with Y or a long press (the context menu before)
+    private void showAppActions(AppObject selectedApp, GameCardView card) {
+        List<ActionSheet.Action> actions = new ArrayList<>();
+        boolean running = lastRunningAppId == selectedApp.app.getAppId();
 
         if (lastRunningAppId != 0) {
-            if (lastRunningAppId == selectedApp.app.getAppId()) {
-                menu.add(Menu.NONE, START_OR_RESUME_ID, 1, getResources().getString(R.string.applist_menu_resume));
-                menu.add(Menu.NONE, QUIT_ID, 2, getResources().getString(R.string.applist_menu_quit));
+            if (running) {
+                actions.add(appAction(R.drawable.ic_apollo_play, R.string.apollo_action_resume, START_OR_RESUME_ID, selectedApp, card));
+                actions.add(appAction(R.drawable.ic_apollo_stop, R.string.apollo_action_quit_game, QUIT_ID, selectedApp, card).danger());
             }
             else {
-                menu.add(Menu.NONE, START_WITH_QUIT, 1, getResources().getString(R.string.applist_menu_quit_and_start));
+                actions.add(appAction(R.drawable.ic_apollo_play, R.string.apollo_action_quit_and_start, START_WITH_QUIT, selectedApp, card));
             }
         }
-
-        // Only show the hide checkbox if this is not the currently running app or it's already hidden
-        if (lastRunningAppId != selectedApp.app.getAppId() || selectedApp.isHidden) {
-            MenuItem hideAppItem = menu.add(Menu.NONE, HIDE_APP_ID, 3, getResources().getString(R.string.applist_menu_hide_app));
-            hideAppItem.setCheckable(true);
-            hideAppItem.setChecked(selectedApp.isHidden);
+        else {
+            actions.add(appAction(R.drawable.ic_apollo_play, R.string.apollo_action_start, START_OR_RESUME_ID, selectedApp, card));
         }
 
-        menu.add(Menu.NONE, VIEW_DETAILS_ID, 4, getResources().getString(R.string.applist_menu_details));
-        menu.add(Menu.NONE, APP_SETTINGS_ID, 5, "App Settings");
-        menu.add(Menu.NONE, ADD_QUICK_LAUNCH_ID, 6, getResources().getString(R.string.applist_menu_add_quick_launch));
+        actions.add(appAction(R.drawable.ic_apollo_star, R.string.apollo_action_add_quick_launch, ADD_QUICK_LAUNCH_ID, selectedApp, card));
+        actions.add(appAction(R.drawable.ic_apollo_tune, R.string.apollo_action_game_settings, APP_SETTINGS_ID, selectedApp, card));
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // Only add an option to create shortcut if box art is loaded
-            // and when we're in grid-mode (not list-mode).
-            ImageView appImageView = info.targetView.findViewById(R.id.grid_image);
-            if (appImageView != null) {
-                // We have a grid ImageView, so we must be in grid-mode
-                BitmapDrawable drawable = (BitmapDrawable)appImageView.getDrawable();
-                if (drawable != null && drawable.getBitmap() != null) {
-                    // We have a bitmap loaded too
-                    menu.add(Menu.NONE, CREATE_SHORTCUT_ID, 6, getResources().getString(R.string.applist_menu_scut));
-                }
-            }
+        // Only offer to hide the game if it is not the one running, or to show it again if it is hidden
+        if (!running || selectedApp.isHidden) {
+            actions.add(appAction(R.drawable.ic_apollo_hide,
+                    selectedApp.isHidden ? R.string.apollo_action_unhide : R.string.apollo_action_hide,
+                    HIDE_APP_ID, selectedApp, card));
         }
+
+        // A launcher shortcut needs the box art
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && card.hasCoverArt()
+                && card.getCover().getDrawable() instanceof BitmapDrawable) {
+            actions.add(appAction(R.drawable.ic_apollo_shortcut, R.string.apollo_action_shortcut, CREATE_SHORTCUT_ID, selectedApp, card));
+        }
+
+        actions.add(appAction(R.drawable.ic_apollo_info, R.string.apollo_action_details, VIEW_DETAILS_ID, selectedApp, card));
+
+        String subtitle = computer.name;
+        if (running) {
+            subtitle = getString(R.string.apollo_running_on, computer.name);
+        }
+        ActionSheet.of(this).show(selectedApp.app.getAppName(), subtitle, actions);
     }
 
-    @Override
-    public void onContextMenuClosed(Menu menu) {
+    private ActionSheet.Action appAction(int icon, int label, int id, AppObject app, GameCardView card) {
+        return new ActionSheet.Action(icon, getString(label), () -> runAppAction(id, app, card));
     }
 
-    @Override
-    public boolean onContextItemSelected(MenuItem item) {
-        AdapterContextMenuInfo info = (AdapterContextMenuInfo) item.getMenuInfo();
-        final AppObject app = (AppObject) appGridAdapter.getItem(info.position);
-        switch (item.getItemId()) {
+    private boolean runAppAction(int itemId, final AppObject app, GameCardView card) {
+        switch (itemId) {
             case START_WITH_QUIT:
                 // Display a confirmation dialog first
                 UiHelper.displayQuitConfirmationDialog(this, new Runnable() {
@@ -509,7 +523,7 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
                 return true;
 
             case HIDE_APP_ID:
-                if (item.isChecked()) {
+                if (app.isHidden) {
                     // Transitioning hidden to shown
                     hiddenAppIds.remove(app.app.getAppId());
                 }
@@ -521,8 +535,7 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
                 return true;
 
             case CREATE_SHORTCUT_ID:
-                ImageView appImageView = info.targetView.findViewById(R.id.grid_image);
-                Bitmap appBits = ((BitmapDrawable)appImageView.getDrawable()).getBitmap();
+                Bitmap appBits = ((BitmapDrawable)card.getCover().getDrawable()).getBitmap();
                 if (!shortcutHelper.createPinnedGameShortcut(computer, app.app, appBits)) {
                     Toast.makeText(AppView.this, getResources().getString(R.string.unable_to_pin_shortcut), Toast.LENGTH_LONG).show();
                 }
@@ -533,7 +546,7 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
                 return true;
 
             default:
-                return super.onContextItemSelected(item);
+                return false;
         }
     }
 
@@ -649,32 +662,231 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
         });
     }
 
-    @Override
-    public int getAdapterFragmentLayoutId() {
-        return PreferenceConfiguration.readPreferences(AppView.this).smallIconMode ?
-                    R.layout.app_grid_view_small : R.layout.app_grid_view;
+    // Top bar, back button and status of the PC above the grid
+    private void initializeHeader() {
+        ApolloColors colors = ApolloColors.dark(this);
+
+        topBar = new ApolloTopBar(this, colors);
+        topBar.setTabs(new String[] {getString(R.string.apollo_tab_home), getString(R.string.apollo_tab_settings)}, 0,
+                index -> {
+                    startActivity(new Intent(AppView.this, StreamSettings.class));
+                    overridePendingTransition(R.anim.apollo_fade_in, R.anim.apollo_fade_out);
+                });
+        topBar.setOnQuickSettingsClickListener(v -> QuickSettingsPanel.of(this).toggle());
+        ((FrameLayout) findViewById(R.id.topBarContainer)).addView(topBar);
+
+        findViewById(R.id.libraryStatus).setBackground(ApolloUi.roundRect(colors.surfaceContainerHigh, ApolloUi.dp(this, 14)));
+        findViewById(R.id.libraryStatusDot).setBackground(ApolloUi.roundRect(COLOR_ONLINE, ApolloUi.dp(this, 4)));
+        ((TextView) findViewById(R.id.libraryStatusText)).setText(showHiddenApps
+                ? getString(R.string.apollo_pc_online) + " · " + getString(R.string.apollo_library_hidden_shown)
+                : getString(R.string.apollo_pc_online));
+
+        // Keep the content clear of a notch, the window draws under it
+        findViewById(R.id.libraryColumn).setOnApplyWindowInsetsListener((v, insets) -> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && insets.getDisplayCutout() != null) {
+                v.setPadding(insets.getDisplayCutout().getSafeInsetLeft(), 0,
+                        insets.getDisplayCutout().getSafeInsetRight(), 0);
+            }
+            return insets;
+        });
+
+        // Gamepad hints at the bottom
+        HintRow hintRow = ScreenHints.attach(this, findViewById(R.id.libraryColumn));
+        hintRow.setFallback(HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_back),
+                HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_hint_quick_settings));
+
+        libraryGrid = findViewById(R.id.libraryGrid);
+        int side = ApolloUi.dp(this, 22) - gridRoom(this);
+        libraryGrid.setPadding(side, ApolloUi.dp(this, 10), side, ApolloUi.dp(this, 16));
+        libraryGrid.setClipToPadding(false);
+        libraryGrid.setClipChildren(false);
+        libraryGrid.setItemAnimator(null);
+        // Only the cards take the focus, not the grid around them
+        libraryGrid.setFocusableInTouchMode(false);
+        libraryGrid.setFocusable(false);
+        layoutManager = new GridLayoutManager(this, 1);
+        libraryGrid.setLayoutManager(layoutManager);
+        libraryGrid.addItemDecoration(new RecyclerView.ItemDecoration() {
+            @Override
+            public void getItemOffsets(Rect outRect, View view, RecyclerView parent, RecyclerView.State state) {
+                int room = gridRoom(AppView.this);
+                outRect.set(room, room, room, room);
+            }
+        });
+        // The columns follow the width of the screen
+        libraryGrid.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (right - left != oldRight - oldLeft) {
+                v.post(this::updateGridColumns);
+            }
+        });
+    }
+
+    // Space around each card, so it grows on focus without touching its neighbours
+    private static int gridRoom(Activity activity) {
+        return ApolloUi.dp(activity, 7);
+    }
+
+    private void updateGridColumns() {
+        int available = libraryGrid.getWidth() - libraryGrid.getPaddingLeft() - libraryGrid.getPaddingRight();
+        if (available <= 0) {
+            return;
+        }
+        int room = gridRoom(this) * 2;
+        int target = ApolloUi.dp(this, PreferenceConfiguration.readPreferences(this).smallIconMode
+                ? SMALL_CARD_DP : LARGE_CARD_DP) + room;
+        int columns = Math.max(1, available / target);
+        int width = available / columns - room;
+        if (columns != layoutManager.getSpanCount() || width != cardWidth) {
+            layoutManager.setSpanCount(columns);
+            cardWidth = width;
+            if (libraryAdapter != null) {
+                libraryAdapter.notifyDataSetChanged();
+            }
+        }
+    }
+
+    private void setupLibraryGrid() {
+        libraryAdapter = new LibraryAdapter();
+        libraryAdapter.setHasStableIds(true);
+        libraryGrid.setAdapter(libraryAdapter);
+        appGridAdapter.registerDataSetObserver(new DataSetObserver() {
+            @Override
+            public void onChanged() {
+                libraryAdapter.notifyDataSetChanged();
+            }
+        });
+        updateGridColumns();
+    }
+
+    private void onAppClicked(AppObject app, GameCardView card) {
+        // Only open the options if something is running, otherwise start it
+        if (lastRunningAppId != 0) {
+            showAppActions(app, card);
+        } else {
+            ServerHelper.doStart(AppView.this, app.app, computer, managerBinder);
+        }
+    }
+
+    private static class CardHolder extends RecyclerView.ViewHolder {
+        final GameCardView card;
+        AppObject app;
+
+        CardHolder(GameCardView card) {
+            super(card);
+            this.card = card;
+        }
+    }
+
+    // The library grid, a view of the apps kept by the AppGridAdapter
+    private class LibraryAdapter extends RecyclerView.Adapter<CardHolder> {
+        private final ApolloColors colors = ApolloColors.dark(AppView.this);
+
+        @Override
+        public CardHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+            GameCardView card = new GameCardView(AppView.this, colors, Math.max(cardWidth, 1));
+            CardHolder holder = new CardHolder(card);
+            card.setOnClickListener(v -> {
+                if (holder.app != null) {
+                    onAppClicked(holder.app, card);
+                }
+            });
+            card.setOnLongClickListener(v -> {
+                if (holder.app != null) {
+                    showAppActions(holder.app, card);
+                }
+                return true;
+            });
+            return holder;
+        }
+
+        @Override
+        public void onBindViewHolder(CardHolder holder, int position) {
+            AppObject app = (AppObject) appGridAdapter.getItem(position);
+            holder.app = app;
+            holder.card.setCardWidth(cardWidth);
+            holder.card.bind(app.app.getAppName(), null, app.app.getAppId());
+            holder.card.setRunning(app.isRunning);
+            holder.card.setCustomSettings(appGridAdapter.hasCustomSettings(app));
+            holder.card.setAlpha(app.isHidden ? 0.4f : 1f);
+            HintRow.set(holder.card, KeyEvent.KEYCODE_BUTTON_A, app.isRunning ? R.string.apollo_hint_resume : R.string.apollo_hint_start,
+                    KeyEvent.KEYCODE_BUTTON_Y, R.string.apollo_hint_options, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_back,
+                    KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_hint_quick_settings);
+            appGridAdapter.populateCover(app, holder.card.getCover(), holder.card.getPlaceholderSignal());
+
+            // A gamepad starts from the first game
+            if (position == 0) {
+                holder.card.post(() -> {
+                    if (holder.getAdapterPosition() == 0) {
+                        ApolloUi.focusByDefault(AppView.this, holder.card);
+                    }
+                });
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                holder.card.setFocusedByDefault(false);
+            }
+        }
+
+        @Override
+        public int getItemCount() {
+            return appGridAdapter.getCount();
+        }
+
+        @Override
+        public long getItemId(int position) {
+            return ((AppObject) appGridAdapter.getItem(position)).app.getAppId();
+        }
     }
 
     @Override
-    public void receiveAbsListView(AbsListView listView) {
-        listView.setAdapter(appGridAdapter);
-        listView.setOnItemClickListener(new OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> arg0, View arg1, int pos,
-                                    long id) {
-                AppObject app = (AppObject) appGridAdapter.getItem(pos);
-
-                // Only open the context menu if something is running, otherwise start it
-                if (lastRunningAppId != 0) {
-                    openContextMenu(arg1);
-                } else {
-                    ServerHelper.doStart(AppView.this, app.app, computer, managerBinder);
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (event.getRepeatCount() == 0) {
+            switch (keyCode) {
+                case KeyEvent.KEYCODE_BUTTON_Y: {
+                    // The options of the focused game, like a long press
+                    View focused = getCurrentFocus();
+                    if (focused instanceof GameCardView) {
+                        focused.performLongClick();
+                    }
+                    return true;
                 }
+                case KeyEvent.KEYCODE_BUTTON_L1:
+                    topBar.switchTab(-1);
+                    return true;
+                case KeyEvent.KEYCODE_BUTTON_R1:
+                    topBar.switchTab(1);
+                    return true;
+                case KeyEvent.KEYCODE_BUTTON_SELECT:
+                    QuickSettingsPanel.of(this).toggle();
+                    return true;
             }
-        });
-        UiHelper.applyStatusBarPadding(listView);
-        registerForContextMenu(listView);
-        listView.requestFocus();
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
+    // The gamepad hints show while keys are used and hide at the first touch
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        ScreenHints.onKeyEvent(event);
+        return super.dispatchKeyEvent(event);
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        ScreenHints.onTouchEvent(event);
+        return super.dispatchTouchEvent(event);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (ActionSheet.of(this).dismiss() || QuickSettingsPanel.of(this).dismiss()) {
+            return;
+        }
+        super.onBackPressed();
+    }
+
+    @Override
+    public void finish() {
+        super.finish();
+        overridePendingTransition(R.anim.apollo_fade_in, R.anim.apollo_fade_out);
     }
 
     private void addToQuickLaunch(ComputerDetails computer, NvApp app) {

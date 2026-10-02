@@ -3,6 +3,8 @@ package com.limelight;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.List;
 
 import com.limelight.binding.PlatformBinding;
 import com.limelight.binding.crypto.AndroidCryptoProvider;
@@ -20,10 +22,15 @@ import com.limelight.preferences.AddComputerManually;
 import com.limelight.preferences.GlPreferences;
 import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.preferences.StreamSettings;
-import com.limelight.ui.AdapterFragment;
-import com.limelight.ui.AdapterFragmentCallbacks;
-import com.limelight.ui.OverridesView;
+import com.limelight.ui.apollo.settings.QuickSettingsPanel;
 import com.limelight.ui.QuickLaunchView;
+import com.limelight.ui.apollo.ActionSheet;
+import com.limelight.ui.apollo.ApolloTopBar;
+import com.limelight.ui.apollo.ApolloUi;
+import com.limelight.ui.apollo.hints.HintRow;
+import com.limelight.ui.apollo.hints.ScreenHints;
+import com.limelight.ui.apollo.PcCardRow;
+import com.limelight.ui.theme.ApolloColors;
 import com.limelight.utils.Dialog;
 import com.limelight.utils.HelpLauncher;
 import com.limelight.utils.ServerHelper;
@@ -37,8 +44,8 @@ import android.app.Service;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.ServiceConnection;
-import android.content.SharedPreferences;
 import android.content.res.Configuration;
+import android.database.DataSetObserver;
 import android.opengl.GLSurfaceView;
 import android.os.Build;
 import android.os.Bundle;
@@ -46,30 +53,25 @@ import android.os.IBinder;
 import android.os.PowerManager;
 import android.preference.PreferenceManager;
 import android.text.Html;
-import android.view.ContextMenu;
 import android.view.Display;
-import android.view.Menu;
-import android.view.MenuItem;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
-import android.view.ContextMenu.ContextMenuInfo;
-import android.view.View.OnClickListener;
-import android.widget.AbsListView;
-import android.widget.AdapterView;
-import android.widget.AdapterView.OnItemClickListener;
-import android.widget.ImageButton;
-import android.widget.ImageView;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.RelativeLayout;
 import android.widget.Toast;
-import android.widget.AdapterView.AdapterContextMenuInfo;
 
 import org.xmlpull.v1.XmlPullParserException;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
-public class PcView extends Activity implements AdapterFragmentCallbacks, QuickLaunchView.QuickLaunchCallback {
-    private RelativeLayout noPcFoundLayout;
+public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallback {
+    private View noPcFoundLayout;
+    private ApolloTopBar topBar;
+    private HintRow hintRow;
+    private PcCardRow pcCardRow;
+    private DataSetObserver pcCardRowObserver;
     private PcGridAdapter pcGridAdapter;
     private ShortcutHelper shortcutHelper;
     private ComputerManagerService.ComputerManagerBinder managerBinder;
@@ -77,7 +79,6 @@ public class PcView extends Activity implements AdapterFragmentCallbacks, QuickL
     private int autoResumeNoGamePollCount = 0;
     private boolean hasShownRefreshRateToast = false;
     private QuickLaunchView quickLaunchView;
-    private OverridesView overridesView;
     
     private final ServiceConnection serviceConnection = new ServiceConnection() {
         public void onServiceConnected(ComponentName className, IBinder binder) {
@@ -147,80 +148,78 @@ public class PcView extends Activity implements AdapterFragmentCallbacks, QuickL
         // Set default preferences if we've never been run
         PreferenceManager.setDefaultValues(this, R.xml.preferences, false);
 
-        // Set the correct layout for the PC grid
-        pcGridAdapter.updateLayoutWithPreferences(this, PreferenceConfiguration.readPreferences(this));
+        ApolloColors colors = ApolloColors.dark(this);
 
-        // Setup the list view
-        ImageButton settingsButton = findViewById(R.id.settingsButton);
-        ImageButton addComputerButton = findViewById(R.id.manuallyAddPc);
-        ImageButton helpButton = findViewById(R.id.helpButton);
+        // Top bar: quick settings, Home / Settings tabs, device status
+        topBar = new ApolloTopBar(this, colors);
+        topBar.setTabs(new String[] {getString(R.string.apollo_tab_home), getString(R.string.apollo_tab_settings)}, 0,
+                index -> {
+                    startActivity(new Intent(PcView.this, StreamSettings.class));
+                    overridePendingTransition(R.anim.apollo_fade_in, R.anim.apollo_fade_out);
+                });
+        topBar.setOnQuickSettingsClickListener(v -> toggleQuickSettings());
+        ((FrameLayout) findViewById(R.id.topBarContainer)).addView(topBar);
+        topBar.onResume();
 
-        settingsButton.setOnClickListener(new OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                startActivity(new Intent(PcView.this, StreamSettings.class));
+        // Keep the content clear of a notch, the window draws under it
+        View column = findViewById(R.id.homeColumn);
+        column.setOnApplyWindowInsetsListener((v, insets) -> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && insets.getDisplayCutout() != null) {
+                v.setPadding(insets.getDisplayCutout().getSafeInsetLeft(), 0,
+                        insets.getDisplayCutout().getSafeInsetRight(), 0);
             }
+            return insets;
         });
-        addComputerButton.setOnClickListener(new OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Intent i = new Intent(PcView.this, AddComputerManually.class);
-                startActivity(i);
-            }
-        });
-        helpButton.setOnClickListener(new OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                HelpLauncher.launchSetupGuide(PcView.this);
-            }
-        });
-
-        // Amazon review didn't like the help button because the wiki was not entirely
-        // navigable via the Fire TV remote (though the relevant parts were). Let's hide
-        // it on Fire TV.
-        if (getPackageManager().hasSystemFeature("amazon.hardware.fire_tv")) {
-            helpButton.setVisibility(View.GONE);
-        }
-
-        getFragmentManager().beginTransaction()
-            .replace(R.id.pcFragmentContainer, new AdapterFragment())
-            .commitAllowingStateLoss();
 
         // Initialize Quick Launch component
         LinearLayout quickLaunchSection = findViewById(R.id.quickLaunchSection);
         LinearLayout quickLaunchContainer = findViewById(R.id.quickLaunchContainer);
         quickLaunchView = new QuickLaunchView(this, quickLaunchSection, quickLaunchContainer, this);
 
-        // Initialize Overrides section
-        overridesView = new OverridesView(this);
+        // PC cards, rebuilt from the adapter that the polling keeps up to date
+        pcCardRow = new PcCardRow(findViewById(R.id.pcRow), colors, new PcCardRow.Listener() {
+            @Override
+            public void onPcClicked(ComputerDetails computer) {
+                onComputerClicked(computer);
+            }
 
-        // Setup overrides toggle button
-        ImageView overridesToggleButton = findViewById(R.id.overridesToggleButton);
-        if (overridesToggleButton != null && overridesView != null) {
-            overridesView.setupToggleButton(overridesToggleButton);
-        }
+            @Override
+            public void onPcLongClicked(ComputerDetails computer) {
+                showComputerActions(computer);
+            }
 
-        // Setup auto-resume toggle button
-        ImageButton autoResumeToggleButton = findViewById(R.id.autoResumeToggleButton);
-        if (autoResumeToggleButton != null) {
-            updateAutoResumeButtonIcon(autoResumeToggleButton);
-            autoResumeToggleButton.setOnClickListener(v -> {
-                SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
-                boolean current = prefs.getBoolean("checkbox_auto_resume_stream", false);
-                boolean newValue = !current;
-                prefs.edit().putBoolean("checkbox_auto_resume_stream", newValue).apply();
-                updateAutoResumeButtonIcon(autoResumeToggleButton);
-                String label = newValue ? "ON" : "OFF";
-                Toast.makeText(this, Html.fromHtml("Auto-resume stream <b>" + label + "</b>", Html.FROM_HTML_MODE_LEGACY), Toast.LENGTH_SHORT).show();
-            });
+            @Override
+            public void onAddPcClicked() {
+                startActivity(new Intent(PcView.this, AddComputerManually.class));
+            }
+        });
+        if (pcCardRowObserver != null) {
+            pcGridAdapter.unregisterDataSetObserver(pcCardRowObserver);
         }
+        pcCardRowObserver = new DataSetObserver() {
+            @Override
+            public void onChanged() {
+                refreshPcCards();
+            }
+        };
+        pcGridAdapter.registerDataSetObserver(pcCardRowObserver);
+
+        // Gamepad hints at the bottom, from the focused card
+        hintRow = ScreenHints.attach(this, findViewById(R.id.homeColumn));
+        hintRow.setFallback(HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_X, R.string.apollo_hint_add_pc),
+                HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_hint_quick_settings));
 
         noPcFoundLayout = findViewById(R.id.no_pc_found_layout);
+        View emptyAddPcButton = findViewById(R.id.emptyAddPcButton);
+        emptyAddPcButton.setOnClickListener(v -> startActivity(new Intent(PcView.this, AddComputerManually.class)));
+        emptyAddPcButton.setForeground(ApolloUi.focusRing(this, ApolloColors.dark(this), ApolloUi.dp(this, 20)));
+        HintRow.set(emptyAddPcButton, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_add_pc,
+                KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_hint_quick_settings);
         if (pcGridAdapter.getCount() == 0) {
             noPcFoundLayout.setVisibility(View.VISIBLE);
         }
         else {
-            noPcFoundLayout.setVisibility(View.INVISIBLE);
+            noPcFoundLayout.setVisibility(View.GONE);
         }
         pcGridAdapter.notifyDataSetChanged();
     }
@@ -288,10 +287,38 @@ public class PcView extends Activity implements AdapterFragmentCallbacks, QuickL
         initializeViews();
     }
 
-    private void updateAutoResumeButtonIcon(ImageButton button) {
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
-        boolean enabled = prefs.getBoolean("checkbox_auto_resume_stream", false);
-        button.setImageResource(enabled ? R.drawable.ic_auto_resume_enabled : R.drawable.ic_auto_resume);
+    private void refreshPcCards() {
+        List<ComputerDetails> computers = new ArrayList<>();
+        for (int i = 0; i < pcGridAdapter.getCount(); i++) {
+            computers.add(((ComputerObject) pcGridAdapter.getItem(i)).details);
+        }
+        pcCardRow.update(computers);
+        findViewById(R.id.pcScroll).setVisibility(computers.isEmpty() ? View.GONE : View.VISIBLE);
+        updateDefaultFocus();
+    }
+
+    @Override
+    public void onQuickLaunchChanged() {
+        updateDefaultFocus();
+    }
+
+    // A gamepad starts from the first game of the quick launch row, or the first PC without one
+    private void updateDefaultFocus() {
+        LinearLayout quickLaunchContainer = findViewById(R.id.quickLaunchContainer);
+        LinearLayout pcRow = findViewById(R.id.pcRow);
+        if (quickLaunchContainer == null || pcRow == null) {
+            return;
+        }
+        // Without PCs the row is hidden and the empty state offers to add one
+        View target = quickLaunchContainer.isShown() && quickLaunchContainer.getChildCount() > 0
+                ? quickLaunchContainer.getChildAt(0)
+                : findViewById(R.id.pcScroll).getVisibility() == View.VISIBLE ? pcRow.getChildAt(0) : findViewById(R.id.emptyAddPcButton);
+        ApolloUi.focusByDefault(this, target);
+    }
+
+    // Quick settings panel from the left: shortcuts to the settings changed most often
+    private void toggleQuickSettings() {
+        QuickSettingsPanel.of(this).toggle();
     }
 
     private void startComputerUpdates() {
@@ -348,11 +375,6 @@ public class PcView extends Activity implements AdapterFragmentCallbacks, QuickL
             quickLaunchView.onDestroy();
         }
 
-        // Notify OverridesView of destroy
-        if (overridesView != null) {
-            overridesView.onDestroy();
-        }
-
         if (managerBinder != null) {
             unbindService(serviceConnection);
         }
@@ -374,22 +396,26 @@ public class PcView extends Activity implements AdapterFragmentCallbacks, QuickL
         }
 
         inForeground = true;
-        startComputerUpdates();
 
-        // Sync auto-resume button in case preference changed in Settings
-        ImageButton autoResumeBtn = findViewById(R.id.autoResumeToggleButton);
-        if (autoResumeBtn != null) {
-            updateAutoResumeButtonIcon(autoResumeBtn);
-        }
+        // The full screen setting may have changed in Settings
+        boolean sliding = topBar != null && topBar.onResume();
 
-        // Notify QuickLaunchView of resume
-        if (quickLaunchView != null) {
-            quickLaunchView.onResume();
-        }
+        // Back from Settings the tab pill slides: the PC updates and Quick Launch wait for it, or it stutters
+        Runnable resumeWork = () -> {
+            if (!inForeground) {
+                return;
+            }
+            startComputerUpdates();
 
-        // Notify OverridesView of resume
-        if (overridesView != null) {
-            overridesView.onResume();
+            // Notify QuickLaunchView of resume
+            if (quickLaunchView != null) {
+                quickLaunchView.onResume();
+            }
+        };
+        if (sliding) {
+            topBar.postDelayed(resumeWork, ApolloTopBar.SLIDE_SETTLE_MS);
+        } else {
+            resumeWork.run();
         }
     }
 
@@ -400,15 +426,15 @@ public class PcView extends Activity implements AdapterFragmentCallbacks, QuickL
         inForeground = false;
         stopComputerUpdates(false);
 
+        if (topBar != null) {
+            topBar.onPause();
+        }
+
         // Notify QuickLaunchView of pause
         if (quickLaunchView != null) {
             quickLaunchView.onPause();
         }
 
-        // Notify OverridesView of pause
-        if (overridesView != null) {
-            overridesView.onPause();
-        }
     }
 
     @Override
@@ -418,76 +444,65 @@ public class PcView extends Activity implements AdapterFragmentCallbacks, QuickL
         Dialog.closeDialogs();
     }
 
-    @Override
-    public void onCreateContextMenu(ContextMenu menu, View v, ContextMenuInfo menuInfo) {
-        // Handle Quick Launch button context menu
-        if (quickLaunchView != null && quickLaunchView.onCreateContextMenu(menu, v, menuInfo)) {
-            return;
+    // Options of a PC, in the side sheet opened with Y or a long press
+    private void showComputerActions(ComputerDetails computer) {
+        List<ActionSheet.Action> actions = new ArrayList<>();
+        boolean offline = computer.state == ComputerDetails.State.OFFLINE ||
+                computer.state == ComputerDetails.State.UNKNOWN;
+        // Wake-on-LAN is always offered, first for a PC that looks offline
+        ActionSheet.Action wakeOnLan = new ActionSheet.Action(R.drawable.ic_apollo_power,
+                getString(R.string.apollo_action_wol), () -> runComputerAction(WOL_ID, computer));
+
+        if (offline) {
+            actions.add(wakeOnLan);
+            actions.add(new ActionSheet.Action(R.drawable.ic_apollo_help,
+                    getString(R.string.pcview_menu_eol), () -> runComputerAction(GAMESTREAM_EOL_ID, computer)));
         }
-        
-        stopComputerUpdates(false);
-
-        // Call superclass
-        super.onCreateContextMenu(menu, v, menuInfo);
-                
-        AdapterContextMenuInfo info = (AdapterContextMenuInfo) menuInfo;
-        ComputerObject computer = (ComputerObject) pcGridAdapter.getItem(info.position);
-
-        // Add a header with PC status details
-        menu.clearHeader();
-        String headerTitle = computer.details.name + " - ";
-        switch (computer.details.state)
-        {
-            case ONLINE:
-                headerTitle += getResources().getString(R.string.pcview_menu_header_online);
-                break;
-            case OFFLINE:
-                menu.setHeaderIcon(R.drawable.ic_pc_offline);
-                headerTitle += getResources().getString(R.string.pcview_menu_header_offline);
-                break;
-            case UNKNOWN:
-                headerTitle += getResources().getString(R.string.pcview_menu_header_unknown);
-                break;
-        }
-
-        menu.setHeaderTitle(headerTitle);
-
-        // Inflate the context menu
-        if (computer.details.state == ComputerDetails.State.OFFLINE ||
-            computer.details.state == ComputerDetails.State.UNKNOWN) {
-            menu.add(Menu.NONE, WOL_ID, 1, getResources().getString(R.string.pcview_menu_send_wol));
-            menu.add(Menu.NONE, GAMESTREAM_EOL_ID, 2, getResources().getString(R.string.pcview_menu_eol));
-        }
-        else if (computer.details.pairState != PairState.PAIRED) {
-            menu.add(Menu.NONE, PAIR_ID, 1, getResources().getString(R.string.pcview_menu_pair_pc));
-            if (computer.details.nvidiaServer) {
-                menu.add(Menu.NONE, GAMESTREAM_EOL_ID, 2, getResources().getString(R.string.pcview_menu_eol));
+        else if (computer.pairState != PairState.PAIRED) {
+            actions.add(new ActionSheet.Action(R.drawable.ic_apollo_link,
+                    getString(R.string.apollo_action_pair), () -> runComputerAction(PAIR_ID, computer)));
+            actions.add(wakeOnLan);
+            if (computer.nvidiaServer) {
+                actions.add(new ActionSheet.Action(R.drawable.ic_apollo_help,
+                        getString(R.string.pcview_menu_eol), () -> runComputerAction(GAMESTREAM_EOL_ID, computer)));
             }
         }
         else {
-            if (computer.details.runningGameId != 0) {
-                menu.add(Menu.NONE, RESUME_ID, 1, getResources().getString(R.string.applist_menu_resume));
-                menu.add(Menu.NONE, QUIT_ID, 2, getResources().getString(R.string.applist_menu_quit));
+            actions.add(new ActionSheet.Action(R.drawable.ic_apollo_library,
+                    getString(R.string.apollo_action_open_library), () -> doAppList(computer, false, false)));
+            if (computer.runningGameId != 0) {
+                actions.add(new ActionSheet.Action(R.drawable.ic_apollo_play,
+                        getString(R.string.apollo_action_resume), () -> runComputerAction(RESUME_ID, computer)));
+                actions.add(new ActionSheet.Action(R.drawable.ic_apollo_stop,
+                        getString(R.string.apollo_action_quit_game), () -> runComputerAction(QUIT_ID, computer)).danger());
             }
-
-            if (computer.details.nvidiaServer) {
-                menu.add(Menu.NONE, GAMESTREAM_EOL_ID, 3, getResources().getString(R.string.pcview_menu_eol));
+            actions.add(wakeOnLan);
+            actions.add(new ActionSheet.Action(R.drawable.ic_apollo_hide,
+                    getString(R.string.apollo_action_full_library), () -> runComputerAction(FULL_APP_LIST_ID, computer)));
+            if (computer.nvidiaServer) {
+                actions.add(new ActionSheet.Action(R.drawable.ic_apollo_help,
+                        getString(R.string.pcview_menu_eol), () -> runComputerAction(GAMESTREAM_EOL_ID, computer)));
             }
-
-            menu.add(Menu.NONE, FULL_APP_LIST_ID, 4, getResources().getString(R.string.pcview_menu_app_list));
         }
 
-        menu.add(Menu.NONE, TEST_NETWORK_ID, 5, getResources().getString(R.string.pcview_menu_test_network));
-        menu.add(Menu.NONE, DELETE_ID, 6, getResources().getString(R.string.pcview_menu_delete_pc));
-        menu.add(Menu.NONE, VIEW_DETAILS_ID, 7,  getResources().getString(R.string.pcview_menu_details));
-    }
+        actions.add(new ActionSheet.Action(R.drawable.ic_apollo_network,
+                getString(R.string.apollo_action_test_network), () -> runComputerAction(TEST_NETWORK_ID, computer)));
+        actions.add(new ActionSheet.Action(R.drawable.ic_apollo_info,
+                getString(R.string.apollo_action_details), () -> runComputerAction(VIEW_DETAILS_ID, computer)));
+        actions.add(new ActionSheet.Action(R.drawable.ic_apollo_delete,
+                getString(R.string.apollo_action_remove_pc), () -> runComputerAction(DELETE_ID, computer)).danger());
 
-    @Override
-    public void onContextMenuClosed(Menu menu) {
-        // For some reason, this gets called again _after_ onPause() is called on this activity.
-        // startComputerUpdates() manages this and won't actual start polling until the activity
-        // returns to the foreground.
-        startComputerUpdates();
+        int status;
+        if (computer.state == ComputerDetails.State.UNKNOWN) {
+            status = R.string.apollo_pc_checking;
+        } else if (offline) {
+            status = R.string.apollo_pc_offline;
+        } else if (computer.pairState != PairState.PAIRED) {
+            status = R.string.apollo_pc_unpaired;
+        } else {
+            status = R.string.apollo_pc_online;
+        }
+        ActionSheet.of(this).show(computer.name, getString(status), actions);
     }
 
     private void doPair(final ComputerDetails computer) {
@@ -595,12 +610,8 @@ public class PcView extends Activity implements AdapterFragmentCallbacks, QuickL
         }).start();
     }
 
+    // Sent whatever the state looks like: a sleeping PC can still show up as online for a while
     private void doWakeOnLan(final ComputerDetails computer) {
-        if (computer.state == ComputerDetails.State.ONLINE) {
-            Toast.makeText(PcView.this, getResources().getString(R.string.wol_pc_online), Toast.LENGTH_SHORT).show();
-            return;
-        }
-
         if (computer.macAddress == null) {
             Toast.makeText(PcView.this, getResources().getString(R.string.wol_no_mac), Toast.LENGTH_SHORT).show();
             return;
@@ -698,26 +709,19 @@ public class PcView extends Activity implements AdapterFragmentCallbacks, QuickL
         startActivity(i);
     }
 
-    @Override
-    public boolean onContextItemSelected(MenuItem item) {
-        // Handle Quick Launch context menu items
-        if (quickLaunchView != null && quickLaunchView.onContextItemSelected(item)) {
-            return true;
-        }
-        
-        AdapterContextMenuInfo info = (AdapterContextMenuInfo) item.getMenuInfo();
-        final ComputerObject computer = (ComputerObject) pcGridAdapter.getItem(info.position);
-        switch (item.getItemId()) {
+    // The actions of the PC options, the same as the context menu of the original app had
+    private boolean runComputerAction(int actionId, final ComputerDetails computer) {
+        switch (actionId) {
             case PAIR_ID:
-                doPair(computer.details);
+                doPair(computer);
                 return true;
 
             case UNPAIR_ID:
-                doUnpair(computer.details);
+                doUnpair(computer);
                 return true;
 
             case WOL_ID:
-                doWakeOnLan(computer.details);
+                doWakeOnLan(computer);
                 return true;
 
             case DELETE_ID:
@@ -725,20 +729,20 @@ public class PcView extends Activity implements AdapterFragmentCallbacks, QuickL
                     LimeLog.info("Ignoring delete PC request from monkey");
                     return true;
                 }
-                UiHelper.displayDeletePcConfirmationDialog(this, computer.details, new Runnable() {
+                UiHelper.displayDeletePcConfirmationDialog(this, computer, new Runnable() {
                     @Override
                     public void run() {
                         if (managerBinder == null) {
                             Toast.makeText(PcView.this, getResources().getString(R.string.error_manager_not_running), Toast.LENGTH_LONG).show();
                             return;
                         }
-                        removeComputer(computer.details);
+                        removeComputer(computer);
                     }
                 }, null);
                 return true;
 
             case FULL_APP_LIST_ID:
-                doAppList(computer.details, false, true);
+                doAppList(computer, false, true);
                 return true;
 
             case RESUME_ID:
@@ -747,7 +751,7 @@ public class PcView extends Activity implements AdapterFragmentCallbacks, QuickL
                     return true;
                 }
 
-                ServerHelper.doStart(this, new NvApp("app", computer.details.runningGameId, false), computer.details, managerBinder);
+                ServerHelper.doStart(this, new NvApp("app", computer.runningGameId, false), computer, managerBinder);
                 return true;
 
             case QUIT_ID:
@@ -760,14 +764,14 @@ public class PcView extends Activity implements AdapterFragmentCallbacks, QuickL
                 UiHelper.displayQuitConfirmationDialog(this, new Runnable() {
                     @Override
                     public void run() {
-                        ServerHelper.doQuit(PcView.this, computer.details,
+                        ServerHelper.doQuit(PcView.this, computer,
                                 new NvApp("app", 0, false), managerBinder, null);
                     }
                 }, null);
                 return true;
 
             case VIEW_DETAILS_ID:
-                Dialog.displayDialog(PcView.this, getResources().getString(R.string.title_details), computer.details.toString(), false);
+                Dialog.displayDialog(PcView.this, getResources().getString(R.string.title_details), computer.toString(), false);
                 return true;
 
             case TEST_NETWORK_ID:
@@ -779,7 +783,7 @@ public class PcView extends Activity implements AdapterFragmentCallbacks, QuickL
                 return true;
 
             default:
-                return super.onContextItemSelected(item);
+                return false;
         }
     }
     
@@ -837,7 +841,7 @@ public class PcView extends Activity implements AdapterFragmentCallbacks, QuickL
             pcGridAdapter.addComputer(new ComputerObject(details));
 
             // Remove the "Discovery in progress" view
-            noPcFoundLayout.setVisibility(View.INVISIBLE);
+            noPcFoundLayout.setVisibility(View.GONE);
         }
 
         // Notify the view that the data has changed
@@ -886,33 +890,67 @@ public class PcView extends Activity implements AdapterFragmentCallbacks, QuickL
         }
     }
 
-    @Override
-    public int getAdapterFragmentLayoutId() {
-        return R.layout.pc_grid_view;
+    private void onComputerClicked(ComputerDetails computer) {
+        if (computer.state == ComputerDetails.State.UNKNOWN ||
+            computer.state == ComputerDetails.State.OFFLINE) {
+            // Open the options if a PC is offline or refreshing
+            showComputerActions(computer);
+        } else if (computer.pairState != PairState.PAIRED) {
+            // Pair an unpaired machine by default
+            doPair(computer);
+        } else {
+            doAppList(computer, false, false);
+        }
     }
 
     @Override
-    public void receiveAbsListView(AbsListView listView) {
-        listView.setAdapter(pcGridAdapter);
-        listView.setOnItemClickListener(new OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> arg0, View arg1, int pos,
-                                    long id) {
-                ComputerObject computer = (ComputerObject) pcGridAdapter.getItem(pos);
-                if (computer.details.state == ComputerDetails.State.UNKNOWN ||
-                    computer.details.state == ComputerDetails.State.OFFLINE) {
-                    // Open the context menu if a PC is offline or refreshing
-                    openContextMenu(arg1);
-                } else if (computer.details.pairState != PairState.PAIRED) {
-                    // Pair an unpaired machine by default
-                    doPair(computer.details);
-                } else {
-                    doAppList(computer.details, false, false);
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (topBar != null && event.getRepeatCount() == 0) {
+            switch (keyCode) {
+                case KeyEvent.KEYCODE_BUTTON_Y: {
+                    // The options of the focused card, like a long press
+                    View focused = getCurrentFocus();
+                    if (focused != null && focused.isLongClickable()) {
+                        focused.performLongClick();
+                    }
+                    return true;
                 }
+                case KeyEvent.KEYCODE_BUTTON_X:
+                    startActivity(new Intent(this, AddComputerManually.class));
+                    return true;
+                case KeyEvent.KEYCODE_BUTTON_L1:
+                    topBar.switchTab(-1);
+                    return true;
+                case KeyEvent.KEYCODE_BUTTON_R1:
+                    topBar.switchTab(1);
+                    return true;
+                case KeyEvent.KEYCODE_BUTTON_SELECT:
+                    toggleQuickSettings();
+                    return true;
             }
-        });
-        UiHelper.applyStatusBarPadding(listView);
-        registerForContextMenu(listView);
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
+    // The gamepad hints show while keys are used and hide at the first touch
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        ScreenHints.onKeyEvent(event);
+        return super.dispatchKeyEvent(event);
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        ScreenHints.onTouchEvent(event);
+        return super.dispatchTouchEvent(event);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (ActionSheet.of(this).dismiss() || QuickSettingsPanel.of(this).dismiss()) {
+            return;
+        }
+        super.onBackPressed();
     }
     
     // QuickLaunchCallback implementation

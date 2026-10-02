@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        MoonVibe app theme: Material 3, dark only. Below Android 12 it uses a fixed blue palette,
+        on Android 12+ values-v31 replaces it with the system dynamic colors (Material You).
+        The stream (Game) keeps StreamTheme.
+    -->
+    <style name="Base.Apollo" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">#82A6E8</item>
+        <item name="colorOnPrimary">#001B3F</item>
+        <item name="colorPrimaryContainer">#2C4678</item>
+        <item name="colorOnPrimaryContainer">#D8E2FF</item>
+        <item name="colorSecondary">#BEC6DC</item>
+        <item name="colorOnSecondary">#283141</item>
+        <item name="colorSecondaryContainer">#3E4759</item>
+        <item name="colorOnSecondaryContainer">#DAE2F9</item>
+        <item name="colorTertiary">#DDBCE0</item>
+        <item name="colorOnTertiary">#3F2844</item>
+        <item name="colorTertiaryContainer">#573E5C</item>
+        <item name="colorOnTertiaryContainer">#FAD8FD</item>
+        <item name="android:colorBackground">#121318</item>
+        <item name="colorOnBackground">#E2E2E9</item>
+        <item name="colorSurface">#121318</item>
+        <item name="colorOnSurface">#E2E2E9</item>
+        <item name="colorSurfaceVariant">#44474F</item>
+        <item name="colorOnSurfaceVariant">#C4C6D0</item>
+        <item name="colorSurfaceContainerLowest">#0D0E13</item>
+        <item name="colorSurfaceContainerLow">#1A1B20</item>
+        <item name="colorSurfaceContainer">#1E1F25</item>
+        <item name="colorSurfaceContainerHigh">#282A2F</item>
+        <item name="colorSurfaceContainerHighest">#33353A</item>
+        <item name="colorSurfaceBright">#38393F</item>
+        <item name="colorSurfaceDim">#121318</item>
+        <item name="colorOutline">#8E9099</item>
+        <item name="colorOutlineVariant">#44474F</item>
+        <item name="colorError">#FFB4AB</item>
+        <item name="colorOnError">#690005</item>
+        <item name="colorErrorContainer">#93000A</item>
+        <item name="colorOnErrorContainer">#FFDAD6</item>
+    </style>
+
+    <style name="Theme.Apollo" parent="Base.Apollo">
+        <item name="android:windowBackground">?android:colorBackground</item>
+        <item name="android:statusBarColor">?android:colorBackground</item>
+        <item name="android:navigationBarColor">?android:colorBackground</item>
+        <!-- The app still uses the framework dialogs (settings, confirmations, notices): Material 3 look -->
+        <item name="android:alertDialogTheme">@style/Apollo.Dialog.Alert</item>
+        <item name="android:dialogTheme">@style/Apollo.Dialog.Alert</item>
+    </style>
+
+    <style name="Apollo.Dialog.Alert" parent="android:Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/apollo_dialog_background</item>
+        <item name="android:colorBackground">?attr/colorSurfaceContainerHigh</item>
+        <item name="android:colorAccent">?attr/colorPrimary</item>
+        <item name="android:colorControlActivated">?attr/colorPrimary</item>
+        <item name="android:textColorPrimary">?attr/colorOnSurface</item>
+        <item name="android:textColorSecondary">?attr/colorOnSurfaceVariant</item>
+        <item name="android:windowTitleStyle">@style/Apollo.Dialog.Title</item>
+        <item name="android:buttonBarButtonStyle">@style/Apollo.Dialog.Button</item>
+    </style>
+
+    <style name="Apollo.Dialog.Title" parent="android:TextAppearance.Material.DialogWindowTitle">
+        <item name="android:textSize">22sp</item>
+        <item name="android:textColor">?attr/colorOnSurface</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+
+    <style name="Apollo.Dialog.Button" parent="android:Widget.Material.Button.Borderless.Colored">
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textColor">?attr/colorPrimary</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+</resources>

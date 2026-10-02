@@ -238,6 +238,19 @@ public class QuickLaunchManager {
         return key.equals(state.lastStartedQuickLaunchKey) && state.runningAppId == item.appId;
     }
 
+    /**
+     * Running app id of each server that has one, as last reported by the polling (debounced like the above)
+     */
+    public Map<String, Integer> getRunningAppIds() {
+        Map<String, Integer> running = new java.util.HashMap<>();
+        for (Map.Entry<String, ServerRunningState> entry : serverStates.entrySet()) {
+            if (entry.getValue().runningAppId != 0) {
+                running.put(entry.getKey(), entry.getValue().runningAppId);
+            }
+        }
+        return running;
+    }
+
     public QuickLaunchItem getQuickLaunchItemByKey(String key) {
         if (key == null) return null;
 

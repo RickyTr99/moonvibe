@@ -172,6 +172,55 @@ public class SeekBarPreference extends DialogPreference
         return currentValue;
     }
 
+    // MoonVibe: the settings screen draws this as an inline slider
+    public int getMinValue() {
+        return minValue;
+    }
+
+    public int getMaxValue() {
+        return maxValue;
+    }
+
+    public int getStepSize() {
+        return stepSize;
+    }
+
+    public int getKeyStepSize() {
+        return keyStepSize != 0 ? keyStepSize : stepSize;
+    }
+
+    public int getDefaultValue() {
+        return defaultValue;
+    }
+
+    public int getStoredValue() {
+        return shouldPersist() ? getPersistedInt(defaultValue) : currentValue;
+    }
+
+    // The value text shown in the dialog, e.g. "10.0 Mbps"
+    public String formatValue(int value) {
+        String t;
+        if (divisor != 1 && value % divisor == 0) {
+            t = String.valueOf(value / divisor);
+        }
+        else if (divisor != 1) {
+            t = String.format((Locale)null, "%.1f", value / (float)divisor);
+        }
+        else {
+            t = String.valueOf(value);
+        }
+        return suffix == null ? t : t.concat(suffix.length() > 1 ? " "+suffix : suffix);
+    }
+
+    // Like the OK button of the dialog
+    public void applyValue(int value) {
+        if (shouldPersist()) {
+            currentValue = value;
+            persistInt(value);
+            callChangeListener(value);
+        }
+    }
+
     @Override
     public void showDialog(Bundle state) {
         super.showDialog(state);

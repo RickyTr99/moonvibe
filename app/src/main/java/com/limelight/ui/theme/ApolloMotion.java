@@ -4,7 +4,7 @@ import android.view.animation.Interpolator;
 import android.view.animation.PathInterpolator;
 
 /**
- * Material 3 motion: easing curves and durations for the Apollo X UI.
+ * Material 3 motion: easing curves and durations for the MoonVibe UI.
  */
 public final class ApolloMotion {
     private ApolloMotion() {

@@ -7,22 +7,13 @@ import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.graphics.Outline;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
-import android.net.ConnectivityManager;
-import android.net.Network;
-import android.net.NetworkCapabilities;
-import android.net.NetworkInfo;
-import android.net.wifi.WifiManager;
-import android.os.BatteryManager;
 import android.os.Build;
-import android.provider.Settings;
-import android.text.format.DateFormat;
 import android.util.AttributeSet;
 import android.util.TypedValue;
 import android.view.DisplayCutout;
@@ -31,6 +22,7 @@ import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewOutlineProvider;
 import android.view.WindowInsets;
 import android.view.animation.LinearInterpolator;
 import android.widget.FrameLayout;
@@ -41,11 +33,15 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.limelight.R;
+import com.limelight.ui.apollo.ApolloWidgets;
+import com.limelight.ui.apollo.hints.ButtonGlyph;
+import com.limelight.ui.apollo.hints.InputMode;
+import com.limelight.ui.apollo.StatusRowView;
+import com.limelight.ui.theme.ApolloBackground;
 import com.limelight.ui.theme.ApolloColors;
 import com.limelight.ui.theme.ApolloMotion;
 
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 
 /**
@@ -60,10 +56,8 @@ public class GameMenuView extends FrameLayout {
     private static final int PANEL_MAX_WIDTH_DP = 360;
     private static final float PANEL_SCREEN_FRACTION = 0.42f;
     private static final long HOLD_TO_CONFIRM_MS = 1000;
-    private static final long STATUS_REFRESH_MS = 10000;
     private static final float ANALOG_STICK_THRESHOLD = 0.5f;
     private static final long ANALOG_NAV_THROTTLE_MS = 200;
-    private static final int LOW_BATTERY_PERCENT = 15;
     private static final float PRESSED_SCALE = 0.96f;
     private static final int TAB_SLIDE_DP = 24;
 
@@ -224,7 +218,7 @@ public class GameMenuView extends FrameLayout {
         final GradientDrawable background;
         final TextView label;
         final ImageView icon;
-        MenuWidgets.SwitchView toggle;
+        ApolloWidgets.SwitchView toggle;
         TextView value;
         int backgroundColor = Color.TRANSPARENT;
         int strokeColor = Color.TRANSPARENT;
@@ -249,12 +243,7 @@ public class GameMenuView extends FrameLayout {
     private View scrim;
     private FrameLayout panelFrame;
     private LinearLayout panel;
-    private TextView clockView;
-    private MenuWidgets.WifiView wifiView;
-    private ImageView networkIcon;
-    private ImageView bluetoothIcon;
-    private MenuWidgets.BatteryView batteryView;
-    private TextView batteryText;
+    private StatusRowView statusRow;
     private LinearLayout tabsRow;
     private View tabIndicator;
     private final List<TextView> tabViews = new ArrayList<>();
@@ -275,6 +264,10 @@ public class GameMenuView extends FrameLayout {
     private int selectedRow = 0;
     // The list selection is only drawn while the menu is driven by a gamepad
     private boolean gamepadMode;
+    private boolean padConnected = true;
+    // The A/B badges of the confirm dialog, built once and shown only with a gamepad
+    private final List<View> dialogBadges = new ArrayList<>();
+    private final List<TextView> dialogLabels = new ArrayList<>();
     // Set while the close animation runs: the menu no longer takes input
     private boolean closing;
 
@@ -285,20 +278,12 @@ public class GameMenuView extends FrameLayout {
 
     private QuickAction holdingAction;
     private Tile holdTile;
-    private MenuWidgets.RingView holdRing;
+    private ApolloWidgets.RingView holdRing;
     private ValueAnimator holdAnimator;
     private boolean holdCompleted;
 
     private int lastHatX, lastHatY;
     private long lastAnalogNavTime;
-
-    private final Runnable statusUpdater = new Runnable() {
-        @Override
-        public void run() {
-            refreshStatus();
-            postDelayed(this, STATUS_REFRESH_MS);
-        }
-    };
 
     public GameMenuView(Context context) {
         this(context, null);
@@ -340,15 +325,23 @@ public class GameMenuView extends FrameLayout {
 
         panel = new LinearLayout(context);
         panel.setOrientation(LinearLayout.VERTICAL);
-        GradientDrawable panelBackground = new GradientDrawable();
-        panelBackground.setColor(colors.surfaceContainerLow);
-        float radius = dp(24);
-        panelBackground.setCornerRadii(new float[] {0, 0, radius, radius, radius, radius, 0, 0});
-        panel.setBackground(panelBackground);
+        // The same shaded background as the app screens, rounded on the right: the outline reaches
+        // past the left edge so only the right corners show
+        panel.setBackground(new ApolloBackground(colors));
+        int radius = dp(24);
+        panel.setOutlineProvider(new ViewOutlineProvider() {
+            @Override
+            public void getOutline(View view, Outline outline) {
+                outline.setRoundRect(-radius, 0, view.getWidth(), view.getHeight(), radius);
+            }
+        });
+        panel.setClipToOutline(true);
         panel.setPadding(dp(10), dp(10), dp(10), dp(6));
         panelFrame.addView(panel, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
-        panel.addView(createStatusRow(context), new LinearLayout.LayoutParams(
+        statusRow = new StatusRowView(context, colors, true);
+        statusRow.setPadding(dp(10), 0, dp(8), 0);
+        panel.addView(statusRow, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(36)));
 
         tabsRow = new LinearLayout(context);
@@ -445,6 +438,21 @@ public class GameMenuView extends FrameLayout {
         }
     }
 
+    // What a quick action does, drawn in its tile instead of the button when no gamepad is connected
+    private static int actionIcon(int keyCode) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_BUTTON_A: return R.drawable.ic_menu_logout;
+            case KeyEvent.KEYCODE_BUTTON_X: return R.drawable.ic_apollo_power;
+            case KeyEvent.KEYCODE_BUTTON_Y: return R.drawable.ic_menu_perf;
+            case KeyEvent.KEYCODE_BUTTON_START: return R.drawable.ic_menu_guide;
+            case KeyEvent.KEYCODE_DPAD_UP: return R.drawable.ic_apollo_cat_keyboard;
+            case KeyEvent.KEYCODE_DPAD_DOWN: return R.drawable.ic_menu_pckeyboard;
+            case KeyEvent.KEYCODE_DPAD_LEFT: return R.drawable.ic_menu_window;
+            case KeyEvent.KEYCODE_DPAD_RIGHT: return R.drawable.ic_apollo_desktop;
+            default: return R.drawable.ic_apollo_play;
+        }
+    }
+
     // The badge of a gamepad button: Xbox colors for the face buttons, neutral for the others
     private TextView buttonBadge(int keyCode) {
         String label = badgeLabel(keyCode);
@@ -526,40 +534,6 @@ public class GameMenuView extends FrameLayout {
         animator.start();
     }
 
-    private View createStatusRow(Context context) {
-        LinearLayout row = new LinearLayout(context);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(10), 0, dp(8), 0);
-
-        clockView = text("", 26, colors.onSurface, false);
-        clockView.setIncludeFontPadding(false);
-        row.addView(clockView, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
-
-        wifiView = new MenuWidgets.WifiView(context);
-        row.addView(wifiView);
-
-        networkIcon = icon(R.drawable.ic_menu_ethernet, colors.onSurfaceVariant, 18);
-        row.addView(networkIcon);
-
-        bluetoothIcon = icon(R.drawable.ic_menu_bluetooth, colors.onSurfaceVariant, 18);
-        LinearLayout.LayoutParams btParams = new LinearLayout.LayoutParams(dp(18), dp(18));
-        btParams.leftMargin = dp(10);
-        row.addView(bluetoothIcon, btParams);
-
-        batteryView = new MenuWidgets.BatteryView(context);
-        LinearLayout.LayoutParams batteryParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        batteryParams.leftMargin = dp(10);
-        row.addView(batteryView, batteryParams);
-
-        batteryText = text("", 13, colors.onSurfaceVariant, true);
-        batteryText.setPadding(dp(4), 0, 0, 0);
-        row.addView(batteryText);
-
-        return row;
-    }
-
     private View createDialogLayer(Context context) {
         dialogLayer = new FrameLayout(context);
         dialogLayer.setBackgroundColor(0x80000000);
@@ -612,12 +586,24 @@ public class GameMenuView extends FrameLayout {
         button.setMinimumHeight(dp(40));
         button.setPadding(dp(14), 0, dp(16), 0);
         button.setBackground(ripple(roundRect(filled ? colors.primary : Color.TRANSPARENT, dp(20)), dp(20)));
-        button.addView(buttonBadge(keyCode), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(17)));
+        View badge = buttonBadge(keyCode);
+        button.addView(badge, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(17)));
+        dialogBadges.add(badge);
         TextView text = text(label, 14, filled ? colors.onPrimary : colors.primary, true);
-        text.setPadding(dp(8), 0, 0, 0);
         button.addView(text);
+        dialogLabels.add(text);
+        updateDialogBadges();
         addPressFeedback(button);
         return button;
+    }
+
+    private void updateDialogBadges() {
+        for (View badge : dialogBadges) {
+            badge.setVisibility(padConnected ? VISIBLE : GONE);
+        }
+        for (TextView label : dialogLabels) {
+            label.setPadding(padConnected ? dp(8) : 0, 0, 0, 0);
+        }
     }
 
     // ---- Public API ----
@@ -647,6 +633,9 @@ public class GameMenuView extends FrameLayout {
         panelFrame.getLayoutParams().width = width;
 
         closing = false;
+        // Without a gamepad the button symbols mean nothing: icons stand in for them
+        padConnected = InputMode.isGamepadConnected();
+        updateDialogBadges();
         gamepadMode = fromGamepad;
         currentTab = 0;
         selectedRow = 0;
@@ -655,6 +644,11 @@ public class GameMenuView extends FrameLayout {
         dialogLayer.setVisibility(GONE);
         rebuild();
         scrollView.scrollTo(0, 0);
+        // The quick actions tab does not go through updateSelection: set the hints for the opening here.
+        // Without a gamepad the row gives its height back to the content
+        hintRow.animate().cancel();
+        hintRow.setAlpha(gamepadMode && padConnected ? 1f : 0f);
+        hintRow.setVisibility(padConnected ? VISIBLE : GONE);
 
         // The on-screen gamepad and keyboard are added to the same parent later, stay above them
         bringToFront();
@@ -670,8 +664,7 @@ public class GameMenuView extends FrameLayout {
         scrim.animate().alpha(1)
                 .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
 
-        removeCallbacks(statusUpdater);
-        statusUpdater.run();
+        statusRow.start();
     }
 
     public void close() {
@@ -684,7 +677,7 @@ public class GameMenuView extends FrameLayout {
         dialogConfirm = null;
         dialogLayer.animate().cancel();
         dialogLayer.setVisibility(GONE);
-        removeCallbacks(statusUpdater);
+        statusRow.stop();
         if (listener != null) {
             listener.onMenuClosed();
         }
@@ -749,15 +742,18 @@ public class GameMenuView extends FrameLayout {
         tabsRow.removeAllViews();
         tabViews.clear();
 
-        tabsRow.addView(shoulderChip("LB", -1), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(24)));
+        // LB and RB mean something only with a gamepad, like in the top bar of the app
+        if (padConnected) {
+            tabsRow.addView(shoulderChip("LB", -1), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(24)));
+        }
 
         // The selected tab pill is a separate view that slides from tab to tab
         FrameLayout segmentsFrame = new FrameLayout(getContext());
         segmentsFrame.setPadding(dp(4), dp(4), dp(4), dp(4));
         segmentsFrame.setBackground(roundRect(colors.surfaceContainer, dp(22)));
         LinearLayout.LayoutParams segmentsParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
-        segmentsParams.leftMargin = dp(6);
-        segmentsParams.rightMargin = dp(6);
+        segmentsParams.leftMargin = padConnected ? dp(6) : 0;
+        segmentsParams.rightMargin = padConnected ? dp(6) : 0;
         tabsRow.addView(segmentsFrame, segmentsParams);
 
         tabIndicator = new View(getContext());
@@ -789,7 +785,9 @@ public class GameMenuView extends FrameLayout {
             tabViews.add(tab);
         }
 
-        tabsRow.addView(shoulderChip("RB", 1), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(24)));
+        if (padConnected) {
+            tabsRow.addView(shoulderChip("RB", 1), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(24)));
+        }
 
         updateTabs(false);
     }
@@ -799,26 +797,37 @@ public class GameMenuView extends FrameLayout {
             tabViews.get(i).setTextColor(i == currentTab ? colors.onSecondaryContainer : colors.onSurfaceVariant);
         }
 
-        tabIndicator.post(() -> {
-            if (currentTab >= tabViews.size()) {
-                return;
-            }
-            View tab = tabViews.get(currentTab);
-            if (tab.getWidth() == 0) {
-                return;
-            }
-            if (tabIndicator.getLayoutParams().width != tab.getWidth()) {
-                tabIndicator.getLayoutParams().width = tab.getWidth();
-                tabIndicator.requestLayout();
-            }
-            tabIndicator.animate().cancel();
-            if (animate) {
-                tabIndicator.animate().translationX(tab.getLeft())
-                        .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
-            } else {
-                tabIndicator.setTranslationX(tab.getLeft());
-            }
-        });
+        tabIndicator.post(() -> placeTabIndicator(animate));
+    }
+
+    private void placeTabIndicator(boolean animate) {
+        if (currentTab >= tabViews.size()) {
+            return;
+        }
+        View tab = tabViews.get(currentTab);
+        if (tab.getWidth() == 0) {
+            // First opening: the tabs are not measured yet, place the pill once they are
+            tab.addOnLayoutChangeListener(new OnLayoutChangeListener() {
+                @Override
+                public void onLayoutChange(View v, int left, int top, int right, int bottom,
+                                           int oldLeft, int oldTop, int oldRight, int oldBottom) {
+                    v.removeOnLayoutChangeListener(this);
+                    tabIndicator.post(() -> placeTabIndicator(false));
+                }
+            });
+            return;
+        }
+        if (tabIndicator.getLayoutParams().width != tab.getWidth()) {
+            tabIndicator.getLayoutParams().width = tab.getWidth();
+            tabIndicator.requestLayout();
+        }
+        tabIndicator.animate().cancel();
+        if (animate) {
+            tabIndicator.animate().translationX(tab.getLeft())
+                    .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
+        } else {
+            tabIndicator.setTranslationX(tab.getLeft());
+        }
     }
 
     private static boolean isDpad(int keyCode) {
@@ -884,11 +893,16 @@ public class GameMenuView extends FrameLayout {
         FrameLayout badgeBox = new FrameLayout(getContext());
         if (action.holdToConfirm) {
             // Square and centered like the badge, so the ring is a circle around it
-            holdRing = new MenuWidgets.RingView(getContext(), colors.error);
+            holdRing = new ApolloWidgets.RingView(getContext(), colors.error);
             badgeBox.addView(holdRing, new LayoutParams(dp(28), dp(28), Gravity.CENTER));
         }
-        badgeBox.addView(buttonBadge(action.keyCode), new LayoutParams(LayoutParams.WRAP_CONTENT, dp(20), Gravity.CENTER));
-        view.addView(badgeBox, new LinearLayout.LayoutParams(dp(isDpad(action.keyCode) ? 24 : 34), dp(28)));
+        if (padConnected) {
+            badgeBox.addView(buttonBadge(action.keyCode), new LayoutParams(LayoutParams.WRAP_CONTENT, dp(20), Gravity.CENTER));
+        } else {
+            badgeBox.addView(icon(actionIcon(action.keyCode), tileLabelColor(action, active), 20),
+                    new LayoutParams(dp(20), dp(20), Gravity.CENTER));
+        }
+        view.addView(badgeBox, new LinearLayout.LayoutParams(dp(!padConnected ? 28 : isDpad(action.keyCode) ? 24 : 34), dp(28)));
 
         TextView label = text(action.label, 13, tileLabelColor(action, active), true);
         label.setMaxLines(2);
@@ -963,7 +977,7 @@ public class GameMenuView extends FrameLayout {
         row.iconColor = item.accent ? colors.primary : colors.onSurfaceVariant;
 
         if (item.toggle != null) {
-            row.toggle = new MenuWidgets.SwitchView(getContext());
+            row.toggle = new ApolloWidgets.SwitchView(getContext());
             row.toggle.setColors(colors.primary, colors.onPrimary, colors.surfaceContainerHighest, colors.outline);
             row.toggle.setChecked(item.toggle.isOn(), false);
             view.addView(row.toggle);
@@ -1015,10 +1029,12 @@ public class GameMenuView extends FrameLayout {
 
         LinearLayout tabsHint = new LinearLayout(getContext());
         tabsHint.setGravity(Gravity.CENTER_VERTICAL);
-        TextView chip = text("LB RB", 9, colors.onSurfaceVariant, true);
-        chip.setPadding(dp(5), dp(2), dp(5), dp(2));
-        chip.setBackground(roundRect(colors.surfaceContainerHighest, dp(5)));
-        tabsHint.addView(chip);
+        // The bumpers drawn like in the top bar of the app
+        tabsHint.addView(ButtonGlyph.create(getContext(), colors, KeyEvent.KEYCODE_BUTTON_L1),
+                new LinearLayout.LayoutParams(dp(28), dp(18)));
+        LinearLayout.LayoutParams rbParams = new LinearLayout.LayoutParams(dp(28), dp(18));
+        rbParams.leftMargin = dp(3);
+        tabsHint.addView(ButtonGlyph.create(getContext(), colors, KeyEvent.KEYCODE_BUTTON_R1), rbParams);
         TextView label = text(str(R.string.game_menu_hint_tabs), 12, colors.onSurfaceVariant, false);
         label.setPadding(dp(6), 0, 0, 0);
         tabsHint.addView(label);
@@ -1036,6 +1052,14 @@ public class GameMenuView extends FrameLayout {
 
     // Moves the selection highlight, fading the rows that change
     private void updateSelection(boolean animate) {
+        // The button hints only matter while a gamepad drives the menu
+        float hintAlpha = gamepadMode && padConnected ? 1f : 0f;
+        if (hintRow.getAlpha() != hintAlpha) {
+            hintRow.animate().cancel();
+            hintRow.animate().alpha(hintAlpha).setDuration(animate ? ApolloMotion.MEDIUM : 0)
+                    .setInterpolator(ApolloMotion.STANDARD).start();
+        }
+
         for (int i = 0; i < rows.size(); i++) {
             Row row = rows.get(i);
             boolean selected = gamepadMode && i == selectedRow;
@@ -1405,86 +1429,6 @@ public class GameMenuView extends FrameLayout {
         }
         updateStates();
         updateSelection(true);
-    }
-
-    // ---- Status row ----
-
-    private void refreshStatus() {
-        Context context = getContext();
-        clockView.setText(DateFormat.getTimeFormat(context).format(new Date()));
-
-        refreshNetwork(context);
-
-        boolean bluetoothOn = false;
-        try {
-            bluetoothOn = Settings.Global.getInt(context.getContentResolver(), Settings.Global.BLUETOOTH_ON, 0) == 1;
-        } catch (Exception ignored) {
-        }
-        bluetoothIcon.setVisibility(bluetoothOn ? VISIBLE : GONE);
-
-        Intent battery = context.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
-        if (battery != null) {
-            int level = battery.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-            int scale = battery.getIntExtra(BatteryManager.EXTRA_SCALE, 100);
-            int status = battery.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
-            boolean charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL;
-            int percent = level >= 0 && scale > 0 ? Math.round(level * 100f / scale) : 100;
-            int fill = charging ? colors.primary : percent <= LOW_BATTERY_PERCENT ? colors.error : colors.onSurfaceVariant;
-            batteryView.setState(percent, colors.onSurfaceVariant, fill);
-            batteryText.setText(percent + "%");
-            batteryView.setVisibility(VISIBLE);
-            batteryText.setVisibility(VISIBLE);
-        } else {
-            batteryView.setVisibility(GONE);
-            batteryText.setVisibility(GONE);
-        }
-    }
-
-    @SuppressWarnings("deprecation")
-    private void refreshNetwork(Context context) {
-        int wifiLevel = -1;
-        int otherIcon = 0;
-
-        try {
-            ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                Network network = cm.getActiveNetwork();
-                NetworkCapabilities caps = network != null ? cm.getNetworkCapabilities(network) : null;
-                if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-                    int rssi = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ? caps.getSignalStrength() : Integer.MIN_VALUE;
-                    if (rssi == Integer.MIN_VALUE) {
-                        WifiManager wm = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-                        rssi = wm.getConnectionInfo().getRssi();
-                    }
-                    wifiLevel = WifiManager.calculateSignalLevel(rssi, 5);
-                } else if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) {
-                    otherIcon = R.drawable.ic_menu_ethernet;
-                } else if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
-                    otherIcon = R.drawable.ic_menu_cellular;
-                }
-            } else {
-                NetworkInfo info = cm.getActiveNetworkInfo();
-                if (info != null && info.getType() == ConnectivityManager.TYPE_WIFI) {
-                    wifiLevel = 4;
-                } else if (info != null && info.getType() == ConnectivityManager.TYPE_ETHERNET) {
-                    otherIcon = R.drawable.ic_menu_ethernet;
-                } else if (info != null && info.getType() == ConnectivityManager.TYPE_MOBILE) {
-                    otherIcon = R.drawable.ic_menu_cellular;
-                }
-            }
-        } catch (Exception ignored) {
-        }
-
-        if (otherIcon != 0) {
-            wifiView.setVisibility(GONE);
-            networkIcon.setImageResource(otherIcon);
-            networkIcon.setVisibility(VISIBLE);
-        } else {
-            // No connection shows an empty Wi-Fi fan
-            wifiView.setState(Math.max(0, wifiLevel), colors.onSurfaceVariant);
-            wifiView.setVisibility(VISIBLE);
-            networkIcon.setVisibility(GONE);
-        }
     }
 
     // ---- Gamepad and keyboard input ----

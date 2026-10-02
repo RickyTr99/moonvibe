@@ -7,6 +7,7 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 
 import com.limelight.preferences.CustomCommandEditorDialog;
+import com.limelight.ui.apollo.hints.InputMode;
 import com.limelight.ui.gamemenu.GameMenuView;
 import com.limelight.ui.gamemenu.GameMenuView.Item;
 import com.limelight.ui.gamemenu.GameMenuView.QuickAction;
@@ -25,7 +26,7 @@ import java.util.List;
  * Key shortcuts are the overlay menu's custom commands.
  */
 public class GameMenu implements GameMenuView.Listener {
-    private static final String PREF_DEFAULT_COMMANDS_ADDED = "apollox_default_commands_added";
+    private static final String PREF_DEFAULT_COMMANDS_ADDED = "moonvibe_default_commands_added";
 
     private static final KeyCombination SWITCH_WINDOW = new KeyCombination(false, true, false, false, KeyEvent.KEYCODE_TAB);
     private static final KeyCombination SHOW_DESKTOP = new KeyCombination(false, false, false, true, KeyEvent.KEYCODE_D);
@@ -85,7 +86,7 @@ public class GameMenu implements GameMenuView.Listener {
                 new QuickAction(KeyEvent.KEYCODE_BUTTON_Y, getString(R.string.game_menu_stats),
                         game::toggleStatsOverlay).keepOpen().active(game::isStatsOverlayVisible),
                 new QuickAction(KeyEvent.KEYCODE_BUTTON_START, getString(R.string.game_menu_key_game_bar),
-                        game::sendGuideButton),
+                        this::openGameBar),
                 new QuickAction(KeyEvent.KEYCODE_DPAD_UP, getString(R.string.game_menu_toggle_keyboard),
                         game::toggleKeyboard),
                 new QuickAction(KeyEvent.KEYCODE_DPAD_DOWN, getString(R.string.game_menu_toggle_full_keyboard),
@@ -107,6 +108,15 @@ public class GameMenu implements GameMenuView.Listener {
     @Override
     public void onMenuClosed() {
         dismissDialog();
+    }
+
+    // The Guide button works only from a gamepad the host knows: without one, Win+G opens the Game Bar
+    private void openGameBar() {
+        if (InputMode.isGamepadConnected()) {
+            game.sendGuideButton();
+        } else {
+            sendKeys(GAME_BAR);
+        }
     }
 
     private void sendKeys(KeyCombination combination) {

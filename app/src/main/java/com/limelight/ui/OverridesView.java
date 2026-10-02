@@ -23,7 +23,7 @@ public class OverridesView {
     public static final String PREF_OVERRIDES_ENABLED = "overrides_enabled";
     public static final String PREF_CODEC_OVERRIDE = "codec_override";
     // Bitrate remembered for each codec, suffixed with the codec index
-    private static final String PREF_BITRATE_OVERRIDE_PREFIX = "bitrate_override_codec_";
+    public static final String PREF_BITRATE_OVERRIDE_PREFIX = "bitrate_override_codec_";
     // Indexed by the codec override value: 0 = default, 1 = HEVC, 2 = AV1, 3 = PyroWave
     private static final String[] CODEC_LABELS = {"Default", "HEVC", "AV1", "PyroWave"};
     private static final int BITRATE_STEP = 10000; // 10 Mbps steps in kbps

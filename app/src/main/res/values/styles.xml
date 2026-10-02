@@ -15,8 +15,8 @@
         -->
     </style>
 
-    <!-- Application theme. -->
-    <style name="AppTheme" parent="AppBaseTheme">
+    <!-- Application theme: Material 3 (themes_apollo.xml). The stream keeps StreamTheme below. -->
+    <style name="AppTheme" parent="Theme.Apollo">
         <!-- All customizations that are NOT specific to a particular API-level can go here. -->
         <item name="android:windowActionBar">false</item>
         <item name="android:windowNoTitle">true</item>

@@ -61,4 +61,10 @@
         android:layout_height="match_parent"
         android:visibility="gone" />
 
+    <com.limelight.ui.apollo.launch.LaunchOverlayView
+        android:id="@+id/launchOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
 </merge>

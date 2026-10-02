@@ -7,13 +7,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Build;
-import android.graphics.Color;
 import android.text.InputType;
-import android.view.ContextMenu;
-import android.view.Menu;
-import android.view.MenuItem;
+import android.view.KeyEvent;
 import android.view.View;
-import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.Toast;
@@ -22,34 +18,50 @@ import com.limelight.R;
 import com.limelight.computers.ComputerManagerService;
 import com.limelight.nvstream.http.ComputerDetails;
 import com.limelight.nvstream.http.NvApp;
+import com.limelight.nvstream.http.NvHTTP;
 import com.limelight.preferences.AppStreamSettings;
+import com.limelight.ui.apollo.ActionSheet;
+import com.limelight.ui.apollo.GameCardView;
+import com.limelight.ui.apollo.hints.HintRow;
+import com.limelight.ui.apollo.ApolloUi;
+import com.limelight.ui.theme.ApolloColors;
+import com.limelight.utils.CacheHelper;
 import com.limelight.utils.QuickLaunchManager;
+import com.limelight.utils.RecentGames;
 import com.limelight.utils.ServerHelper;
 import com.limelight.utils.UiHelper;
 
+import java.io.StringReader;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
+/**
+ * The quick launch row of the home screen: the game running on a PC first, then the pinned games.
+ * Their options open in a side sheet with a long press, or Y on a gamepad.
+ */
 public class QuickLaunchView {
-    private static final int QUICK_LAUNCH_RENAME_ID = 1001;
-    private static final int QUICK_LAUNCH_SETTINGS_ID = 1002;
-    private static final int QUICK_LAUNCH_DELETE_ID = 1003;
-    private static final int QUICK_LAUNCH_QUIT_ID = 1004;
-    private static final int QUICK_LAUNCH_MOVE_LEFT_ID = 1005;
-    private static final int QUICK_LAUNCH_MOVE_RIGHT_ID = 1006;
-    
     public interface QuickLaunchCallback {
         ComputerManagerService.ComputerManagerBinder getManagerBinder();
+
+        // The row was rebuilt
+        void onQuickLaunchChanged();
     }
-    
+
     private final Activity activity;
     private final LinearLayout quickLaunchSection;
     private final LinearLayout quickLaunchContainer;
     private final QuickLaunchManager quickLaunchManager;
     private final QuickLaunchCallback callback;
-    
-    private String contextMenuQuickLaunchKey;
+    private final ApolloColors colors;
+
     private boolean receiverRegistered = false;
-    
+    // What the row shows, to skip rebuilding it when a poll changes nothing
+    private String shownSignature;
+    // Names of games that are not pinned, read once from the cached app list
+    private final Map<String, String> appNames = new HashMap<>();
+
     private final BroadcastReceiver quickLaunchUpdateReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -58,7 +70,35 @@ public class QuickLaunchView {
             }
         }
     };
-    
+
+    // A card of the row: a pinned game, or a running or recent game that is not pinned (item == null)
+    private static class Entry {
+        final QuickLaunchManager.QuickLaunchItem item;
+        final String computerUuid;
+        final int appId;
+        final String title;
+        final String computerName;
+        final boolean running;
+        // False when the title is a placeholder because the app list of the PC is not cached
+        final boolean nameKnown;
+
+        Entry(QuickLaunchManager.QuickLaunchItem item, String computerUuid, int appId, String title,
+              String computerName, boolean running) {
+            this(item, computerUuid, appId, title, computerName, running, true);
+        }
+
+        Entry(QuickLaunchManager.QuickLaunchItem item, String computerUuid, int appId, String title,
+              String computerName, boolean running, boolean nameKnown) {
+            this.item = item;
+            this.computerUuid = computerUuid;
+            this.appId = appId;
+            this.title = title;
+            this.computerName = computerName;
+            this.running = running;
+            this.nameKnown = nameKnown;
+        }
+    }
+
     public QuickLaunchView(Activity activity, LinearLayout quickLaunchSection,
                           LinearLayout quickLaunchContainer, QuickLaunchCallback callback) {
         this.activity = activity;
@@ -66,18 +106,20 @@ public class QuickLaunchView {
         this.quickLaunchContainer = quickLaunchContainer;
         this.quickLaunchManager = QuickLaunchManager.getInstance(activity);
         this.callback = callback;
+        this.colors = ApolloColors.dark(activity);
+        ApolloUi.allowFocusOverflow(quickLaunchContainer, ApolloUi.dp(activity, 8));
 
-        // Set up running status listener
+        // The running game goes first, so a change rebuilds the row
         this.quickLaunchManager.setRunningStatusListener(new QuickLaunchManager.RunningStatusListener() {
             @Override
             public void onRunningStatusChanged() {
-                updateButtonColors();
+                activity.runOnUiThread(QuickLaunchView.this::loadQuickLaunchButtons);
             }
         });
 
         loadQuickLaunchButtons();
     }
-    
+
     /**
      * Add an app to Quick Launch
      */
@@ -85,79 +127,14 @@ public class QuickLaunchView {
         quickLaunchManager.addQuickLaunchItem(computer, app);
         Toast.makeText(activity, activity.getString(R.string.quick_launch_added), Toast.LENGTH_SHORT).show();
     }
-    
-    /**
-     * Handle context menu creation for Quick Launch buttons
-     */
-    public boolean onCreateContextMenu(ContextMenu menu, View v, ContextMenu.ContextMenuInfo menuInfo) {
-        if (v.getTag() != null && v.getTag().toString().startsWith("quicklaunch:")) {
-            // Extract the key from the tag (format: "quicklaunch:key")
-            String tag = v.getTag().toString();
-            String key = tag.substring("quicklaunch:".length());
-            contextMenuQuickLaunchKey = key;
-            
-            // Get the app ID for this Quick Launch item
-            QuickLaunchManager.QuickLaunchItem item = getQuickLaunchItemByKey(key);
-            if (item != null) {
-                menu.setHeaderTitle(item.originalAppName);
-                
-                // Add quit option if this Quick Launch item is running
-                if (quickLaunchManager.isQuickLaunchItemRunning(item.key)) {
-                    menu.add(Menu.NONE, QUICK_LAUNCH_QUIT_ID, 1, activity.getString(R.string.applist_menu_quit));
-                }
 
-                menu.add(Menu.NONE, QUICK_LAUNCH_RENAME_ID, 2, activity.getString(R.string.quick_launch_rename));
-                menu.add(Menu.NONE, QUICK_LAUNCH_SETTINGS_ID, 3, activity.getString(R.string.quick_launch_settings));
-                menu.add(Menu.NONE, QUICK_LAUNCH_MOVE_LEFT_ID, 4, activity.getString(R.string.quick_launch_move_left));
-                menu.add(Menu.NONE, QUICK_LAUNCH_MOVE_RIGHT_ID, 5, activity.getString(R.string.quick_launch_move_right));
-                menu.add(Menu.NONE, QUICK_LAUNCH_DELETE_ID, 6, activity.getString(R.string.quick_launch_delete));
-            }
-            return true;
-        }
-        return false;
-    }
-    
-    /**
-     * Handle context menu item selection
-     */
-    public boolean onContextItemSelected(MenuItem item) {
-        switch (item.getItemId()) {
-            case QUICK_LAUNCH_QUIT_ID:
-                quitQuickLaunchApp(contextMenuQuickLaunchKey);
-                return true;
-
-            case QUICK_LAUNCH_RENAME_ID:
-                showRenameQuickLaunchDialog(contextMenuQuickLaunchKey);
-                return true;
-
-            case QUICK_LAUNCH_SETTINGS_ID:
-                openQuickLaunchSettings(contextMenuQuickLaunchKey);
-                return true;
-
-            case QUICK_LAUNCH_MOVE_LEFT_ID:
-                moveQuickLaunchItemLeft(contextMenuQuickLaunchKey);
-                return true;
-
-            case QUICK_LAUNCH_MOVE_RIGHT_ID:
-                moveQuickLaunchItemRight(contextMenuQuickLaunchKey);
-                return true;
-
-            case QUICK_LAUNCH_DELETE_ID:
-                removeFromQuickLaunch(contextMenuQuickLaunchKey);
-                return true;
-
-            default:
-                return false;
-        }
-    }
-    
     /**
      * Register broadcast receiver for updates
      */
     public void onResume() {
         if (!receiverRegistered) {
             IntentFilter filter = new IntentFilter(QuickLaunchManager.QUICK_LAUNCH_UPDATE_ACTION);
-            
+
             // For API 34+, we need to specify RECEIVER_NOT_EXPORTED for internal broadcasts
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 activity.registerReceiver(quickLaunchUpdateReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
@@ -166,25 +143,25 @@ public class QuickLaunchView {
             }
             receiverRegistered = true;
         }
-        
+
         // Force an immediate refresh to ensure we show any recently added items
         loadQuickLaunchButtons();
     }
-    
+
     /**
      * Unregister broadcast receiver
      */
     public void onPause() {
         unregisterReceiver();
     }
-    
+
     /**
      * Cleanup on destroy
      */
     public void onDestroy() {
         unregisterReceiver();
     }
-    
+
     private void unregisterReceiver() {
         if (receiverRegistered) {
             try {
@@ -196,64 +173,237 @@ public class QuickLaunchView {
             }
         }
     }
-    
+
+    private List<Entry> buildEntries() {
+        List<QuickLaunchManager.QuickLaunchItem> items = quickLaunchManager.getAllQuickLaunchItems();
+        List<Entry> running = new ArrayList<>();
+        List<Entry> pinned = new ArrayList<>();
+
+        for (QuickLaunchManager.QuickLaunchItem item : items) {
+            boolean isRunning = quickLaunchManager.isQuickLaunchItemRunning(item.key);
+            Entry entry = new Entry(item, item.computerUuid, item.appId, item.getDisplayName(), item.computerName, isRunning);
+            (isRunning ? running : pinned).add(entry);
+        }
+
+        // Games running on a PC without being pinned
+        for (Map.Entry<String, Integer> server : quickLaunchManager.getRunningAppIds().entrySet()) {
+            String name = appName(server.getKey(), server.getValue());
+            // It may have been started from another device, so it stays here once it is closed
+            RecentGames.add(activity, server.getKey(), server.getValue(), name);
+            if (!contains(running, server.getKey(), server.getValue())) {
+                ComputerDetails computer = getComputer(server.getKey());
+                if (computer != null) {
+                    // The library of that PC was never opened if the name is unknown
+                    running.add(new Entry(null, server.getKey(), server.getValue(),
+                            name != null ? name : activity.getString(R.string.apollo_running_on, computer.name),
+                            computer.name, true, name != null));
+                }
+            }
+        }
+
+        // The games started last that are not pinned
+        List<Entry> recent = new ArrayList<>();
+        for (RecentGames.Game game : RecentGames.get(activity)) {
+            if (contains(running, game.computerUuid, game.appId) || contains(pinned, game.computerUuid, game.appId)) {
+                continue;
+            }
+            ComputerDetails computer = getComputer(game.computerUuid);
+            String name = game.name != null ? game.name : appName(game.computerUuid, game.appId);
+            if (computer != null && name != null) {
+                recent.add(new Entry(null, game.computerUuid, game.appId, name, computer.name, false, true));
+            }
+        }
+
+        running.addAll(pinned);
+        running.addAll(recent);
+        return running;
+    }
+
+    private static boolean contains(List<Entry> entries, String computerUuid, int appId) {
+        for (Entry entry : entries) {
+            if (entry.computerUuid.equals(computerUuid) && entry.appId == appId) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private ComputerDetails getComputer(String computerUuid) {
+        ComputerManagerService.ComputerManagerBinder binder = callback.getManagerBinder();
+        return binder != null ? binder.getComputer(computerUuid) : null;
+    }
+
+    // The name comes from the app list cached by the library of that PC
+    private String appName(String computerUuid, int appId) {
+        String cacheKey = computerUuid + "/" + appId;
+        String name = appNames.get(cacheKey);
+        if (name == null) {
+            try {
+                String rawAppList = CacheHelper.readInputStreamToString(
+                        CacheHelper.openCacheFileForInput(activity.getCacheDir(), "applist", computerUuid));
+                for (NvApp app : NvHTTP.getAppListByReader(new StringReader(rawAppList))) {
+                    if (app.getAppId() == appId) {
+                        name = app.getAppName();
+                        appNames.put(cacheKey, name);
+                        break;
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return name;
+    }
+
     private void loadQuickLaunchButtons() {
         if (quickLaunchContainer == null) {
             return; // Not initialized yet
         }
-        
-        // Clear existing buttons
-        quickLaunchContainer.removeAllViews();
-        
-        // Get all Quick Launch items
-        List<QuickLaunchManager.QuickLaunchItem> items = quickLaunchManager.getAllQuickLaunchItems();
-        
-        if (items.isEmpty()) {
-            quickLaunchSection.setVisibility(View.GONE);
+
+        List<Entry> entries = buildEntries();
+        StringBuilder signature = new StringBuilder();
+        for (Entry entry : entries) {
+            signature.append(entry.computerUuid).append('/').append(entry.appId).append('/')
+                    .append(entry.title).append('/').append(entry.running).append(';');
+        }
+        if (signature.toString().equals(shownSignature)) {
             return;
         }
-        
+        shownSignature = signature.toString();
+
+        // Keep the focus on the same game when the row is rebuilt
+        View focused = quickLaunchContainer.findFocus();
+        Object focusedKey = focused != null ? focused.getTag() : null;
+
+        quickLaunchContainer.removeAllViews();
+        if (entries.isEmpty()) {
+            quickLaunchSection.setVisibility(View.GONE);
+            callback.onQuickLaunchChanged();
+            return;
+        }
         quickLaunchSection.setVisibility(View.VISIBLE);
-        
-        for (QuickLaunchManager.QuickLaunchItem item : items) {
-            Button quickLaunchButton = createQuickLaunchButton(item);
-            quickLaunchContainer.addView(quickLaunchButton);
+
+        for (int i = 0; i < entries.size(); i++) {
+            Entry entry = entries.get(i);
+            GameCardView card = new GameCardView(activity, colors, entry.title, entry.computerName,
+                    entry.computerUuid, entry.appId, entry.running);
+            card.setTag(entry.computerUuid + "/" + entry.appId);
+            HintRow.set(card, KeyEvent.KEYCODE_BUTTON_A, entry.running ? R.string.apollo_hint_resume : R.string.apollo_hint_start,
+                    KeyEvent.KEYCODE_BUTTON_Y, R.string.apollo_hint_options, KeyEvent.KEYCODE_BUTTON_X, R.string.apollo_hint_add_pc,
+                    KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_hint_quick_settings);
+            card.setOnClickListener(v -> launch(entry));
+            card.setOnLongClickListener(v -> {
+                showActions(entry);
+                return true;
+            });
+
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            if (i > 0) {
+                params.leftMargin = ApolloUi.dp(activity, 14);
+            }
+            quickLaunchContainer.addView(card, params);
+
+            if (focusedKey != null && focusedKey.equals(card.getTag())) {
+                card.requestFocus();
+            }
+        }
+        callback.onQuickLaunchChanged();
+    }
+
+    private void launch(Entry entry) {
+        if (entry.item != null) {
+            launchQuickLaunchApp(entry.item);
+        } else {
+            startGame(entry);
         }
     }
-    
-    private Button createQuickLaunchButton(final QuickLaunchManager.QuickLaunchItem item) {
-        Button button = new Button(activity);
-        button.setText(item.getDisplayName());
-        button.setTextSize(12);
 
-        // Set a tag to identify this as a Quick Launch button for context menus
-        button.setTag("quicklaunch:" + item.key);
+    private void showActions(Entry entry) {
+        List<ActionSheet.Action> actions = new ArrayList<>();
+        actions.add(new ActionSheet.Action(R.drawable.ic_apollo_play,
+                activity.getString(entry.running ? R.string.apollo_action_resume : R.string.apollo_action_start),
+                () -> launch(entry)));
+        if (entry.running) {
+            actions.add(new ActionSheet.Action(R.drawable.ic_apollo_stop,
+                    activity.getString(R.string.apollo_action_quit_game), () -> quitGame(entry)).danger());
+        }
 
-        // Set button dimensions and margins
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-        );
-        params.setMargins(0, 0, 16, 0);
-        button.setLayoutParams(params);
-
-        // Update button color based on running status
-        updateButtonColor(button, item);
-
-        // Set click listener to launch the app
-        button.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                launchQuickLaunchApp(item);
+        if (entry.item != null) {
+            String key = entry.item.key;
+            actions.add(new ActionSheet.Action(R.drawable.ic_apollo_edit,
+                    activity.getString(R.string.quick_launch_rename), () -> showRenameQuickLaunchDialog(key)));
+            actions.add(new ActionSheet.Action(R.drawable.ic_apollo_tune,
+                    activity.getString(R.string.quick_launch_settings), () -> openQuickLaunchSettings(key)));
+            actions.add(new ActionSheet.Action(R.drawable.ic_apollo_arrow_left,
+                    activity.getString(R.string.quick_launch_move_left), () -> moveQuickLaunchItemLeft(key)));
+            actions.add(new ActionSheet.Action(R.drawable.ic_apollo_arrow_right,
+                    activity.getString(R.string.quick_launch_move_right), () -> moveQuickLaunchItemRight(key)));
+            actions.add(new ActionSheet.Action(R.drawable.ic_apollo_delete,
+                    activity.getString(R.string.quick_launch_delete), () -> removeFromQuickLaunch(key)).danger());
+        } else {
+            actions.add(new ActionSheet.Action(R.drawable.ic_apollo_star,
+                    activity.getString(R.string.apollo_action_add_quick_launch), () -> pinGame(entry)));
+            if (!entry.running) {
+                actions.add(new ActionSheet.Action(R.drawable.ic_apollo_delete,
+                        activity.getString(R.string.apollo_action_remove_recent), () -> {
+                            RecentGames.remove(activity, entry.computerUuid, entry.appId);
+                            loadQuickLaunchButtons();
+                        }).danger());
             }
-        });
+        }
 
-        // Register for context menu
-        activity.registerForContextMenu(button);
-
-        return button;
+        String subtitle = entry.running
+                ? activity.getString(R.string.apollo_running_on, entry.computerName)
+                : entry.computerName;
+        ActionSheet.of(activity).show(entry.title, subtitle, actions);
     }
-    
+
+    private ComputerDetails findComputer(String computerUuid) {
+        ComputerManagerService.ComputerManagerBinder managerBinder = callback.getManagerBinder();
+        if (managerBinder == null) {
+            Toast.makeText(activity, "Computer manager not ready", Toast.LENGTH_SHORT).show();
+            return null;
+        }
+        ComputerDetails computer = managerBinder.getComputer(computerUuid);
+        if (computer == null) {
+            Toast.makeText(activity, "PC not found", Toast.LENGTH_SHORT).show();
+        }
+        return computer;
+    }
+
+    private void startGame(Entry entry) {
+        ComputerDetails computer = findComputer(entry.computerUuid);
+        if (computer != null) {
+            ServerHelper.doStart(activity, new NvApp(entry.title, entry.appId, false), computer, callback.getManagerBinder());
+            if (!entry.nameKnown) {
+                // The title is not the real name, the recent list reads it once the library is opened
+                RecentGames.clearName(activity, entry.computerUuid, entry.appId);
+            }
+        }
+    }
+
+    private void pinGame(Entry entry) {
+        ComputerDetails computer = findComputer(entry.computerUuid);
+        if (computer != null) {
+            addToQuickLaunch(computer, new NvApp(entry.title, entry.appId, false));
+        }
+    }
+
+    private void quitGame(Entry entry) {
+        if (entry.item != null) {
+            quitQuickLaunchApp(entry.item.key);
+            return;
+        }
+
+        ComputerDetails computer = findComputer(entry.computerUuid);
+        if (computer == null) {
+            return;
+        }
+        UiHelper.displayQuitConfirmationDialog(activity, () -> ServerHelper.doQuit(activity, computer,
+                new NvApp(entry.title, entry.appId, false), callback.getManagerBinder(),
+                () -> quickLaunchManager.updateRunningAppId(0, computer.uuid)), null);
+    }
+
     private void launchQuickLaunchApp(QuickLaunchManager.QuickLaunchItem item) {
         ComputerManagerService.ComputerManagerBinder managerBinder = callback.getManagerBinder();
         if (managerBinder == null) {
@@ -277,19 +427,9 @@ public class QuickLaunchView {
         // Use ServerHelper to launch the app with the Quick Launch key
         ServerHelper.doStart(activity, app, computer, managerBinder, item.key);
     }
-    
+
     private void openQuickLaunchSettings(String key) {
-        // Get the Quick Launch item details
-        List<QuickLaunchManager.QuickLaunchItem> items = quickLaunchManager.getAllQuickLaunchItems();
-        QuickLaunchManager.QuickLaunchItem targetItem = null;
-        
-        for (QuickLaunchManager.QuickLaunchItem item : items) {
-            if (item.key.equals(key)) {
-                targetItem = item;
-                break;
-            }
-        }
-        
+        QuickLaunchManager.QuickLaunchItem targetItem = getQuickLaunchItemByKey(key);
         if (targetItem != null) {
             // Open AppStreamSettings with the Quick Launch key
             Intent settingsIntent = new Intent(activity, AppStreamSettings.class);
@@ -298,43 +438,35 @@ public class QuickLaunchView {
             activity.startActivity(settingsIntent);
         }
     }
-    
+
     private void showRenameQuickLaunchDialog(final String key) {
         // Get current custom name from the key
         String currentCustomName = quickLaunchManager.getCustomName(key);
         String originalName = quickLaunchManager.getOriginalName(key);
-        
+
         // Create the input dialog
         AlertDialog.Builder builder = new AlertDialog.Builder(activity);
         builder.setTitle(activity.getString(R.string.quick_launch_rename_title));
         builder.setMessage("Display name for " + originalName + ":");
-        
+
         final EditText input = new EditText(activity);
         input.setInputType(InputType.TYPE_CLASS_TEXT);
         input.setText(currentCustomName);
         input.selectAll();
         builder.setView(input);
-        
-        builder.setPositiveButton("OK", new android.content.DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(android.content.DialogInterface dialog, int which) {
-                String newCustomName = input.getText().toString().trim();
-                if (!newCustomName.isEmpty()) {
-                    quickLaunchManager.updateCustomName(key, newCustomName);
-                    Toast.makeText(activity, activity.getString(R.string.quick_launch_renamed), Toast.LENGTH_SHORT).show();
-                }
+
+        builder.setPositiveButton("OK", (dialog, which) -> {
+            String newCustomName = input.getText().toString().trim();
+            if (!newCustomName.isEmpty()) {
+                quickLaunchManager.updateCustomName(key, newCustomName);
+                Toast.makeText(activity, activity.getString(R.string.quick_launch_renamed), Toast.LENGTH_SHORT).show();
             }
         });
-        builder.setNegativeButton("Cancel", new android.content.DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(android.content.DialogInterface dialog, int which) {
-                dialog.cancel();
-            }
-        });
-        
+        builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
+
         builder.show();
     }
-    
+
     private void removeFromQuickLaunch(final String key) {
         QuickLaunchManager.QuickLaunchItem item = getQuickLaunchItemByKey(key);
         if (item == null) {
@@ -346,125 +478,67 @@ public class QuickLaunchView {
         builder.setTitle("Remove from Quick Launch");
         builder.setMessage("Remove \"" + item.getDisplayName() + "\" from Quick Launch?");
 
-        builder.setPositiveButton("Remove", new android.content.DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(android.content.DialogInterface dialog, int which) {
-                quickLaunchManager.removeQuickLaunchItem(key);
-                Toast.makeText(activity, activity.getString(R.string.quick_launch_removed), Toast.LENGTH_SHORT).show();
-            }
+        builder.setPositiveButton("Remove", (dialog, which) -> {
+            quickLaunchManager.removeQuickLaunchItem(key);
+            Toast.makeText(activity, activity.getString(R.string.quick_launch_removed), Toast.LENGTH_SHORT).show();
         });
-
-        builder.setNegativeButton("Cancel", new android.content.DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(android.content.DialogInterface dialog, int which) {
-                dialog.cancel();
-            }
-        });
+        builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
 
         builder.show();
     }
 
     private void moveQuickLaunchItemLeft(String key) {
-        if (quickLaunchManager.moveQuickLaunchItemLeft(key)) {
-            // Success - the broadcast will trigger UI refresh automatically
-        } else {
+        if (!quickLaunchManager.moveQuickLaunchItemLeft(key)) {
             Toast.makeText(activity, "Cannot move left", Toast.LENGTH_SHORT).show();
         }
     }
 
     private void moveQuickLaunchItemRight(String key) {
-        if (quickLaunchManager.moveQuickLaunchItemRight(key)) {
-            // Success - the broadcast will trigger UI refresh automatically
-        } else {
+        if (!quickLaunchManager.moveQuickLaunchItemRight(key)) {
             Toast.makeText(activity, "Cannot move right", Toast.LENGTH_SHORT).show();
         }
     }
-    
+
     private QuickLaunchManager.QuickLaunchItem getQuickLaunchItemByKey(String key) {
-        List<QuickLaunchManager.QuickLaunchItem> items = quickLaunchManager.getAllQuickLaunchItems();
-        for (QuickLaunchManager.QuickLaunchItem item : items) {
+        for (QuickLaunchManager.QuickLaunchItem item : quickLaunchManager.getAllQuickLaunchItems()) {
             if (item.key.equals(key)) {
                 return item;
             }
         }
         return null;
     }
-    
-    private void updateButtonColor(Button button, QuickLaunchManager.QuickLaunchItem item) {
-        if (quickLaunchManager.isQuickLaunchItemRunning(item.key)) {
-            // Set green background selector for running Quick Launch item
-            button.setBackgroundResource(R.drawable.quick_launch_button_running_selector);
-            button.setTextColor(Color.BLACK);
-        } else {
-            // Set default selector with focus states
-            button.setBackgroundResource(R.drawable.quick_launch_button_selector);
-            button.setTextColor(Color.WHITE);
-        }
-    }
-    
-    private void updateButtonColors() {
-        activity.runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                // Update all button colors
-                for (int i = 0; i < quickLaunchContainer.getChildCount(); i++) {
-                    View child = quickLaunchContainer.getChildAt(i);
-                    if (child instanceof Button && child.getTag() != null && 
-                        child.getTag().toString().startsWith("quicklaunch:")) {
-                        
-                        Button button = (Button) child;
-                        String tag = button.getTag().toString();
-                        String key = tag.substring("quicklaunch:".length());
-                        QuickLaunchManager.QuickLaunchItem item = getQuickLaunchItemByKey(key);
-                        
-                        if (item != null) {
-                            updateButtonColor(button, item);
-                        }
-                    }
-                }
-            }
-        });
-    }
-    
+
     private void quitQuickLaunchApp(String key) {
         QuickLaunchManager.QuickLaunchItem item = getQuickLaunchItemByKey(key);
         if (item == null) {
             Toast.makeText(activity, "Quick Launch item not found", Toast.LENGTH_SHORT).show();
             return;
         }
-        
+
         ComputerManagerService.ComputerManagerBinder managerBinder = callback.getManagerBinder();
         if (managerBinder == null) {
             Toast.makeText(activity, "Computer manager not ready", Toast.LENGTH_SHORT).show();
             return;
         }
-        
+
         // Find the computer by UUID
         ComputerDetails computer = managerBinder.getComputer(item.computerUuid);
         if (computer == null) {
             Toast.makeText(activity, "PC not found", Toast.LENGTH_SHORT).show();
             return;
         }
-        
+
         // Create NvApp object with the appId
         NvApp app = new NvApp(item.originalAppName, item.appId, false);
-        
+
         // Display a confirmation dialog first
-        UiHelper.displayQuitConfirmationDialog(activity, new Runnable() {
-            @Override
-            public void run() {
-                // Use ServerHelper to quit the app
-                ServerHelper.doQuit(activity, computer, app, managerBinder, new Runnable() {
-                    @Override
-                    public void run() {
-                        // Update running status after quit
-                        quickLaunchManager.updateRunningAppId(0, computer.uuid);
-                    }
-                });
-            }
+        UiHelper.displayQuitConfirmationDialog(activity, () -> {
+            // Use ServerHelper to quit the app
+            ServerHelper.doQuit(activity, computer, app, managerBinder,
+                    () -> quickLaunchManager.updateRunningAppId(0, computer.uuid));
         }, null);
     }
-    
+
     /**
      * Update running app status from external source (e.g., PcView)
      */

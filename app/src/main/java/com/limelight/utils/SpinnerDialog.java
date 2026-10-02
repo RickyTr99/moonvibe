@@ -4,15 +4,24 @@ import java.util.ArrayList;
 import java.util.Iterator;
 
 import android.app.Activity;
-import android.app.ProgressDialog;
+import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.DialogInterface.OnCancelListener;
+import android.content.res.ColorStateList;
+import android.view.Gravity;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
+import android.widget.TextView;
+
+import com.limelight.ui.apollo.ApolloUi;
+import com.limelight.ui.theme.ApolloColors;
 
 public class SpinnerDialog implements Runnable,OnCancelListener {
     private final String title;
     private final String message;
     private final Activity activity;
-    private ProgressDialog progress;
+    private AlertDialog progress;
+    private TextView messageView;
     private final boolean finish;
 
     private static final ArrayList<SpinnerDialog> rundownDialogs = new ArrayList<>();
@@ -60,9 +69,44 @@ public class SpinnerDialog implements Runnable,OnCancelListener {
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                progress.setMessage(message);
+                if (messageView != null) {
+                    messageView.setText(message);
+                }
             }
         });
+    }
+
+    // Material 3 waiting dialog: a circular indicator over the title and the message, all centered
+    private LinearLayout createContent() {
+        ApolloColors colors = ApolloColors.dark(activity);
+
+        LinearLayout content = new LinearLayout(activity);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setGravity(Gravity.CENTER_HORIZONTAL);
+        int side = ApolloUi.dp(activity, 24);
+        content.setPadding(side, ApolloUi.dp(activity, 28), side, finish ? 0 : side);
+
+        ProgressBar indicator = new ProgressBar(activity);
+        indicator.setIndeterminate(true);
+        indicator.setIndeterminateTintList(ColorStateList.valueOf(colors.primary));
+        int size = ApolloUi.dp(activity, 44);
+        content.addView(indicator, new LinearLayout.LayoutParams(size, size));
+
+        TextView titleView = ApolloUi.text(activity, title, 22, colors.onSurface, false);
+        titleView.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        titleParams.topMargin = ApolloUi.dp(activity, 20);
+        content.addView(titleView, titleParams);
+
+        messageView = ApolloUi.text(activity, message, 14, colors.onSurfaceVariant, false);
+        messageView.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams messageParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        messageParams.topMargin = ApolloUi.dp(activity, 8);
+        content.addView(messageView, messageParams);
+
+        return content;
     }
 
     @Override
@@ -75,14 +119,21 @@ public class SpinnerDialog implements Runnable,OnCancelListener {
 
         if (progress == null)
         {
-            progress = new ProgressDialog(activity);
-
-            progress.setTitle(title);
-            progress.setMessage(message);
-            progress.setProgressStyle(ProgressDialog.STYLE_SPINNER);
-            progress.setOnCancelListener(this);
+            AlertDialog.Builder builder = new AlertDialog.Builder(activity).setView(createContent());
 
             // If we want to finish the activity when this is killed, make it cancellable
+            if (finish) {
+                builder.setNegativeButton(android.R.string.cancel, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        dialog.cancel();
+                    }
+                });
+            }
+
+            progress = builder.create();
+            progress.setOnCancelListener(this);
+
             if (finish)
             {
                 progress.setCancelable(true);

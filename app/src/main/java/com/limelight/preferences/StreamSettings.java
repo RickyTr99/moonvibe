@@ -22,15 +22,24 @@ import android.util.DisplayMetrics;
 import android.util.Range;
 import android.view.Display;
 import android.view.DisplayCutout;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
+import android.widget.FrameLayout;
 
 import com.limelight.LimeLog;
 import com.limelight.PcView;
 import com.limelight.R;
 import com.limelight.binding.video.MediaCodecHelper;
+import com.limelight.ui.apollo.ApolloTopBar;
+import com.limelight.ui.apollo.hints.HintRow;
+import com.limelight.ui.apollo.hints.ScreenHints;
+import com.limelight.ui.apollo.settings.QuickSettingsPanel;
+import com.limelight.ui.apollo.settings.SettingsView;
+import com.limelight.ui.theme.ApolloColors;
 import com.limelight.utils.Dialog;
 import com.limelight.utils.UiHelper;
 
@@ -40,6 +49,8 @@ import java.util.Arrays;
 public class StreamSettings extends Activity {
     private PreferenceConfiguration previousPrefs;
     private int previousDisplayPixelCount;
+    private ApolloTopBar topBar;
+    private SettingsView settingsView;
 
     // HACK for Android 9
     static DisplayCutout displayCutoutP;
@@ -63,8 +74,84 @@ public class StreamSettings extends Activity {
         UiHelper.setLocale(this);
 
         setContentView(R.layout.activity_stream_settings);
+        overridePendingTransition(R.anim.apollo_fade_in, R.anim.apollo_fade_out);
+        initializeApolloViews();
 
         UiHelper.notifyNewRootView(this);
+    }
+
+    // MoonVibe: top bar and settings view, which draws the preferences built by SettingsFragment
+    private void initializeApolloViews() {
+        ApolloColors colors = ApolloColors.dark(this);
+
+        topBar = new ApolloTopBar(this, colors);
+        topBar.setTabs(new String[] {getString(R.string.apollo_tab_home), getString(R.string.apollo_tab_settings)}, 1,
+                index -> goHome());
+        topBar.setOnQuickSettingsClickListener(v -> QuickSettingsPanel.of(this).toggle());
+        ((FrameLayout) findViewById(R.id.topBarContainer)).addView(topBar);
+
+        settingsView = new SettingsView(this, colors);
+        ((FrameLayout) findViewById(R.id.settingsContainer)).addView(settingsView);
+
+        // Gamepad hints at the bottom
+        HintRow hintRow = ScreenHints.attach(this, findViewById(R.id.settingsColumn));
+        hintRow.setFallback(HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_home),
+                HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_hint_quick_settings));
+
+        // Keep the content clear of a notch, the window draws under it
+        findViewById(R.id.settingsColumn).setOnApplyWindowInsetsListener((v, insets) -> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && insets.getDisplayCutout() != null) {
+                v.setPadding(insets.getDisplayCutout().getSafeInsetLeft(), 0,
+                        insets.getDisplayCutout().getSafeInsetRight(), 0);
+            }
+            return insets;
+        });
+    }
+
+    void onPreferencesReady(PreferenceScreen screen) {
+        settingsView.setScreen(screen);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        topBar.onResume();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        topBar.onPause();
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (event.getRepeatCount() == 0) {
+            switch (keyCode) {
+                case KeyEvent.KEYCODE_BUTTON_L1:
+                    topBar.switchTab(-1);
+                    return true;
+                case KeyEvent.KEYCODE_BUTTON_R1:
+                    topBar.switchTab(1);
+                    return true;
+                case KeyEvent.KEYCODE_BUTTON_B:
+                    // Panels and menus close first, the settings go back to their category, then Home
+                    if (QuickSettingsPanel.of(this).dismiss() || settingsView.onButtonB()) {
+                        return true;
+                    }
+                    break;
+                case KeyEvent.KEYCODE_BUTTON_SELECT:
+                    QuickSettingsPanel.of(this).toggle();
+                    return true;
+            }
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
+    @Override
+    public void finish() {
+        super.finish();
+        overridePendingTransition(R.anim.apollo_fade_in, R.anim.apollo_fade_out);
     }
 
     @Override
@@ -103,10 +190,35 @@ public class StreamSettings extends Activity {
         }
     }
 
+    // The gamepad hints show while keys are used and hide at the first touch
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        ScreenHints.onKeyEvent(event);
+        return super.dispatchKeyEvent(event);
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        ScreenHints.onTouchEvent(event);
+        return super.dispatchTouchEvent(event);
+    }
+
     @Override
     // NOTE: This will NOT be called on Android 13+ with android:enableOnBackInvokedCallback="true"
     public void onBackPressed() {
+        if (QuickSettingsPanel.of(this).dismiss() || settingsView.onBackPressed()) {
+            return;
+        }
+        goHome();
+    }
+
+    // The Home tab leaves straight away, even from inside a category
+    private void goHome() {
+        QuickSettingsPanel.of(this).dismiss();
+        topBar.markLeaving();
         finish();
+        // The top bar is the same on both screens, so it stays still while the content fades
+        overridePendingTransition(R.anim.apollo_fade_in, R.anim.apollo_fade_out);
 
         // Language changes are handled via configuration changes in Android 13+,
         // so manual activity relaunching is no longer required.
@@ -268,6 +380,14 @@ public class StreamSettings extends Activity {
             View view = super.onCreateView(inflater, container, savedInstanceState);
             UiHelper.applyStatusBarPadding(view);
             return view;
+        }
+
+        @Override
+        public void onActivityCreated(Bundle savedInstanceState) {
+            super.onActivityCreated(savedInstanceState);
+
+            // MoonVibe: the settings view draws the preferences built here
+            ((StreamSettings) getActivity()).onPreferencesReady(getPreferenceScreen());
         }
 
         @Override

@@ -161,6 +161,16 @@ public class AppGridAdapter extends GenericGridAdapter<AppView.AppObject> {
         allApps.clear();
     }
 
+    // Box art of a library card, through the same cached loader as the grid items
+    public void populateCover(AppView.AppObject obj, ImageView imgView, TextView placeholderSignal) {
+        loader.populateImageView(obj.app, imgView, placeholderSignal);
+    }
+
+    public boolean hasCustomSettings(AppView.AppObject obj) {
+        String appKey = this.computer.uuid + ":" + obj.app.getAppId();
+        return !AppPreferences.getAppSettings(context, appKey).useGlobalSettings;
+    }
+
     @Override
     public void populateView(View parentView, ImageView imgView, ProgressBar prgView, TextView txtView, ImageView overlayView, ImageView settingsIndicator, AppView.AppObject obj) {
         // Let the cached asset loader handle it
