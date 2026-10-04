@@ -64,8 +64,8 @@ public class GameMenuView extends FrameLayout {
     private static final float PRESSED_SCALE = 0.96f;
     // No more than the side margin of the panel, so the sliding content never reaches the edge
     private static final int TAB_SLIDE_DP = 10;
-    private static final int BUMPER_WIDTH_DP = 34;
-    private static final int BUMPER_HEIGHT_DP = 22;
+    private static final int BUMPER_WIDTH_DP = 30;
+    private static final int BUMPER_HEIGHT_DP = 17;
     private static final float SLIDER_STICK_DEADZONE = 0.2f;
     // Speed of a slider with the stick fully tilted
     private static final float SLIDER_STICK_PERCENT_PER_SECOND = 40f;
@@ -616,11 +616,9 @@ public class GameMenuView extends FrameLayout {
 
     // Shaped like the shoulder button, as in the top bar of the app
     private TextView shoulderChip(String label, int direction) {
-        TextView chip = text(label, 10, colors.onSurfaceVariant, true);
+        TextView chip = text(label, 9.5f, colors.onSurfaceVariant, true);
         chip.setGravity(Gravity.CENTER);
         chip.setIncludeFontPadding(false);
-        // A little lower: the top edge of the bumper dips towards the inner side
-        chip.setPadding(0, dp(3), 0, 0);
         chip.setBackground(new BumperDrawable(colors.surfaceContainerHighest, direction < 0, density));
         addPressFeedback(chip);
         chip.setOnClickListener(v -> {
@@ -998,6 +996,10 @@ public class GameMenuView extends FrameLayout {
 
     // ---- Quick sliders ----
 
+    private static String stickLetter(QuickSlider slider) {
+        return slider.rightStick ? "R" : "L";
+    }
+
     private View createSliderRow(QuickSlider slider) {
         LinearLayout view = new LinearLayout(getContext());
         view.setOrientation(LinearLayout.HORIZONTAL);
@@ -1012,6 +1014,8 @@ public class GameMenuView extends FrameLayout {
         view.addView(button, new LinearLayout.LayoutParams(dp(40), dp(40)));
 
         SliderView sliderView = new SliderView(getContext(), colors);
+        // With a gamepad the handle is the stick that moves it
+        sliderView.setStickHandle(padConnected ? stickLetter(slider) : null);
         sliderView.setRange(slider.min, 100, 1);
         LinearLayout.LayoutParams sliderParams = new LinearLayout.LayoutParams(0, dp(40), 1);
         sliderParams.leftMargin = dp(10);
@@ -1116,6 +1120,7 @@ public class GameMenuView extends FrameLayout {
         soloSlider.setRange(row.slider.min, 100, 1);
         soloSlider.setValue(row.slider.value.get());
         soloValue.setText(row.value.getText());
+        soloSlider.setStickHandle(padConnected ? stickLetter(row.slider) : null);
 
         soloCard.animate().cancel();
         panelFrame.animate().cancel();

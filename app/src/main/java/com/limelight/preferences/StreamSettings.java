@@ -36,6 +36,7 @@ import com.limelight.R;
 import com.limelight.binding.input.ControllerHandler;
 import com.limelight.binding.video.MediaCodecHelper;
 import com.limelight.ui.apollo.ApolloTopBar;
+import com.limelight.ui.apollo.ApolloUi;
 import com.limelight.ui.apollo.hints.HintRow;
 import com.limelight.ui.apollo.hints.ScreenHints;
 import com.limelight.ui.apollo.settings.QuickSettingsPanel;
@@ -100,13 +101,7 @@ public class StreamSettings extends Activity {
                 HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings));
 
         // Keep the content clear of a notch, the window draws under it
-        findViewById(R.id.settingsColumn).setOnApplyWindowInsetsListener((v, insets) -> {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && insets.getDisplayCutout() != null) {
-                v.setPadding(insets.getDisplayCutout().getSafeInsetLeft(), 0,
-                        insets.getDisplayCutout().getSafeInsetRight(), 0);
-            }
-            return insets;
-        });
+        ApolloUi.padForCutout(findViewById(R.id.settingsColumn));
     }
 
     void onPreferencesReady(PreferenceScreen screen) {

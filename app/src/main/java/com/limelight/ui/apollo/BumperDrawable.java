@@ -9,8 +9,8 @@ import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 
 /**
- * The shape of a shoulder button, like the LB/RB glyphs of Xbox: flat at the bottom, a wide round corner
- * on the outer side and a top edge that curves down towards the inner side.
+ * The shape of a shoulder button, like the LB/RB glyphs of Xbox: a low, wide bar with the outer side rounded
+ * and the inner corners almost square. Flatter than a trigger (LT/RT), which is tall and curved on top.
  */
 public class BumperDrawable extends Drawable {
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -36,22 +36,21 @@ public class BumperDrawable extends Drawable {
 
     // Drawn as the left bumper, mirrored for the right one
     private void buildPath(float w, float h) {
-        float small = 4 * dp;
-        float outer = Math.min(h * 0.75f, w * 0.5f);
-        float dip = h * 0.28f;
+        float inner = Math.min(3 * dp, h / 3);
+        float outerTop = Math.min(h * 0.65f, w / 3);
+        float outerBottom = Math.min(h * 0.4f, w / 4);
 
         path.reset();
-        path.moveTo(0, h - small);
-        path.lineTo(0, outer);
-        // Wide outer corner
-        path.quadTo(0, 0, outer, 0);
-        // Top edge, curving down to the inner side
-        path.cubicTo(w * 0.62f, 0, w - small, dip * 0.4f, w - small * 0.3f, dip);
-        path.quadTo(w, dip + small * 0.3f, w, dip + small);
-        path.lineTo(w, h - small);
-        path.quadTo(w, h, w - small, h);
-        path.lineTo(small, h);
-        path.quadTo(0, h, 0, h - small);
+        path.moveTo(outerTop, 0);
+        path.lineTo(w - inner, 0);
+        path.quadTo(w, 0, w, inner);
+        path.lineTo(w, h - inner);
+        path.quadTo(w, h, w - inner, h);
+        path.lineTo(outerBottom, h);
+        path.quadTo(0, h, 0, h - outerBottom);
+        path.lineTo(0, outerTop);
+        // The outer top corner is the roundest, as on the controller
+        path.quadTo(0, 0, outerTop, 0);
         path.close();
     }
 

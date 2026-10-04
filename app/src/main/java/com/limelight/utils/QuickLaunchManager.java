@@ -378,6 +378,20 @@ public class QuickLaunchManager {
     }
 
     /**
+     * Puts the given items first, in this order; the others keep their order after them
+     */
+    public void setOrder(List<String> keys) {
+        List<String> sortOrder = new ArrayList<>(keys);
+        for (String key : getSortOrder()) {
+            if (!sortOrder.contains(key)) {
+                sortOrder.add(key);
+            }
+        }
+        saveSortOrder(sortOrder);
+        notifyUpdate();
+    }
+
+    /**
      * Move a Quick Launch item left (earlier in the list)
      */
     public boolean moveQuickLaunchItemLeft(String key) {

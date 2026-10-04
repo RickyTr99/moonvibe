@@ -162,6 +162,12 @@
             <meta-data android:name="WindowManagerPreference:FreeformWindowOrientation" android:value="landscape" />
         </activity>
         <activity
+            android:name=".NetworkTestActivity"
+            android:resizeableActivity="true"
+            android:enableOnBackInvokedCallback="true"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="mcc|mnc|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection" />
+        <activity
             android:name=".preferences.AddComputerManually"
             android:resizeableActivity="true"
             android:windowSoftInputMode="stateVisible"

@@ -664,6 +664,13 @@ public class SettingsView extends FrameLayout {
                     exitSearch();
                 }
                 showCategory(index, true);
+                // A on a gamepad goes on to the settings of the category, like right
+                if (!v.isInTouchMode()) {
+                    ArrayList<View> settings = rowList.getFocusables(View.FOCUS_FORWARD);
+                    if (!settings.isEmpty()) {
+                        settings.get(0).requestFocus();
+                    }
+                }
             });
             HintRow.set(button, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_open, KeyEvent.KEYCODE_BUTTON_X, R.string.apollo_hint_search,
                     KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_home, KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings);

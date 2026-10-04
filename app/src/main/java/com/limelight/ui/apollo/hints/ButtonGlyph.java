@@ -49,13 +49,13 @@ public final class ButtonGlyph {
         }
 
         if (key == KeyEvent.KEYCODE_BUTTON_L1 || key == KeyEvent.KEYCODE_BUTTON_R1) {
-            TextView bumper = ApolloUi.text(context, key == KeyEvent.KEYCODE_BUTTON_L1 ? "LB" : "RB", 9, foreground, true);
+            TextView bumper = ApolloUi.text(context, key == KeyEvent.KEYCODE_BUTTON_L1 ? "LB" : "RB", 8.5f, foreground, true);
             bumper.setGravity(Gravity.CENTER);
             bumper.setIncludeFontPadding(false);
-            bumper.setPadding(ApolloUi.dp(context, 6), ApolloUi.dp(context, 2), ApolloUi.dp(context, 6), 0);
             bumper.setBackground(new BumperDrawable(background, key == KeyEvent.KEYCODE_BUTTON_L1,
                     context.getResources().getDisplayMetrics().density));
-            bumper.setLayoutParams(new FrameLayout.LayoutParams(ApolloUi.dp(context, 28), ApolloUi.dp(context, 18)));
+            // Lower than the round buttons, centered on them
+            bumper.setLayoutParams(new FrameLayout.LayoutParams(ApolloUi.dp(context, 26), ApolloUi.dp(context, 14), Gravity.CENTER));
             return bumper;
         }
 

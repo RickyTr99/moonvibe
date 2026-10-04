@@ -682,13 +682,7 @@ public class AppView extends Activity {
                 : getString(R.string.apollo_pc_online));
 
         // Keep the content clear of a notch, the window draws under it
-        findViewById(R.id.libraryColumn).setOnApplyWindowInsetsListener((v, insets) -> {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && insets.getDisplayCutout() != null) {
-                v.setPadding(insets.getDisplayCutout().getSafeInsetLeft(), 0,
-                        insets.getDisplayCutout().getSafeInsetRight(), 0);
-            }
-            return insets;
-        });
+        ApolloUi.padForCutout(findViewById(R.id.libraryColumn));
 
         // Gamepad hints at the bottom
         HintRow hintRow = ScreenHints.attach(this, findViewById(R.id.libraryColumn));

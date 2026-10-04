@@ -80,7 +80,8 @@ public class ApolloTopBar extends FrameLayout {
     public ApolloTopBar(Context context, ApolloColors colors) {
         super(context);
         this.colors = colors;
-        setPadding(dp(24), 0, dp(12), 0);
+        // The status veil on the right ends as far from the edge as the content below
+        setPadding(dp(24), 0, dp(22), 0);
         setMinimumHeight(dp(52));
 
         // "Moon" in white, "Vibe" in the accent color
@@ -100,7 +101,7 @@ public class ApolloTopBar extends FrameLayout {
         addView(center, new LayoutParams(LayoutParams.WRAP_CONTENT, dp(52), Gravity.CENTER));
 
         leftBumper = shoulderChip("LB", -1);
-        center.addView(leftBumper, new LinearLayout.LayoutParams(dp(36), dp(24)));
+        center.addView(leftBumper, new LinearLayout.LayoutParams(dp(30), dp(17)));
         // The mark under the selected tab is a separate view that slides from tab to tab
         FrameLayout tabsFrame = new FrameLayout(context);
         LinearLayout.LayoutParams tabsParams = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT);
@@ -117,7 +118,7 @@ public class ApolloTopBar extends FrameLayout {
         tabsFrame.addView(tabIndicator, indicatorParams);
         tabIndicator.setVisibility(INVISIBLE);
         rightBumper = shoulderChip("RB", 1);
-        center.addView(rightBumper, new LinearLayout.LayoutParams(dp(36), dp(24)));
+        center.addView(rightBumper, new LinearLayout.LayoutParams(dp(30), dp(17)));
         updateBumpers();
 
         // The status on a light fixed veil with a small arrow after it: one button that opens the quick settings
@@ -183,11 +184,9 @@ public class ApolloTopBar extends FrameLayout {
     }
 
     private TextView shoulderChip(String label, int direction) {
-        TextView chip = ApolloUi.text(getContext(), label, 11, colors.onSurfaceVariant, true);
+        TextView chip = ApolloUi.text(getContext(), label, 9.5f, colors.onSurfaceVariant, true);
         chip.setGravity(Gravity.CENTER);
-        // A little lower: the top edge of the bumper dips towards the inner side
         chip.setIncludeFontPadding(false);
-        chip.setPadding(0, dp(3), 0, 0);
         chip.setBackground(new BumperDrawable(colors.surfaceContainerHighest, direction < 0, getResources().getDisplayMetrics().density));
         chip.setOnClickListener(v -> switchTab(direction));
         chip.setFocusable(false);

@@ -36,6 +36,20 @@ public final class ApolloUi {
         return (int) (value * context.getResources().getDisplayMetrics().density + 0.5f);
     }
 
+    /**
+     * Keeps a column clear of a notch, which the window draws under. Both sides get the larger inset,
+     * so on a phone with the camera on one side the content stays centered with equal margins.
+     */
+    public static void padForCutout(View column) {
+        column.setOnApplyWindowInsetsListener((v, insets) -> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && insets.getDisplayCutout() != null) {
+                int side = Math.max(insets.getDisplayCutout().getSafeInsetLeft(), insets.getDisplayCutout().getSafeInsetRight());
+                v.setPadding(side, 0, side, 0);
+            }
+            return insets;
+        });
+    }
+
     public static GradientDrawable roundRect(int color, float radius) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(color);

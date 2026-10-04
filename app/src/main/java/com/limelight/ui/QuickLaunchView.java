@@ -6,12 +6,17 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.graphics.Rect;
 import android.os.Build;
 import android.text.InputType;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
+import android.view.ViewTreeObserver;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.limelight.R;
@@ -22,9 +27,11 @@ import com.limelight.nvstream.http.NvHTTP;
 import com.limelight.preferences.AppStreamSettings;
 import com.limelight.ui.apollo.ActionSheet;
 import com.limelight.ui.apollo.GameCardView;
+import com.limelight.ui.apollo.hints.ButtonGlyph;
 import com.limelight.ui.apollo.hints.HintRow;
 import com.limelight.ui.apollo.ApolloUi;
 import com.limelight.ui.theme.ApolloColors;
+import com.limelight.ui.theme.ApolloMotion;
 import com.limelight.utils.CacheHelper;
 import com.limelight.utils.QuickLaunchManager;
 import com.limelight.utils.RecentGames;
@@ -47,7 +54,17 @@ public class QuickLaunchView {
 
         // The row was rebuilt
         void onQuickLaunchChanged();
+
+        // What the gamepad buttons do on the focused card has changed
+        void onQuickLaunchHintsChanged();
     }
+
+    // Size and lift of the card being moved, when no focus lifts it (touch)
+    private static final float MOVING_SCALE = 1.08f;
+    private static final int MOVING_LIFT_DP = 6;
+    // The other cards while one is moved
+    private static final float MOVING_OTHERS_ALPHA = 0.45f;
+    private static final int CARD_GAP_DP = 14;
 
     private final Activity activity;
     private final LinearLayout quickLaunchSection;
@@ -61,6 +78,15 @@ public class QuickLaunchView {
     private String shownSignature;
     // Names of games that are not pinned, read once from the cached app list
     private final Map<String, String> appNames = new HashMap<>();
+    // The pinned games come first in the row: their cards and keys, in the order shown
+    private final Map<View, String> pinnedKeys = new HashMap<>();
+    private int pinnedCount;
+    // The card being moved to reorder the pinned games, null otherwise
+    private GameCardView movingCard;
+    // A rebuild asked while moving waits for the end
+    private boolean reloadPending;
+    private float dragStartX;
+    private boolean dragging;
 
     private final BroadcastReceiver quickLaunchUpdateReceiver = new BroadcastReceiver() {
         @Override
@@ -155,6 +181,7 @@ public class QuickLaunchView {
      * Unregister broadcast receiver
      */
     public void onPause() {
+        finishMove(true);
         unregisterReceiver();
     }
 
@@ -263,6 +290,10 @@ public class QuickLaunchView {
         if (quickLaunchContainer == null) {
             return; // Not initialized yet
         }
+        if (movingCard != null) {
+            reloadPending = true;
+            return;
+        }
 
         List<Entry> entries = buildEntries();
         StringBuilder signature = new StringBuilder();
@@ -280,6 +311,8 @@ public class QuickLaunchView {
         Object focusedKey = focused != null ? focused.getTag() : null;
 
         quickLaunchContainer.removeAllViews();
+        pinnedKeys.clear();
+        pinnedCount = 0;
         if (entries.isEmpty()) {
             quickLaunchSection.setVisibility(View.GONE);
             callback.onQuickLaunchChanged();
@@ -304,9 +337,13 @@ public class QuickLaunchView {
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
             if (i > 0) {
-                params.leftMargin = ApolloUi.dp(activity, 14);
+                params.leftMargin = ApolloUi.dp(activity, CARD_GAP_DP);
             }
             quickLaunchContainer.addView(card, params);
+            if (entry.item != null) {
+                pinnedKeys.put(card, entry.item.key);
+                pinnedCount++;
+            }
 
             if (focusedKey != null && focusedKey.equals(card.getTag())) {
                 card.requestFocus();
@@ -339,10 +376,10 @@ public class QuickLaunchView {
                     activity.getString(R.string.quick_launch_rename), () -> showRenameQuickLaunchDialog(key)));
             actions.add(new ActionSheet.Action(R.drawable.ic_apollo_tune,
                     activity.getString(R.string.quick_launch_settings), () -> openQuickLaunchSettings(key)));
-            actions.add(new ActionSheet.Action(R.drawable.ic_apollo_arrow_left,
-                    activity.getString(R.string.quick_launch_move_left), () -> moveQuickLaunchItemLeft(key)));
-            actions.add(new ActionSheet.Action(R.drawable.ic_apollo_arrow_right,
-                    activity.getString(R.string.quick_launch_move_right), () -> moveQuickLaunchItemRight(key)));
+            if (pinnedCount > 1) {
+                actions.add(new ActionSheet.Action(R.drawable.ic_apollo_reorder,
+                        activity.getString(R.string.apollo_quick_launch_reorder), () -> startMove(key)));
+            }
             actions.add(new ActionSheet.Action(R.drawable.ic_apollo_delete,
                     activity.getString(R.string.quick_launch_delete), () -> removeFromQuickLaunch(key)).danger());
         } else {
@@ -492,16 +529,198 @@ public class QuickLaunchView {
         builder.show();
     }
 
-    private void moveQuickLaunchItemLeft(String key) {
-        if (!quickLaunchManager.moveQuickLaunchItemLeft(key)) {
-            Toast.makeText(activity, "Cannot move left", Toast.LENGTH_SHORT).show();
+    // --- Reordering: the card lifts, the others fade, and it moves with the D-pad or the finger
+
+    private void startMove(String key) {
+        GameCardView card = null;
+        for (Map.Entry<View, String> pinned : pinnedKeys.entrySet()) {
+            if (pinned.getValue().equals(key)) {
+                card = (GameCardView) pinned.getKey();
+            }
         }
+        if (card == null || movingCard != null) {
+            return;
+        }
+        movingCard = card;
+        dragging = false;
+
+        for (int i = 0; i < quickLaunchContainer.getChildCount(); i++) {
+            View other = quickLaunchContainer.getChildAt(i);
+            if (other != card) {
+                other.animate().alpha(MOVING_OTHERS_ALPHA).setDuration(ApolloMotion.MEDIUM)
+                        .setInterpolator(ApolloMotion.STANDARD).start();
+            }
+        }
+        if (card.isInTouchMode()) {
+            // No focus lifts it: lift it here
+            card.animate().scaleX(MOVING_SCALE).scaleY(MOVING_SCALE).translationY(-ApolloUi.dp(activity, MOVING_LIFT_DP))
+                    .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.EMPHASIZED_DECELERATE).start();
+        } else {
+            card.requestFocus();
+        }
+        setSectionTitle(R.string.apollo_quick_launch_reordering);
+
+        HintRow.set(card, ButtonGlyph.DPAD_LEFT_RIGHT, R.string.apollo_hint_move,
+                KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_done, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_cancel);
+        callback.onQuickLaunchHintsChanged();
+
+        card.setOnKeyListener((v, keyCode, event) -> {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                switch (keyCode) {
+                    case KeyEvent.KEYCODE_DPAD_LEFT:
+                    case KeyEvent.KEYCODE_BUTTON_L1:
+                        moveBy(-1, true);
+                        break;
+                    case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    case KeyEvent.KEYCODE_BUTTON_R1:
+                        moveBy(1, true);
+                        break;
+                    case KeyEvent.KEYCODE_BUTTON_A:
+                    case KeyEvent.KEYCODE_DPAD_CENTER:
+                    case KeyEvent.KEYCODE_ENTER:
+                        if (event.getRepeatCount() == 0) {
+                            finishMove(true);
+                        }
+                        break;
+                    case KeyEvent.KEYCODE_BUTTON_B:
+                    case KeyEvent.KEYCODE_BACK:
+                    case KeyEvent.KEYCODE_ESCAPE:
+                        if (event.getRepeatCount() == 0) {
+                            finishMove(false);
+                        }
+                        break;
+                }
+            }
+            // Nothing else moves the focus or opens something while the card moves; the volume keys still work
+            return KeyEvent.isGamepadButton(keyCode) || keyCode == KeyEvent.KEYCODE_BACK
+                    || keyCode == KeyEvent.KEYCODE_ESCAPE || keyCode == KeyEvent.KEYCODE_ENTER
+                    || (keyCode >= KeyEvent.KEYCODE_DPAD_UP && keyCode <= KeyEvent.KEYCODE_DPAD_CENTER);
+        });
+
+        // A drag moves it over the others, letting go puts it down
+        card.setOnTouchListener((v, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    dragStartX = event.getRawX();
+                    dragging = false;
+                    v.getParent().requestDisallowInterceptTouchEvent(true);
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    float dx = event.getRawX() - dragStartX;
+                    if (!dragging && Math.abs(dx) > ViewConfiguration.get(activity).getScaledTouchSlop()) {
+                        dragging = true;
+                    }
+                    if (dragging) {
+                        v.setTranslationX(dx);
+                        int index = quickLaunchContainer.indexOfChild(v);
+                        View next = index + 1 < pinnedCount ? quickLaunchContainer.getChildAt(index + 1) : null;
+                        View previous = index > 0 ? quickLaunchContainer.getChildAt(index - 1) : null;
+                        // Past the middle of a neighbor: they swap, and the finger keeps its place on the card
+                        if (next != null && dx > (next.getWidth() + gap()) / 2f) {
+                            dragStartX += next.getWidth() + gap();
+                            moveBy(1, false);
+                            v.setTranslationX(event.getRawX() - dragStartX);
+                        } else if (previous != null && dx < -(previous.getWidth() + gap()) / 2f) {
+                            dragStartX -= previous.getWidth() + gap();
+                            moveBy(-1, false);
+                            v.setTranslationX(event.getRawX() - dragStartX);
+                        }
+                    }
+                    return true;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    // Letting go after a drag puts it down; a tap ends the reordering as it is
+                    v.animate().translationX(0).setDuration(ApolloMotion.SHORT)
+                            .setInterpolator(ApolloMotion.EMPHASIZED_DECELERATE)
+                            .withEndAction(() -> finishMove(true)).start();
+                    return true;
+            }
+            return false;
+        });
     }
 
-    private void moveQuickLaunchItemRight(String key) {
-        if (!quickLaunchManager.moveQuickLaunchItemRight(key)) {
-            Toast.makeText(activity, "Cannot move right", Toast.LENGTH_SHORT).show();
+    private int gap() {
+        return ApolloUi.dp(activity, CARD_GAP_DP);
+    }
+
+    // Swaps the moving card with its neighbor among the pinned games; animate slides the card too
+    private void moveBy(int direction, boolean animate) {
+        GameCardView card = movingCard;
+        int index = quickLaunchContainer.indexOfChild(card);
+        int target = index + direction;
+        if (card == null || target < 0 || target >= pinnedCount) {
+            return;
         }
+        View neighbor = quickLaunchContainer.getChildAt(target);
+        int cardLeft = card.getLeft();
+        int neighborLeft = neighbor.getLeft();
+
+        // The neighbor moves, so the focus stays on the card
+        quickLaunchContainer.removeView(neighbor);
+        quickLaunchContainer.addView(neighbor, index);
+        for (int i = 0; i < quickLaunchContainer.getChildCount(); i++) {
+            ((LinearLayout.LayoutParams) quickLaunchContainer.getChildAt(i).getLayoutParams()).leftMargin = i > 0 ? gap() : 0;
+        }
+
+        // Once laid out, each slides from where it was
+        quickLaunchContainer.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
+            @Override
+            public boolean onPreDraw() {
+                quickLaunchContainer.getViewTreeObserver().removeOnPreDrawListener(this);
+                slideFrom(neighbor, neighborLeft - neighbor.getLeft());
+                if (animate) {
+                    slideFrom(card, cardLeft - card.getLeft());
+                }
+                card.requestRectangleOnScreen(new Rect(0, 0, card.getWidth(), card.getHeight()));
+                return true;
+            }
+        });
+    }
+
+    private static void slideFrom(View view, int offset) {
+        view.animate().cancel();
+        view.setTranslationX(view.getTranslationX() + offset);
+        view.animate().translationX(0).setDuration(ApolloMotion.MEDIUM)
+                .setInterpolator(ApolloMotion.EMPHASIZED_DECELERATE).start();
+    }
+
+    /** Ends the reordering: keeps the new order, or puts the cards back as they were */
+    public boolean finishMove(boolean keep) {
+        if (movingCard == null) {
+            return false;
+        }
+        List<String> order = new ArrayList<>();
+        for (int i = 0; i < pinnedCount; i++) {
+            order.add(pinnedKeys.get(quickLaunchContainer.getChildAt(i)));
+        }
+        boolean refocus = movingCard.hasFocus();
+        Object movedTag = movingCard.getTag();
+        movingCard = null;
+        reloadPending = false;
+        setSectionTitle(R.string.apollo_section_quick_launch);
+
+        // The row is built again, without the lift and the fade
+        shownSignature = null;
+        if (keep) {
+            quickLaunchManager.setOrder(order);
+        }
+        loadQuickLaunchButtons();
+        View card = quickLaunchContainer.findViewWithTag(movedTag);
+        if (refocus && card != null) {
+            card.requestFocus();
+        }
+        callback.onQuickLaunchHintsChanged();
+        return true;
+    }
+
+    private void setSectionTitle(int textRes) {
+        TextView title = quickLaunchSection.findViewById(R.id.quickLaunchTitle);
+        title.animate().cancel();
+        title.animate().alpha(0).setDuration(ApolloMotion.SHORT).setInterpolator(ApolloMotion.STANDARD)
+                .withEndAction(() -> {
+                    title.setText(textRes);
+                    title.animate().alpha(1).setDuration(ApolloMotion.SHORT).setInterpolator(ApolloMotion.STANDARD).start();
+                }).start();
     }
 
     private QuickLaunchManager.QuickLaunchItem getQuickLaunchItemByKey(String key) {

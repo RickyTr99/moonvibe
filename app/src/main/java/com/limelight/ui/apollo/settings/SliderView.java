@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.graphics.Typeface;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -21,11 +22,15 @@ public class SliderView extends View {
         void onSliderReleased(int value);
     }
 
+    private static final float STICK_RADIUS_DP = 12;
+
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint stickPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rect = new RectF();
     private final ApolloColors colors;
     private int min, max, step, value;
     private Listener listener;
+    private String stickLetter;
 
     public SliderView(Context context, ApolloColors colors) {
         super(context);
@@ -61,25 +66,60 @@ public class SliderView extends View {
         setMeasuredDimension(width, height);
     }
 
+    /**
+     * Draws the handle as the top of a gamepad stick with its letter ("L" or "R"), for a slider moved
+     * by that stick; null for the usual thin handle.
+     */
+    public void setStickHandle(String letter) {
+        stickLetter = letter;
+        invalidate();
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         float w = getWidth(), h = getHeight();
         float cy = h / 2;
-        // Material 3 track: thick and rounded, split by a tall thin handle
+        // Material 3 track: thick and rounded, split by a tall thin handle (or the round stick)
         float track = dp(12);
-        float handleW = dp(4), handleH = dp(32);
+        float handleW = stickLetter != null ? dp(STICK_RADIUS_DP * 2) : dp(4);
+        float handleH = dp(32);
+        float gap = stickLetter != null ? handleW / 2 + dp(4) : dp(6);
         float fraction = (value - min) / (float) (max - min);
         float x = handleW / 2 + fraction * (w - handleW);
 
         // Inactive part, then active part, with a gap around the handle as in Material 3
         paint.setColor(colors.surfaceContainerHighest);
-        rect.set(Math.min(x + dp(6), w), cy - track / 2, w, cy + track / 2);
-        canvas.drawRoundRect(rect, track / 2, track / 2, paint);
+        rect.set(Math.min(x + gap, w), cy - track / 2, w, cy + track / 2);
+        if (rect.width() > 0) {
+            canvas.drawRoundRect(rect, track / 2, track / 2, paint);
+        }
         paint.setColor(colors.primary);
-        rect.set(0, cy - track / 2, Math.max(x - dp(6), 0), cy + track / 2);
-        canvas.drawRoundRect(rect, track / 2, track / 2, paint);
-        rect.set(x - handleW / 2, cy - handleH / 2, x + handleW / 2, cy + handleH / 2);
-        canvas.drawRoundRect(rect, handleW / 2, handleW / 2, paint);
+        rect.set(0, cy - track / 2, Math.max(x - gap, 0), cy + track / 2);
+        if (rect.width() > 0) {
+            canvas.drawRoundRect(rect, track / 2, track / 2, paint);
+        }
+
+        if (stickLetter == null) {
+            rect.set(x - handleW / 2, cy - handleH / 2, x + handleW / 2, cy + handleH / 2);
+            canvas.drawRoundRect(rect, handleW / 2, handleW / 2, paint);
+            return;
+        }
+
+        // The stick seen from above: a round cap with a ring for the grip and the letter in the middle
+        float radius = handleW / 2;
+        canvas.drawCircle(x, cy, radius, paint);
+        stickPaint.setStyle(Paint.Style.STROKE);
+        stickPaint.setStrokeWidth(dp(1.5f));
+        stickPaint.setColor(colors.onPrimary);
+        stickPaint.setAlpha(110);
+        canvas.drawCircle(x, cy, radius - dp(3.5f), stickPaint);
+        stickPaint.setStyle(Paint.Style.FILL);
+        stickPaint.setAlpha(255);
+        stickPaint.setTextSize(dp(10));
+        stickPaint.setTextAlign(Paint.Align.CENTER);
+        stickPaint.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        Paint.FontMetrics metrics = stickPaint.getFontMetrics();
+        canvas.drawText(stickLetter, x, cy - (metrics.ascent + metrics.descent) / 2, stickPaint);
     }
 
     private int valueAt(float x) {

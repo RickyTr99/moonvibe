@@ -91,7 +91,7 @@ public class GameMenu implements GameMenuView.Listener {
                 new QuickAction(KeyEvent.KEYCODE_BUTTON_X, getString(R.string.game_menu_quit_session),
                         game::quitSessionFromMenu).holdToConfirm().shortLabel(getString(R.string.game_menu_short_quit)),
                 new QuickAction(KeyEvent.KEYCODE_BUTTON_Y, getString(R.string.game_menu_stats),
-                        game::toggleStatsOverlay).keepOpen().active(game::isStatsOverlayVisible)
+                        game::toggleStatsOverlay).active(game::isStatsOverlayVisible)
                         .shortLabel(getString(R.string.game_menu_short_stats)),
                 new QuickAction(KeyEvent.KEYCODE_BUTTON_START, getString(R.string.game_menu_key_game_bar),
                         this::openGameBar).shortLabel(getString(R.string.game_menu_short_game_bar)),

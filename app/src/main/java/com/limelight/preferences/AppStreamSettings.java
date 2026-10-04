@@ -88,13 +88,7 @@ public class AppStreamSettings extends Activity {
         hintRow.setFallback(HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_back));
 
         // Keep the content clear of a notch, the window draws under it
-        findViewById(R.id.settingsColumn).setOnApplyWindowInsetsListener((v, insets) -> {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && insets.getDisplayCutout() != null) {
-                v.setPadding(insets.getDisplayCutout().getSafeInsetLeft(), 0,
-                        insets.getDisplayCutout().getSafeInsetRight(), 0);
-            }
-            return insets;
-        });
+        ApolloUi.padForCutout(findViewById(R.id.settingsColumn));
     }
 
     @Override

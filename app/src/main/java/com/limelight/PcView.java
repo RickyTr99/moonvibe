@@ -162,14 +162,7 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
         topBar.onResume();
 
         // Keep the content clear of a notch, the window draws under it
-        View column = findViewById(R.id.homeColumn);
-        column.setOnApplyWindowInsetsListener((v, insets) -> {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && insets.getDisplayCutout() != null) {
-                v.setPadding(insets.getDisplayCutout().getSafeInsetLeft(), 0,
-                        insets.getDisplayCutout().getSafeInsetRight(), 0);
-            }
-            return insets;
-        });
+        ApolloUi.padForCutout(findViewById(R.id.homeColumn));
 
         // Initialize Quick Launch component
         LinearLayout quickLaunchSection = findViewById(R.id.quickLaunchSection);
@@ -300,6 +293,13 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
     @Override
     public void onQuickLaunchChanged() {
         updateDefaultFocus();
+    }
+
+    @Override
+    public void onQuickLaunchHintsChanged() {
+        if (hintRow != null) {
+            hintRow.refresh();
+        }
     }
 
     // A gamepad starts from the first game of the quick launch row, or the first PC without one
@@ -485,8 +485,11 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
             }
         }
 
-        actions.add(new ActionSheet.Action(R.drawable.ic_apollo_network,
-                getString(R.string.apollo_action_test_network), () -> runComputerAction(TEST_NETWORK_ID, computer)));
+        // Link, latency to the PC (when it is on) and the ports for streaming away from home
+        ComputerDetails.AddressTuple address = offline ? null : computer.activeAddress;
+        actions.add(new ActionSheet.Action(R.drawable.ic_apollo_network, getString(R.string.apollo_action_test_connection),
+                () -> NetworkTestActivity.start(this, computer.name, address != null ? address.address : null,
+                        address != null ? address.port : 0)));
         actions.add(new ActionSheet.Action(R.drawable.ic_apollo_info,
                 getString(R.string.apollo_action_details), () -> runComputerAction(VIEW_DETAILS_ID, computer)));
         actions.add(new ActionSheet.Action(R.drawable.ic_apollo_delete,
@@ -947,7 +950,8 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
 
     @Override
     public void onBackPressed() {
-        if (ActionSheet.of(this).dismiss() || QuickSettingsPanel.of(this).dismiss()) {
+        if (ActionSheet.of(this).dismiss() || QuickSettingsPanel.of(this).dismiss()
+                || (quickLaunchView != null && quickLaunchView.finishMove(false))) {
             return;
         }
         super.onBackPressed();
