@@ -122,7 +122,8 @@ public class GameMenu implements GameMenuView.Listener {
                                 brightness.setPercent(value);
                             }
                         }, brightness::isAuto, () -> brightness.setAuto(!brightness.isAuto()))
-                        .activeText(getString(R.string.game_menu_brightness_auto)),
+                        .activeText(getString(R.string.game_menu_brightness_auto))
+                        .soloWhileAdjusting(),
                 new QuickSlider(true, R.drawable.ic_overlay_volume, R.drawable.ic_overlay_volume_mute,
                         getString(R.string.game_menu_volume), getString(R.string.game_menu_mute),
                         0, new QuickSlider.Value() {

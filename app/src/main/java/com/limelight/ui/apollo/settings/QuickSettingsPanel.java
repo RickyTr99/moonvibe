@@ -37,7 +37,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Quick settings, dropping down from the status pill of the top bar (Start on a gamepad): shortcuts to
+ * Quick settings, dropping down from the status in the top bar (Start on a gamepad): shortcuts to
  * the settings changed most often. They write the very same settings as the settings screen.
  */
 public class QuickSettingsPanel extends FrameLayout {
@@ -117,7 +117,8 @@ public class QuickSettingsPanel extends FrameLayout {
         HintRow hints = new HintRow(context, colors, Gravity.START);
         hints.setPadding(dp(14), 0, dp(14), 0);
         panel.addView(hints, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(30)));
-        hints.setScope(panel);
+        // The whole overlay, so the options menu over the panel shows its own hints here
+        hints.setScope(this);
         buildRows();
     }
 
@@ -432,7 +433,7 @@ public class QuickSettingsPanel extends FrameLayout {
         return ((Activity) getContext()).findViewById(R.id.apollo_quick_settings_anchor);
     }
 
-    // Right under the status pill of the top bar, its right edges lined up
+    // Right under the status in the top bar, its right edges lined up
     private void placeUnderAnchor() {
         int top = dp(56), right = dp(16);
         View anchor = anchor();
@@ -485,7 +486,7 @@ public class QuickSettingsPanel extends FrameLayout {
         setVisibility(VISIBLE);
         setAnchorOpen(true);
 
-        // It unfolds from the pill, at its top right corner
+        // It unfolds from the status button, at its top right corner
         panel.animate().cancel();
         scrim.animate().cancel();
         panel.setPivotX(dp(WIDTH_DP));

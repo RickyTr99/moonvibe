@@ -25,8 +25,8 @@ import com.limelight.ui.theme.SystemBars;
 
 /**
  * Top bar of the app screens: the name on the left, the tabs in the middle (LB/RB on a gamepad)
- * with a short mark under the selected one, and on the right the device status in a pill with a
- * small tab under it, which opens the quick settings under itself (Start on a gamepad).
+ * with a short mark under the selected one, and on the right the device status on a light veil with
+ * a small arrow, which opens the quick settings under itself (Start on a gamepad).
  */
 public class ApolloTopBar extends FrameLayout {
     public interface TabListener {
@@ -37,13 +37,14 @@ public class ApolloTopBar extends FrameLayout {
     private static final int INDICATOR_HEIGHT_DP = 4;
 
     private final ApolloColors colors;
+    // The veil behind the status, a bit lighter while the quick settings are open
+    private static final int VEIL_ALPHA = 0x10;
+    private static final int VEIL_OPEN_ALPHA = 0x29;
+
     private final LinearLayout quickSettingsButton;
-    private final FrameLayout statusPill;
-    private final ImageView pillArrow;
-    private final View pillTab;
-    private final ImageView pillTabArrow;
-    private final GradientDrawable pillBackground;
-    private final GradientDrawable tabBackground;
+    private final ImageView arrow;
+    private final LinearLayout.LayoutParams arrowParams;
+    private final GradientDrawable buttonBackground;
     private final LinearLayout tabs;
     private final View tabIndicator;
     private boolean switching;
@@ -79,7 +80,7 @@ public class ApolloTopBar extends FrameLayout {
     public ApolloTopBar(Context context, ApolloColors colors) {
         super(context);
         this.colors = colors;
-        setPadding(dp(24), 0, dp(16), 0);
+        setPadding(dp(24), 0, dp(12), 0);
         setMinimumHeight(dp(52));
 
         // "Moon" in white, "Vibe" in the accent color
@@ -95,7 +96,8 @@ public class ApolloTopBar extends FrameLayout {
         LinearLayout center = new LinearLayout(context);
         center.setOrientation(LinearLayout.HORIZONTAL);
         center.setGravity(Gravity.CENTER_VERTICAL);
-        addView(center, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT, Gravity.CENTER));
+        // The whole height of the bar, so the mark sits under the tab names and not over them
+        addView(center, new LayoutParams(LayoutParams.WRAP_CONTENT, dp(52), Gravity.CENTER));
 
         leftBumper = shoulderChip("LB", -1);
         center.addView(leftBumper, new LinearLayout.LayoutParams(dp(36), dp(24)));
@@ -118,50 +120,42 @@ public class ApolloTopBar extends FrameLayout {
         center.addView(rightBumper, new LinearLayout.LayoutParams(dp(36), dp(24)));
         updateBumpers();
 
-        // The status pill with its small tab under it: one button that opens the quick settings
+        // The status on a light fixed veil with a small arrow after it: one button that opens the quick settings
         quickSettingsButton = new LinearLayout(context);
         quickSettingsButton.setId(R.id.apollo_quick_settings_anchor);
-        quickSettingsButton.setOrientation(LinearLayout.VERTICAL);
-        quickSettingsButton.setGravity(Gravity.CENTER_HORIZONTAL);
-        quickSettingsButton.setPadding(0, dp(6), 0, 0);
+        quickSettingsButton.setOrientation(LinearLayout.HORIZONTAL);
+        quickSettingsButton.setGravity(Gravity.CENTER_VERTICAL);
+        quickSettingsButton.setMinimumWidth(dp(40));
+        buttonBackground = ApolloUi.roundRect(veil(VEIL_ALPHA), dp(ApolloUi.ROW_RADIUS_DP));
+        quickSettingsButton.setBackground(buttonBackground);
         // The top bar is for touch, a gamepad has Start for this and LB/RB for the tabs
         quickSettingsButton.setFocusable(false);
         quickSettingsButton.setClickable(true);
         quickSettingsButton.setContentDescription(context.getString(R.string.apollo_quick_settings));
-        addView(quickSettingsButton, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT, Gravity.END));
+        addView(quickSettingsButton, new LayoutParams(LayoutParams.WRAP_CONTENT, dp(40), Gravity.END | Gravity.CENTER_VERTICAL));
 
-        statusPill = new FrameLayout(context);
-        pillBackground = ApolloUi.roundRect(colors.surfaceContainer, dp(16));
-        statusPill.setBackground(pillBackground);
-        statusPill.setMinimumWidth(dp(32));
         status = new StatusRowView(context, colors, false);
-        status.setPadding(dp(14), 0, dp(14), 0);
-        statusPill.addView(status, new FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT, Gravity.CENTER));
-        // Without the status (system bars shown) the pill keeps just the arrow
-        pillArrow = new ImageView(context);
-        pillArrow.setImageResource(R.drawable.ic_apollo_expand);
-        pillArrow.setImageTintList(ColorStateList.valueOf(colors.onSurfaceVariant));
-        pillArrow.setVisibility(GONE);
-        statusPill.addView(pillArrow, new FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER));
-        quickSettingsButton.addView(statusPill, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(32)));
-
-        // The tab under the pill says it pulls down
-        FrameLayout tab = new FrameLayout(context);
-        tabBackground = new GradientDrawable();
-        tabBackground.setColor(colors.surfaceContainer);
-        float r = dp(10);
-        tabBackground.setCornerRadii(new float[] {0, 0, 0, 0, r, r, r, r});
-        tab.setBackground(tabBackground);
-        ImageView tabArrow = new ImageView(context);
-        tabArrow.setImageResource(R.drawable.ic_apollo_expand);
-        tabArrow.setImageTintList(ColorStateList.valueOf(colors.onSurfaceVariant));
-        tabArrow.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        tab.addView(tabArrow, new FrameLayout.LayoutParams(dp(16), dp(16), Gravity.CENTER_HORIZONTAL | Gravity.TOP));
-        pillTab = tab;
-        pillTabArrow = tabArrow;
-        LinearLayout.LayoutParams tabParams = new LinearLayout.LayoutParams(dp(36), dp(14));
-        quickSettingsButton.addView(tab, tabParams);
+        quickSettingsButton.addView(status, new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT));
+        arrow = new ImageView(context);
+        arrow.setImageResource(R.drawable.ic_apollo_expand);
+        arrow.setImageTintList(ColorStateList.valueOf(colors.onSurfaceVariant));
+        arrow.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        arrowParams = new LinearLayout.LayoutParams(dp(18), dp(18));
+        quickSettingsButton.addView(arrow, arrowParams);
+        showStatus(true);
         ApolloUi.pressFeedback(quickSettingsButton);
+    }
+
+    private int veil(int alpha) {
+        return (colors.onSurface & 0x00FFFFFF) | (alpha << 24);
+    }
+
+    // Without the status (system bars shown) the button keeps just the arrow
+    private void showStatus(boolean show) {
+        status.setVisibility(show ? VISIBLE : GONE);
+        arrowParams.leftMargin = show ? dp(6) : 0;
+        arrow.setLayoutParams(arrowParams);
+        quickSettingsButton.setPadding(show ? dp(12) : dp(11), 0, show ? dp(8) : dp(11), 0);
     }
 
     private int dp(float value) {
@@ -204,24 +198,18 @@ public class ApolloTopBar extends FrameLayout {
         quickSettingsButton.setOnClickListener(listener);
     }
 
-    /** The pill takes the color of a selected item while the quick settings are open under it. */
+    /** The veil gets lighter and the arrow turns while the quick settings are open under it. */
     public void setQuickSettingsOpen(boolean open) {
         if (open == quickSettingsOpen) {
             return;
         }
         quickSettingsOpen = open;
-        int from = open ? colors.surfaceContainer : colors.secondaryContainer;
-        int to = open ? colors.secondaryContainer : colors.surfaceContainer;
-        ValueAnimator fade = ValueAnimator.ofArgb(from, to);
+        ValueAnimator fade = ValueAnimator.ofArgb(veil(open ? VEIL_ALPHA : VEIL_OPEN_ALPHA), veil(open ? VEIL_OPEN_ALPHA : VEIL_ALPHA));
         fade.setDuration(ApolloMotion.MEDIUM);
         fade.setInterpolator(ApolloMotion.STANDARD);
-        fade.addUpdateListener(a -> {
-            int color = (int) a.getAnimatedValue();
-            pillBackground.setColor(color);
-            tabBackground.setColor(color);
-        });
+        fade.addUpdateListener(a -> buttonBackground.setColor((int) a.getAnimatedValue()));
         fade.start();
-        pillTabArrow.animate().rotation(open ? 180 : 0).setDuration(ApolloMotion.MEDIUM)
+        arrow.animate().rotation(open ? 180 : 0).setDuration(ApolloMotion.MEDIUM)
                 .setInterpolator(ApolloMotion.STANDARD).start();
     }
 
@@ -376,11 +364,9 @@ public class ApolloTopBar extends FrameLayout {
             }
         }
 
-        // The status duplicates the system bar, so it only shows in full screen: the pill keeps an arrow
+        // The status duplicates the system bar, so it only shows in full screen
         boolean fullscreen = SystemBars.isFullscreen(getContext());
-        status.setVisibility(fullscreen ? VISIBLE : GONE);
-        pillArrow.setVisibility(fullscreen ? GONE : VISIBLE);
-        pillTab.setVisibility(fullscreen ? VISIBLE : INVISIBLE);
+        showStatus(fullscreen);
         if (fullscreen) {
             status.start();
         } else {

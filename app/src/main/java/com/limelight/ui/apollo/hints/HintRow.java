@@ -185,22 +185,26 @@ public class HintRow extends LinearLayout implements InputMode.Listener {
 
     private void updateVisibility(boolean animate) {
         // Like LB/RB in the top bar: shown whenever a gamepad is connected, touch or not
-        boolean show = InputMode.isGamepadConnected() && shown != null && !shown.isEmpty();
-        if (show == visible && animate) {
+        boolean connected = InputMode.isGamepadConnected();
+        boolean show = connected && shown != null && !shown.isEmpty();
+        // Without a gamepad the row gives its height back to the screen content (touch-only phones); with one
+        // it keeps its place while it has nothing to say (the focus in a panel or menu over it), or the
+        // screen under it would grow and shrink
+        int hiddenVisibility = connected ? INVISIBLE : GONE;
+        if (show == visible && animate && (show || getVisibility() == hiddenVisibility)) {
             return;
         }
         visible = show;
         animate().cancel();
-        // Hidden, the row gives its height back to the screen content (touch-only phones)
         if (show) {
             setVisibility(VISIBLE);
         }
-        if (animate) {
+        if (animate && getVisibility() == VISIBLE) {
             animate().alpha(show ? 1f : 0f).setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD)
-                    .withEndAction(show ? null : () -> setVisibility(GONE)).start();
+                    .withEndAction(show ? null : () -> setVisibility(visible ? VISIBLE : hiddenVisibility)).start();
         } else {
             setAlpha(show ? 1f : 0f);
-            setVisibility(show ? VISIBLE : GONE);
+            setVisibility(show ? VISIBLE : hiddenVisibility);
         }
     }
 }

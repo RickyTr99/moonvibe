@@ -170,7 +170,17 @@ public class SettingsView extends FrameLayout {
         content.addView(categoryScroll, new LinearLayout.LayoutParams(dp(218), ViewGroup.LayoutParams.MATCH_PARENT));
         categoryScroll.setVisibility(singlePage ? GONE : VISIBLE);
 
-        rowScroll = new ScrollView(activity);
+        rowScroll = new ScrollView(activity) {
+            @Override
+            public void requestChildFocus(View child, View focused) {
+                super.requestChildFocus(child, focused);
+                // Back on the first row the page scrolls to its very top, or the category title above it
+                // (which takes no focus) stays out of sight
+                if (isFirstRow(focused) && getScrollY() > 0) {
+                    smoothScrollTo(0, 0);
+                }
+            }
+        };
         rowScroll.setVerticalScrollBarEnabled(false);
         rowScroll.setBackground(ApolloUi.roundRect(colors.surfaceContainerLow, dp(20)));
         rowScroll.setClipToOutline(true);
@@ -187,6 +197,23 @@ public class SettingsView extends FrameLayout {
 
     private int dp(float value) {
         return ApolloUi.dp(getContext(), value);
+    }
+
+    // Whether the view is, or is inside, the first row of the page that can take the focus
+    private boolean isFirstRow(View view) {
+        while (view != null && view.getParent() != rowList) {
+            view = view.getParent() instanceof View ? (View) view.getParent() : null;
+        }
+        if (view == null) {
+            return false;
+        }
+        for (int i = 0; i < rowList.getChildCount(); i++) {
+            View row = rowList.getChildAt(i);
+            if (row.getVisibility() == VISIBLE && row.isFocusable()) {
+                return row == view;
+            }
+        }
+        return false;
     }
 
     /**

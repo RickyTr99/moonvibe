@@ -70,6 +70,9 @@ public class GameMenuView extends FrameLayout {
     // Speed of a slider with the stick fully tilted
     private static final float SLIDER_STICK_PERCENT_PER_SECOND = 40f;
     private static final long SLIDER_STICK_TICK_MS = 16;
+    // Room around the lone slider shown over the stream, and how long it stays after the last move
+    private static final int SOLO_PADDING_DP = 12;
+    private static final long SOLO_LINGER_MS = 700;
 
     private static final int COLOR_SCRIM = 0x52000000;
     private static final int COLOR_RIPPLE = 0x33FFFFFF;
@@ -149,6 +152,8 @@ public class GameMenuView extends FrameLayout {
         final Runnable toggle;
         // Shown instead of the value while the button is on
         String activeText;
+        // While it is being adjusted the menu steps aside and leaves only this slider over the stream
+        boolean solo;
 
         public QuickSlider(boolean rightStick, int iconResId, int activeIconResId, String name, String buttonDescription,
                            int min, Value value, Toggle active, Runnable toggle) {
@@ -165,6 +170,12 @@ public class GameMenuView extends FrameLayout {
 
         public QuickSlider activeText(String activeText) {
             this.activeText = activeText;
+            return this;
+        }
+
+        /** For the brightness: the stream shows without the menu and its dimming while the slider moves. */
+        public QuickSlider soloWhileAdjusting() {
+            this.solo = true;
             return this;
         }
     }
@@ -274,6 +285,7 @@ public class GameMenuView extends FrameLayout {
     // A quick slider and the views that follow its value
     private static class SliderRow {
         final QuickSlider slider;
+        View container;
         final SliderView view;
         final TextView value;
         final ImageView icon;
@@ -345,6 +357,14 @@ public class GameMenuView extends FrameLayout {
     private final List<SliderRow> sliderRows = new ArrayList<>();
     private long lastStickTick;
     private boolean stickTickerRunning;
+    // The lone slider shown over the stream while a solo slider is adjusted
+    private LinearLayout soloCard;
+    private ImageView soloIcon;
+    private SliderView soloSlider;
+    private TextView soloValue;
+    private SliderRow soloRow;
+    private boolean soloExitPending;
+    private final Runnable soloExit = this::exitSolo;
     private final Runnable stickTicker = this::moveSlidersWithSticks;
     private final List<Row> rows = new ArrayList<>();
     private int currentTab = 0;
@@ -470,6 +490,7 @@ public class GameMenuView extends FrameLayout {
         panelFrame.addView(dropdownCard, new LayoutParams(dp(200), LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END));
 
         addView(createDialogLayer(context), new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        createSoloCard(context);
     }
 
     // ---- Building blocks ----
@@ -743,6 +764,7 @@ public class GameMenuView extends FrameLayout {
         panelFrame.getLayoutParams().width = width;
 
         closing = false;
+        resetSolo();
         // Without a gamepad the button symbols mean nothing: icons stand in for them
         padConnected = InputMode.isGamepadConnected();
         updateDialogBadges();
@@ -784,6 +806,14 @@ public class GameMenuView extends FrameLayout {
         closing = true;
         cancelHold(false);
         stopSliderSticks();
+        // Closed while only the slider shows: it fades with the dimming, the hidden panel needs no slide
+        if (soloRow != null) {
+            removeCallbacks(soloExit);
+            soloExitPending = false;
+            soloRow = null;
+            soloCard.animate().cancel();
+            soloCard.animate().alpha(0).setDuration(ApolloMotion.SHORT).setInterpolator(ApolloMotion.STANDARD).start();
+        }
         hideDropdown(false);
         dialogConfirm = null;
         dialogLayer.animate().cancel();
@@ -993,6 +1023,7 @@ public class GameMenuView extends FrameLayout {
         view.addView(value, new LinearLayout.LayoutParams(dp(44), LinearLayout.LayoutParams.WRAP_CONTENT));
 
         SliderRow row = new SliderRow(slider, sliderView, value, icon, buttonBackground);
+        row.container = view;
         sliderRows.add(row);
         updateSliderRow(row, false);
 
@@ -1006,11 +1037,13 @@ public class GameMenuView extends FrameLayout {
             @Override
             public void onSliderMoved(int value) {
                 setSliderValue(row, value);
+                holdSolo(row);
             }
 
             @Override
             public void onSliderReleased(int value) {
                 setSliderValue(row, value);
+                releaseSolo();
             }
         });
         return view;
@@ -1021,6 +1054,115 @@ public class GameMenuView extends FrameLayout {
         row.view.setValue(value);
         updateSliderButton(row, true);
         updateSliderText(row, value);
+        if (row == soloRow) {
+            soloSlider.setValue(value);
+            soloValue.setText(row.value.getText());
+        }
+    }
+
+    // ---- Solo slider ----
+
+    // The same layout as a slider row (button, slider, value) on a card, so laid over the row the track
+    // stays right under the finger
+    private void createSoloCard(Context context) {
+        soloCard = new LinearLayout(context);
+        soloCard.setOrientation(LinearLayout.HORIZONTAL);
+        soloCard.setGravity(Gravity.CENTER_VERTICAL);
+        soloCard.setPadding(dp(SOLO_PADDING_DP), 0, dp(SOLO_PADDING_DP), 0);
+        soloCard.setBackground(roundRect(colors.surfaceContainer, dp(28)));
+        soloCard.setAlpha(0);
+        soloCard.setVisibility(GONE);
+
+        FrameLayout iconFrame = new FrameLayout(context);
+        soloIcon = icon(R.drawable.ic_menu_brightness_auto, colors.onSurfaceVariant, 20);
+        iconFrame.addView(soloIcon, new LayoutParams(dp(20), dp(20), Gravity.CENTER));
+        soloCard.addView(iconFrame, new LinearLayout.LayoutParams(dp(40), dp(40)));
+
+        soloSlider = new SliderView(context, colors);
+        // Only shows the value: the finger still drags the slider of the menu under it
+        soloSlider.setEnabled(false);
+        LinearLayout.LayoutParams sliderParams = new LinearLayout.LayoutParams(0, dp(40), 1);
+        sliderParams.leftMargin = dp(10);
+        soloCard.addView(soloSlider, sliderParams);
+
+        soloValue = text("", 13, colors.onSurface, true);
+        soloValue.setGravity(Gravity.END);
+        soloValue.setSingleLine(true);
+        soloCard.addView(soloValue, new LinearLayout.LayoutParams(dp(44), LinearLayout.LayoutParams.WRAP_CONTENT));
+        addView(soloCard, new LayoutParams(LayoutParams.WRAP_CONTENT, dp(40 + SOLO_PADDING_DP * 2)));
+    }
+
+    // The slider is being moved: the menu and its dimming fade out, the lone slider takes the row's place
+    private void holdSolo(SliderRow row) {
+        if (!row.slider.solo || !isOpen()) {
+            return;
+        }
+        removeCallbacks(soloExit);
+        soloExitPending = false;
+        if (soloRow == row) {
+            return;
+        }
+        soloRow = row;
+
+        int[] rowLocation = new int[2], ownLocation = new int[2];
+        row.container.getLocationInWindow(rowLocation);
+        getLocationInWindow(ownLocation);
+        LayoutParams params = (LayoutParams) soloCard.getLayoutParams();
+        params.width = row.container.getWidth() + dp(SOLO_PADDING_DP) * 2;
+        params.leftMargin = rowLocation[0] - ownLocation[0] - dp(SOLO_PADDING_DP);
+        params.topMargin = rowLocation[1] - ownLocation[1] + (row.container.getHeight() - dp(40)) / 2 - dp(SOLO_PADDING_DP);
+        soloCard.setLayoutParams(params);
+        soloIcon.setImageResource(row.slider.active.isOn() ? row.slider.activeIconResId : row.slider.iconResId);
+        soloSlider.setRange(row.slider.min, 100, 1);
+        soloSlider.setValue(row.slider.value.get());
+        soloValue.setText(row.value.getText());
+
+        soloCard.animate().cancel();
+        panelFrame.animate().cancel();
+        scrim.animate().cancel();
+        soloCard.bringToFront();
+        soloCard.setVisibility(VISIBLE);
+        soloCard.animate().alpha(1).setDuration(ApolloMotion.SHORT).setInterpolator(ApolloMotion.STANDARD).start();
+        panelFrame.animate().alpha(0).setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
+        scrim.animate().alpha(0).setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
+    }
+
+    // Moving has stopped: the menu comes back after a short look at the result
+    private void releaseSolo() {
+        if (soloRow != null && !soloExitPending) {
+            soloExitPending = true;
+            postDelayed(soloExit, SOLO_LINGER_MS);
+        }
+    }
+
+    private void exitSolo() {
+        soloExitPending = false;
+        if (soloRow == null) {
+            return;
+        }
+        soloRow = null;
+        if (!isOpen()) {
+            return;
+        }
+        soloCard.animate().alpha(0).setDuration(ApolloMotion.SHORT).setInterpolator(ApolloMotion.STANDARD)
+                .withEndAction(() -> {
+                    if (soloRow == null) {
+                        soloCard.setVisibility(GONE);
+                    }
+                }).start();
+        panelFrame.animate().alpha(1).setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
+        scrim.animate().alpha(1).setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
+    }
+
+    // Right away, for the menu opening or closing
+    private void resetSolo() {
+        removeCallbacks(soloExit);
+        soloExitPending = false;
+        soloRow = null;
+        soloCard.animate().cancel();
+        soloCard.setAlpha(0);
+        soloCard.setVisibility(GONE);
+        panelFrame.setAlpha(1);
     }
 
     // Reads the value and the state again, after the button or when the row is built
@@ -1108,6 +1250,7 @@ public class GameMenuView extends FrameLayout {
                 continue;
             }
             moving = true;
+            holdSolo(row);
             // Squared, so a slight tilt moves slowly enough for single steps
             float speed = (tilt - SLIDER_STICK_DEADZONE) / (1 - SLIDER_STICK_DEADZONE);
             speed *= speed;
@@ -1117,6 +1260,10 @@ public class GameMenuView extends FrameLayout {
             if (value != row.slider.value.get()) {
                 setSliderValue(row, value);
             }
+        }
+        // The stick of the lone slider is back in the middle
+        if (soloRow != null && Math.abs(soloRow.stick) <= SLIDER_STICK_DEADZONE) {
+            releaseSolo();
         }
         if (moving) {
             postDelayed(stickTicker, SLIDER_STICK_TICK_MS);
@@ -1131,6 +1278,7 @@ public class GameMenuView extends FrameLayout {
         for (SliderRow row : sliderRows) {
             row.stick = 0;
         }
+        releaseSolo();
     }
 
     // ---- Quick action buttons ----
