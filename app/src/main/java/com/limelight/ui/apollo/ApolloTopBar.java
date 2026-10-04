@@ -107,7 +107,7 @@ public class ApolloTopBar extends FrameLayout {
         addView(center, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT, Gravity.CENTER));
 
         leftBumper = shoulderChip("LB", -1);
-        center.addView(leftBumper);
+        center.addView(leftBumper, new LinearLayout.LayoutParams(dp(36), dp(24)));
         // The selected tab pill is a separate view that slides from tab to tab, as in the game menu
         FrameLayout tabsFrame = new FrameLayout(context);
         tabsFrame.setPadding(dp(5), dp(5), dp(5), dp(5));
@@ -123,7 +123,7 @@ public class ApolloTopBar extends FrameLayout {
         tabs.setOrientation(LinearLayout.HORIZONTAL);
         tabsFrame.addView(tabs, new FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, dp(40)));
         rightBumper = shoulderChip("RB", 1);
-        center.addView(rightBumper);
+        center.addView(rightBumper, new LinearLayout.LayoutParams(dp(36), dp(24)));
         updateBumpers();
 
         status = new StatusRowView(context, colors, false);
@@ -155,12 +155,11 @@ public class ApolloTopBar extends FrameLayout {
     }
 
     private TextView shoulderChip(String label, int direction) {
-        TextView chip = ApolloUi.text(getContext(), label, 12, colors.onSurfaceVariant, true);
+        TextView chip = ApolloUi.text(getContext(), label, 11, colors.onSurfaceVariant, true);
         chip.setGravity(Gravity.CENTER);
         // A little lower: the top edge of the bumper dips towards the inner side
-        chip.setPadding(dp(11), dp(4), dp(11), 0);
-        chip.setMinHeight(dp(29));
-        chip.setMinWidth(dp(44));
+        chip.setIncludeFontPadding(false);
+        chip.setPadding(0, dp(3), 0, 0);
         chip.setBackground(new BumperDrawable(colors.surfaceContainerHighest, direction < 0, getResources().getDisplayMetrics().density));
         chip.setOnClickListener(v -> switchTab(direction));
         chip.setFocusable(false);

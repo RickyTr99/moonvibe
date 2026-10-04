@@ -170,6 +170,8 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     private int requestedNotificationOverlayVisibility = View.GONE;
     private TextView performanceOverlayView;
     private BrightnessSliderView brightnessSliderView;
+    // A touch that started on the left edge and opened the brightness slider
+    private boolean brightnessEdgeTouch;
     private GameMenuView gameMenuView;
     private boolean isImeVisible = false;
     private boolean isAndroidTV = false;
@@ -2609,10 +2611,20 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             view.requestUnbufferedDispatch(event);
 
             // Check if touch is on the left edge to show brightness slider
-            if (brightnessSliderView.isTouchInActivationZone(event.getX())) {
+            if (prefConfig.brightnessEdgeSlider && brightnessSliderView.isTouchInActivationZone(event.getX())) {
                 brightnessSliderView.show();
+                brightnessEdgeTouch = true;
                 return true; // Consume the touch event to prevent game input
             }
+        }
+
+        // The rest of a touch that opened the brightness slider must not reach the host either
+        if (brightnessEdgeTouch) {
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                brightnessEdgeTouch = false;
+            }
+            return true;
         }
 
         return handleMotionEvent(view, event);
@@ -3176,8 +3188,16 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         return performanceOverlayView.getVisibility() == View.VISIBLE;
     }
 
+    // Screen brightness of the stream, shared by the game menu and the left edge slider
+    public BrightnessSliderView getBrightness() {
+        return brightnessSliderView;
+    }
+
     // fromGamepad shows the menu selection right away
     public void showGameMenu(boolean fromGamepad) {
+        // The Android keyboard is a window above ours and would cover the menu.
+        // Hiding it when it is not shown does nothing.
+        onKeyboardDismissRequest();
         gameMenu.show(fromGamepad);
     }
 

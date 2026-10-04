@@ -12,8 +12,8 @@ import com.limelight.ui.theme.ApolloColors;
 /**
  * Material 3 slider track drawn inline in a settings row. Touch drags it; the row moves it with the D-pad.
  */
-class SliderView extends View {
-    interface Listener {
+public class SliderView extends View {
+    public interface Listener {
         // While dragging
         void onSliderMoved(int value);
 
@@ -27,23 +27,23 @@ class SliderView extends View {
     private int min, max, step, value;
     private Listener listener;
 
-    SliderView(Context context, ApolloColors colors) {
+    public SliderView(Context context, ApolloColors colors) {
         super(context);
         this.colors = colors;
     }
 
-    void setRange(int min, int max, int step) {
+    public void setRange(int min, int max, int step) {
         this.min = min;
         this.max = Math.max(max, min + 1);
         this.step = Math.max(step, 1);
     }
 
-    void setValue(int value) {
+    public void setValue(int value) {
         this.value = Math.max(min, Math.min(max, value));
         invalidate();
     }
 
-    void setListener(Listener listener) {
+    public void setListener(Listener listener) {
         this.listener = listener;
     }
 

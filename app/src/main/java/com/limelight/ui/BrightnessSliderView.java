@@ -3,6 +3,7 @@ package com.limelight.ui;
 import android.app.Activity;
 import android.content.SharedPreferences;
 import android.os.Handler;
+import android.provider.Settings;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.SeekBar;
@@ -135,6 +136,58 @@ public class BrightnessSliderView {
                 brightnessValueText.setY(yPosition);
             }
         });
+    }
+
+    /**
+     * Whether the stream follows the system brightness
+     */
+    public boolean isAuto() {
+        return prefs.getFloat(BRIGHTNESS_KEY, -1.0f) < 0;
+    }
+
+    /**
+     * Brightness in percent (1-100). On auto, the current system level.
+     */
+    public int getPercent() {
+        float saved = prefs.getFloat(BRIGHTNESS_KEY, -1.0f);
+        if (saved >= 0) {
+            return Math.max(1, Math.min(100, Math.round(saved * 100)));
+        }
+        try {
+            int system = Settings.System.getInt(activity.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS);
+            return Math.max(1, Math.min(100, Math.round(system * 100 / 255f)));
+        } catch (Settings.SettingNotFoundException e) {
+            return 50;
+        }
+    }
+
+    /**
+     * Sets a manual brightness in percent (1-100), leaving auto
+     */
+    public void setPercent(int percent) {
+        percent = Math.max(1, Math.min(100, percent));
+        applyBrightness(percent / 100.0f);
+        brightnessSlider.setProgress(percent);
+    }
+
+    /**
+     * Switches between the system brightness and the last level shown
+     */
+    public void setAuto(boolean auto) {
+        if (auto) {
+            applyBrightness(-1.0f);
+            brightnessSlider.setProgress(0);
+        } else {
+            setPercent(getPercent());
+        }
+    }
+
+    // Applies and saves: -1 is auto, otherwise 0.01-1.0
+    private void applyBrightness(float brightness) {
+        WindowManager.LayoutParams params = activity.getWindow().getAttributes();
+        params.screenBrightness = brightness < 0 ? WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE : brightness;
+        activity.getWindow().setAttributes(params);
+        prefs.edit().putFloat(BRIGHTNESS_KEY, brightness).apply();
     }
 
     /**

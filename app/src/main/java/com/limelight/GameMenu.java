@@ -1,7 +1,9 @@
 package com.limelight;
 
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.SharedPreferences;
+import android.media.AudioManager;
 import android.preference.PreferenceManager;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -10,7 +12,9 @@ import com.limelight.preferences.CustomCommandEditorDialog;
 import com.limelight.ui.apollo.hints.InputMode;
 import com.limelight.ui.gamemenu.GameMenuView;
 import com.limelight.ui.gamemenu.GameMenuView.Item;
+import com.limelight.ui.BrightnessSliderView;
 import com.limelight.ui.gamemenu.GameMenuView.QuickAction;
+import com.limelight.ui.gamemenu.GameMenuView.QuickSlider;
 import com.limelight.ui.gamemenu.GameMenuView.Tab;
 import com.limelight.ui.overlay.CustomCommand;
 import com.limelight.ui.overlay.CustomCommand.KeyCombination;
@@ -36,11 +40,14 @@ public class GameMenu implements GameMenuView.Listener {
     private final Game game;
     private final GameMenuView view;
     private final CustomCommandsManager commandsManager;
+    private final AudioManager audio;
+    private int volumeBeforeMute;
     private AlertDialog currentDialog;
 
     public GameMenu(Game game, GameMenuView view) {
         this.game = game;
         this.view = view;
+        this.audio = (AudioManager) game.getSystemService(Context.AUDIO_SERVICE);
         this.commandsManager = new CustomCommandsManager(game);
         view.setListener(this);
     }
@@ -82,19 +89,85 @@ public class GameMenu implements GameMenuView.Listener {
                 new QuickAction(KeyEvent.KEYCODE_BUTTON_A, getString(R.string.game_menu_disconnect),
                         game::disconnectFromMenu),
                 new QuickAction(KeyEvent.KEYCODE_BUTTON_X, getString(R.string.game_menu_quit_session),
-                        game::quitSessionFromMenu).holdToConfirm(),
+                        game::quitSessionFromMenu).holdToConfirm().shortLabel(getString(R.string.game_menu_short_quit)),
                 new QuickAction(KeyEvent.KEYCODE_BUTTON_Y, getString(R.string.game_menu_stats),
-                        game::toggleStatsOverlay).keepOpen().active(game::isStatsOverlayVisible),
+                        game::toggleStatsOverlay).keepOpen().active(game::isStatsOverlayVisible)
+                        .shortLabel(getString(R.string.game_menu_short_stats)),
                 new QuickAction(KeyEvent.KEYCODE_BUTTON_START, getString(R.string.game_menu_key_game_bar),
-                        this::openGameBar),
+                        this::openGameBar).shortLabel(getString(R.string.game_menu_short_game_bar)),
                 new QuickAction(KeyEvent.KEYCODE_DPAD_UP, getString(R.string.game_menu_toggle_keyboard),
-                        game::toggleKeyboard),
+                        game::toggleKeyboard).shortLabel(getString(R.string.game_menu_short_keyboard)),
                 new QuickAction(KeyEvent.KEYCODE_DPAD_DOWN, getString(R.string.game_menu_toggle_full_keyboard),
-                        game::toggleFullKeyboard),
+                        game::toggleFullKeyboard).shortLabel(getString(R.string.game_menu_short_pc_keyboard)),
                 new QuickAction(KeyEvent.KEYCODE_DPAD_LEFT, getString(R.string.game_menu_key_switch_window),
-                        () -> sendKeys(SWITCH_WINDOW)),
+                        () -> sendKeys(SWITCH_WINDOW)).shortLabel(getString(R.string.game_menu_short_switch_window)),
                 new QuickAction(KeyEvent.KEYCODE_DPAD_RIGHT, getString(R.string.game_menu_key_show_desktop),
-                        () -> sendKeys(SHOW_DESKTOP)));
+                        () -> sendKeys(SHOW_DESKTOP)).shortLabel(getString(R.string.game_menu_short_desktop)));
+    }
+
+    @Override
+    public List<QuickSlider> buildQuickSliders() {
+        BrightnessSliderView brightness = game.getBrightness();
+        return Arrays.asList(
+                new QuickSlider(false, R.drawable.ic_menu_brightness_auto, R.drawable.ic_menu_brightness_auto,
+                        getString(R.string.game_menu_brightness), getString(R.string.game_menu_brightness_auto_description),
+                        1, new QuickSlider.Value() {
+                            @Override
+                            public int get() {
+                                return brightness.getPercent();
+                            }
+
+                            @Override
+                            public void set(int value) {
+                                brightness.setPercent(value);
+                            }
+                        }, brightness::isAuto, () -> brightness.setAuto(!brightness.isAuto()))
+                        .activeText(getString(R.string.game_menu_brightness_auto)),
+                new QuickSlider(true, R.drawable.ic_overlay_volume, R.drawable.ic_overlay_volume_mute,
+                        getString(R.string.game_menu_volume), getString(R.string.game_menu_mute),
+                        0, new QuickSlider.Value() {
+                            @Override
+                            public int get() {
+                                return Math.round(audio.getStreamVolume(AudioManager.STREAM_MUSIC) * 100f / maxVolume());
+                            }
+
+                            @Override
+                            public void set(int value) {
+                                setVolume(Math.round(value * maxVolume() / 100f));
+                            }
+                        }, this::isMuted, this::toggleMute));
+    }
+
+    // ---- Media volume of the device ----
+
+    private int maxVolume() {
+        return Math.max(1, audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
+    }
+
+    private void setVolume(int index) {
+        if (index == audio.getStreamVolume(AudioManager.STREAM_MUSIC)) {
+            return;
+        }
+        try {
+            // No flags: the menu shows the level itself
+            audio.setStreamVolume(AudioManager.STREAM_MUSIC, index, 0);
+        } catch (SecurityException e) {
+            // Do Not Disturb may refuse the change
+        }
+    }
+
+    private boolean isMuted() {
+        return audio.getStreamVolume(AudioManager.STREAM_MUSIC) == 0;
+    }
+
+    // Mute remembers the level, to give it back
+    private void toggleMute() {
+        if (isMuted()) {
+            setVolume(volumeBeforeMute > 0 ? volumeBeforeMute : Math.max(1, maxVolume() / 2));
+        } else {
+            volumeBeforeMute = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
+            setVolume(0);
+        }
     }
 
     @Override

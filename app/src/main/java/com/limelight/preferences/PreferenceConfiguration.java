@@ -78,6 +78,7 @@ public class PreferenceConfiguration {
     private static final String TOUCHSCREEN_TRACKPAD_PREF_STRING = "checkbox_touchscreen_trackpad";
     private static final String TOUCH_MODE_PREF_STRING = "list_touch_mode";
     private static final String MULTI_TOUCH_GESTURES_PREF_STRING = "checkbox_multi_touch_gestures";
+    private static final String BRIGHTNESS_EDGE_SLIDER_PREF_STRING = "checkbox_brightness_edge_slider";
     private static final String GESTURE_3_FINGER_PREF_STRING = "list_gesture_3_finger";
     private static final String GESTURE_4_FINGER_PREF_STRING = "list_gesture_4_finger";
     private static final String GESTURE_5_FINGER_PREF_STRING = "list_gesture_5_finger";
@@ -132,6 +133,7 @@ public class PreferenceConfiguration {
     private static final boolean DEFAULT_FLIP_FACE_BUTTONS = false;
     private static final boolean DEFAULT_TOUCHSCREEN_TRACKPAD = true;
     private static final boolean DEFAULT_MULTI_TOUCH_GESTURES = true;
+    private static final boolean DEFAULT_BRIGHTNESS_EDGE_SLIDER = false;
     private static final String DEFAULT_GESTURE_3_FINGER = "soft_keyboard";
     private static final String DEFAULT_GESTURE_4_FINGER = "full_keyboard";
     private static final String DEFAULT_GESTURE_5_FINGER = "game_menu";
@@ -214,6 +216,8 @@ public class PreferenceConfiguration {
     public boolean touchscreenTrackpad;
     public String touchMode;
     public boolean enableMultiTouchGestures;
+    // Touching the left edge shows the brightness slider (MoreOrLess); the game menu has it too
+    public boolean brightnessEdgeSlider;
     public String gesture3Finger;
     public String gesture4Finger;
     public String gesture5Finger;
@@ -753,6 +757,7 @@ public class PreferenceConfiguration {
         config.touchMode = prefs.getString(TOUCH_MODE_PREF_STRING, TOUCH_MODE_MULTI_TOUCH);
         config.touchscreenTrackpad = TOUCH_MODE_TRACKPAD.equals(config.touchMode);
         config.enableMultiTouchGestures = prefs.getBoolean(MULTI_TOUCH_GESTURES_PREF_STRING, DEFAULT_MULTI_TOUCH_GESTURES);
+        config.brightnessEdgeSlider = prefs.getBoolean(BRIGHTNESS_EDGE_SLIDER_PREF_STRING, DEFAULT_BRIGHTNESS_EDGE_SLIDER);
         config.gesture3Finger = readGestureAction(prefs, GESTURE_3_FINGER_PREF_STRING, DEFAULT_GESTURE_3_FINGER);
         config.gesture4Finger = readGestureAction(prefs, GESTURE_4_FINGER_PREF_STRING, DEFAULT_GESTURE_4_FINGER);
         config.gesture5Finger = readGestureAction(prefs, GESTURE_5_FINGER_PREF_STRING, DEFAULT_GESTURE_5_FINGER);

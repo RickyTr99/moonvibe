@@ -14,6 +14,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.os.Build;
+import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.TypedValue;
 import android.view.DisplayCutout;
@@ -34,9 +35,10 @@ import android.widget.Toast;
 
 import com.limelight.R;
 import com.limelight.ui.apollo.ApolloWidgets;
-import com.limelight.ui.apollo.hints.ButtonGlyph;
+import com.limelight.ui.apollo.BumperDrawable;
 import com.limelight.ui.apollo.hints.InputMode;
 import com.limelight.ui.apollo.StatusRowView;
+import com.limelight.ui.apollo.settings.SliderView;
 import com.limelight.ui.theme.ApolloBackground;
 import com.limelight.ui.theme.ApolloColors;
 import com.limelight.ui.theme.ApolloMotion;
@@ -59,7 +61,14 @@ public class GameMenuView extends FrameLayout {
     private static final float ANALOG_STICK_THRESHOLD = 0.5f;
     private static final long ANALOG_NAV_THROTTLE_MS = 200;
     private static final float PRESSED_SCALE = 0.96f;
-    private static final int TAB_SLIDE_DP = 24;
+    // No more than the side margin of the panel, so the sliding content never reaches the edge
+    private static final int TAB_SLIDE_DP = 10;
+    private static final int BUMPER_WIDTH_DP = 34;
+    private static final int BUMPER_HEIGHT_DP = 22;
+    private static final float SLIDER_STICK_DEADZONE = 0.2f;
+    // Speed of a slider with the stick fully tilted
+    private static final float SLIDER_STICK_PERCENT_PER_SECOND = 40f;
+    private static final long SLIDER_STICK_TICK_MS = 16;
 
     private static final int COLOR_SCRIM = 0x52000000;
     private static final int COLOR_RIPPLE = 0x33FFFFFF;
@@ -79,6 +88,8 @@ public class GameMenuView extends FrameLayout {
         final int keyCode;
         final String label;
         final Runnable action;
+        // Shown in the button, the full label stays for the confirmation dialog
+        String shortLabel;
         boolean keepOpen;
         boolean danger;
         boolean holdToConfirm;
@@ -88,6 +99,11 @@ public class GameMenuView extends FrameLayout {
             this.keyCode = keyCode;
             this.label = label;
             this.action = action;
+        }
+
+        public QuickAction shortLabel(String shortLabel) {
+            this.shortLabel = shortLabel;
+            return this;
         }
 
         // The menu stays open after the action and shows the new state
@@ -106,6 +122,48 @@ public class GameMenuView extends FrameLayout {
         public QuickAction holdToConfirm() {
             holdToConfirm = true;
             danger = true;
+            return this;
+        }
+    }
+
+    /**
+     * A slider at the top of the quick actions tab, moved by touch or by a gamepad stick,
+     * with a button on its left that toggles a state (automatic brightness, mute).
+     */
+    public static class QuickSlider {
+        public interface Value {
+            // 0-100
+            int get();
+            void set(int value);
+        }
+
+        final boolean rightStick;
+        final int iconResId;
+        final int activeIconResId;
+        final String name;
+        final String buttonDescription;
+        final int min;
+        final Value value;
+        final Toggle active;
+        final Runnable toggle;
+        // Shown instead of the value while the button is on
+        String activeText;
+
+        public QuickSlider(boolean rightStick, int iconResId, int activeIconResId, String name, String buttonDescription,
+                           int min, Value value, Toggle active, Runnable toggle) {
+            this.rightStick = rightStick;
+            this.iconResId = iconResId;
+            this.activeIconResId = activeIconResId;
+            this.name = name;
+            this.buttonDescription = buttonDescription;
+            this.min = min;
+            this.value = value;
+            this.active = active;
+            this.toggle = toggle;
+        }
+
+        public QuickSlider activeText(String activeText) {
+            this.activeText = activeText;
             return this;
         }
     }
@@ -189,6 +247,7 @@ public class GameMenuView extends FrameLayout {
 
     public interface Listener {
         List<QuickAction> buildQuickActions();
+        List<QuickSlider> buildQuickSliders();
         // The tabs after the quick actions one
         List<Tab> buildTabs();
         void onMenuClosed();
@@ -208,6 +267,29 @@ public class GameMenuView extends FrameLayout {
             this.background = background;
             this.label = label;
             this.active = active;
+        }
+    }
+
+    // A quick slider and the views that follow its value
+    private static class SliderRow {
+        final QuickSlider slider;
+        final SliderView view;
+        final TextView value;
+        final ImageView icon;
+        final GradientDrawable buttonBackground;
+        boolean active;
+        // Kept as a float while a stick moves it, so a slight tilt still adds up
+        float position;
+        // Last stick tilt, -1 to 1
+        float stick;
+        boolean moving;
+
+        SliderRow(QuickSlider slider, SliderView view, TextView value, ImageView icon, GradientDrawable buttonBackground) {
+            this.slider = slider;
+            this.view = view;
+            this.value = value;
+            this.icon = icon;
+            this.buttonBackground = buttonBackground;
         }
     }
 
@@ -257,8 +339,13 @@ public class GameMenuView extends FrameLayout {
     private Runnable dialogConfirm;
 
     private List<QuickAction> quickActions = new ArrayList<>();
+    private List<QuickSlider> quickSliders = new ArrayList<>();
     private List<Tab> tabs = new ArrayList<>();
     private final List<Tile> tiles = new ArrayList<>();
+    private final List<SliderRow> sliderRows = new ArrayList<>();
+    private long lastStickTick;
+    private boolean stickTickerRunning;
+    private final Runnable stickTicker = this::moveSlidersWithSticks;
     private final List<Row> rows = new ArrayList<>();
     private int currentTab = 0;
     private int selectedRow = 0;
@@ -336,7 +423,6 @@ public class GameMenuView extends FrameLayout {
             }
         });
         panel.setClipToOutline(true);
-        panel.setPadding(dp(10), dp(10), dp(10), dp(6));
         panelFrame.addView(panel, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
         statusRow = new StatusRowView(context, colors, true);
@@ -355,10 +441,12 @@ public class GameMenuView extends FrameLayout {
         scrollView = new ScrollView(context);
         scrollView.setVerticalScrollBarEnabled(false);
         scrollView.setOverScrollMode(OVER_SCROLL_NEVER);
+        scrollView.setClipToPadding(false);
         LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1);
         scrollParams.topMargin = dp(8);
         panel.addView(scrollView, scrollParams);
+        setPanelPadding(dp(10));
 
         content = new LinearLayout(context);
         content.setOrientation(LinearLayout.VERTICAL);
@@ -367,7 +455,8 @@ public class GameMenuView extends FrameLayout {
 
         hintRow = new LinearLayout(context);
         hintRow.setOrientation(LinearLayout.HORIZONTAL);
-        hintRow.setGravity(Gravity.CENTER);
+        hintRow.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        hintRow.setPadding(0, 0, dp(6), 0);
         panel.addView(hintRow, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(30)));
 
@@ -394,6 +483,21 @@ public class GameMenuView extends FrameLayout {
 
     private RippleDrawable ripple(GradientDrawable content, float radius) {
         GradientDrawable mask = roundRect(Color.WHITE, radius);
+        return new RippleDrawable(ColorStateList.valueOf(COLOR_RIPPLE), content, mask);
+    }
+
+    // Corners of a button in a connected group: round on the outer side of the first and last one
+    private float[] groupRadii(int index, int count) {
+        float outer = dp(20), inner = dp(8);
+        float left = index == 0 ? outer : inner;
+        float right = index == count - 1 ? outer : inner;
+        return new float[] {left, left, right, right, right, right, left, left};
+    }
+
+    private RippleDrawable ripple(GradientDrawable content, float[] radii) {
+        GradientDrawable mask = new GradientDrawable();
+        mask.setColor(Color.WHITE);
+        mask.setCornerRadii(radii);
         return new RippleDrawable(ColorStateList.valueOf(COLOR_RIPPLE), content, mask);
     }
 
@@ -434,6 +538,8 @@ public class GameMenuView extends FrameLayout {
             case KeyEvent.KEYCODE_DPAD_DOWN: return "▼";
             case KeyEvent.KEYCODE_DPAD_LEFT: return "◀";
             case KeyEvent.KEYCODE_DPAD_RIGHT: return "▶";
+            case KeyEvent.KEYCODE_BUTTON_THUMBL: return "LS";
+            case KeyEvent.KEYCODE_BUTTON_THUMBR: return "RS";
             default: return "?";
         }
     }
@@ -487,11 +593,15 @@ public class GameMenuView extends FrameLayout {
         return hint;
     }
 
+    // Shaped like the shoulder button, as in the top bar of the app
     private TextView shoulderChip(String label, int direction) {
         TextView chip = text(label, 10, colors.onSurfaceVariant, true);
         chip.setGravity(Gravity.CENTER);
-        chip.setPadding(dp(7), 0, dp(7), 0);
-        chip.setBackground(ripple(roundRect(colors.surfaceContainerHighest, dp(6)), dp(6)));
+        chip.setIncludeFontPadding(false);
+        // A little lower: the top edge of the bumper dips towards the inner side
+        chip.setPadding(0, dp(3), 0, 0);
+        chip.setBackground(new BumperDrawable(colors.surfaceContainerHighest, direction < 0, density));
+        addPressFeedback(chip);
         chip.setOnClickListener(v -> {
             gamepadMode = false;
             switchTab(direction);
@@ -673,6 +783,7 @@ public class GameMenuView extends FrameLayout {
         }
         closing = true;
         cancelHold(false);
+        stopSliderSticks();
         hideDropdown(false);
         dialogConfirm = null;
         dialogLayer.animate().cancel();
@@ -714,6 +825,7 @@ public class GameMenuView extends FrameLayout {
 
     private void rebuild() {
         quickActions = listener.buildQuickActions();
+        quickSliders = listener.buildQuickSliders();
         tabs = listener.buildTabs();
         if (currentTab >= tabCount()) {
             currentTab = 0;
@@ -727,6 +839,8 @@ public class GameMenuView extends FrameLayout {
         content.removeAllViews();
         rows.clear();
         tiles.clear();
+        stopSliderSticks();
+        sliderRows.clear();
         holdRing = null;
         holdTile = null;
         if (currentTab == 0) {
@@ -744,7 +858,7 @@ public class GameMenuView extends FrameLayout {
 
         // LB and RB mean something only with a gamepad, like in the top bar of the app
         if (padConnected) {
-            tabsRow.addView(shoulderChip("LB", -1), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(24)));
+            tabsRow.addView(shoulderChip("LB", -1), new LinearLayout.LayoutParams(dp(BUMPER_WIDTH_DP), dp(BUMPER_HEIGHT_DP)));
         }
 
         // The selected tab pill is a separate view that slides from tab to tab
@@ -786,7 +900,7 @@ public class GameMenuView extends FrameLayout {
         }
 
         if (padConnected) {
-            tabsRow.addView(shoulderChip("RB", 1), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(24)));
+            tabsRow.addView(shoulderChip("RB", 1), new LinearLayout.LayoutParams(dp(BUMPER_WIDTH_DP), dp(BUMPER_HEIGHT_DP)));
         }
 
         updateTabs(false);
@@ -836,61 +950,231 @@ public class GameMenuView extends FrameLayout {
     }
 
     private void buildQuickActionsContent() {
+        for (int i = 0; i < quickSliders.size(); i++) {
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dp(40));
+            params.bottomMargin = dp(i == quickSliders.size() - 1 ? 12 : 4);
+            content.addView(createSliderRow(quickSliders.get(i)), params);
+        }
+
         List<QuickAction> buttons = new ArrayList<>();
         List<QuickAction> dpad = new ArrayList<>();
         for (QuickAction action : quickActions) {
             (isDpad(action.keyCode) ? dpad : buttons).add(action);
         }
+        addButtonGroup(buttons);
+        addButtonGroup(dpad);
+    }
 
-        if (!buttons.isEmpty()) {
-            content.addView(sectionHeader(str(R.string.game_menu_section_buttons)));
-            addTileGrid(buttons);
+    // ---- Quick sliders ----
+
+    private View createSliderRow(QuickSlider slider) {
+        LinearLayout view = new LinearLayout(getContext());
+        view.setOrientation(LinearLayout.HORIZONTAL);
+        view.setGravity(Gravity.CENTER_VERTICAL);
+
+        FrameLayout button = new FrameLayout(getContext());
+        GradientDrawable buttonBackground = roundRect(colors.surfaceContainerHigh, dp(20));
+        button.setBackground(ripple(buttonBackground, dp(20)));
+        button.setContentDescription(slider.buttonDescription);
+        ImageView icon = icon(slider.iconResId, colors.onSurfaceVariant, 20);
+        button.addView(icon, new LayoutParams(dp(20), dp(20), Gravity.CENTER));
+        view.addView(button, new LinearLayout.LayoutParams(dp(40), dp(40)));
+
+        SliderView sliderView = new SliderView(getContext(), colors);
+        sliderView.setRange(slider.min, 100, 1);
+        LinearLayout.LayoutParams sliderParams = new LinearLayout.LayoutParams(0, dp(40), 1);
+        sliderParams.leftMargin = dp(10);
+        view.addView(sliderView, sliderParams);
+
+        TextView value = text("", 13, colors.onSurface, true);
+        value.setGravity(Gravity.END);
+        value.setSingleLine(true);
+        view.addView(value, new LinearLayout.LayoutParams(dp(44), LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        SliderRow row = new SliderRow(slider, sliderView, value, icon, buttonBackground);
+        sliderRows.add(row);
+        updateSliderRow(row, false);
+
+        addPressFeedback(button);
+        button.setOnClickListener(v -> {
+            gamepadMode = false;
+            slider.toggle.run();
+            updateSliderRow(row, true);
+        });
+        sliderView.setListener(new SliderView.Listener() {
+            @Override
+            public void onSliderMoved(int value) {
+                setSliderValue(row, value);
+            }
+
+            @Override
+            public void onSliderReleased(int value) {
+                setSliderValue(row, value);
+            }
+        });
+        return view;
+    }
+
+    private void setSliderValue(SliderRow row, int value) {
+        row.slider.value.set(value);
+        row.view.setValue(value);
+        updateSliderButton(row, true);
+        updateSliderText(row, value);
+    }
+
+    // Reads the value and the state again, after the button or when the row is built
+    private void updateSliderRow(SliderRow row, boolean animate) {
+        int value = row.slider.value.get();
+        row.position = value;
+        row.view.setValue(value);
+        updateSliderText(row, value);
+        updateSliderButton(row, animate);
+    }
+
+    private void updateSliderText(SliderRow row, int value) {
+        boolean showActiveText = row.slider.activeText != null && row.slider.active.isOn();
+        row.value.setText(showActiveText ? row.slider.activeText : value + "%");
+    }
+
+    // The button is tinted while its state is on, with a fade
+    private void updateSliderButton(SliderRow row, boolean animate) {
+        boolean active = row.slider.active.isOn();
+        if (!animate) {
+            row.active = active;
+            applySliderButtonColors(row, active ? 1 : 0);
+            return;
         }
-        if (!dpad.isEmpty()) {
-            content.addView(sectionHeader(str(R.string.game_menu_section_dpad)));
-            addTileGrid(dpad);
+        if (active == row.active) {
+            return;
+        }
+        row.active = active;
+        ValueAnimator animator = ValueAnimator.ofFloat(active ? 0 : 1, active ? 1 : 0);
+        animator.setDuration(ApolloMotion.MEDIUM);
+        animator.setInterpolator(ApolloMotion.STANDARD);
+        animator.addUpdateListener(animation -> applySliderButtonColors(row, (float) animation.getAnimatedValue()));
+        animator.start();
+    }
+
+    private void applySliderButtonColors(SliderRow row, float activeFraction) {
+        row.buttonBackground.setColor((int) ARGB.evaluate(activeFraction, colors.surfaceContainerHigh, colors.secondaryContainer));
+        row.icon.setImageTintList(ColorStateList.valueOf(
+                (int) ARGB.evaluate(activeFraction, colors.onSurfaceVariant, colors.onSecondaryContainer)));
+        row.icon.setImageResource(activeFraction >= 0.5f ? row.slider.activeIconResId : row.slider.iconResId);
+    }
+
+    // The right stick is Z on most gamepads and RX on the others, as in ControllerHandler
+    private static int rightStickXAxis(InputDevice device) {
+        if (device != null && (device.getMotionRange(MotionEvent.AXIS_Z) == null ||
+                device.getMotionRange(MotionEvent.AXIS_RZ) == null)) {
+            return MotionEvent.AXIS_RX;
+        }
+        return MotionEvent.AXIS_Z;
+    }
+
+    // Left stick moves the first slider, right stick the second, while the quick actions tab shows
+    private void onSliderSticks(MotionEvent event) {
+        float left = event.getAxisValue(MotionEvent.AXIS_X);
+        float right = event.getAxisValue(rightStickXAxis(event.getDevice()));
+        boolean tilted = false;
+        for (SliderRow row : sliderRows) {
+            row.stick = row.slider.rightStick ? right : left;
+            tilted |= Math.abs(row.stick) > SLIDER_STICK_DEADZONE;
+        }
+        if (tilted && !gamepadMode) {
+            gamepadMode = true;
+            updateSelection(true);
+        }
+        if (tilted && !stickTickerRunning) {
+            stickTickerRunning = true;
+            lastStickTick = System.currentTimeMillis();
+            post(stickTicker);
         }
     }
 
-    private void addTileGrid(List<QuickAction> actions) {
-        for (int i = 0; i < actions.size(); i += 2) {
-            LinearLayout line = new LinearLayout(getContext());
-            line.setOrientation(LinearLayout.HORIZONTAL);
-            for (int j = i; j < i + 2; j++) {
-                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(48), 1);
-                if (j > i) {
-                    params.leftMargin = dp(6);
-                }
-                if (j < actions.size()) {
-                    Tile tile = createTile(actions.get(j));
-                    tiles.add(tile);
-                    line.addView(tile.view, params);
-                } else {
-                    line.addView(new View(getContext()), params);
-                }
-            }
-            LinearLayout.LayoutParams lineParams = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            lineParams.bottomMargin = dp(6);
-            content.addView(line, lineParams);
+    private void moveSlidersWithSticks() {
+        if (!isOpen() || currentTab != 0) {
+            stopSliderSticks();
+            return;
         }
+        long now = System.currentTimeMillis();
+        float seconds = Math.min(now - lastStickTick, 100) / 1000f;
+        lastStickTick = now;
+
+        boolean moving = false;
+        for (SliderRow row : sliderRows) {
+            float tilt = Math.abs(row.stick);
+            if (tilt <= SLIDER_STICK_DEADZONE) {
+                continue;
+            }
+            moving = true;
+            // Squared, so a slight tilt moves slowly enough for single steps
+            float speed = (tilt - SLIDER_STICK_DEADZONE) / (1 - SLIDER_STICK_DEADZONE);
+            speed *= speed;
+            row.position += Math.signum(row.stick) * speed * SLIDER_STICK_PERCENT_PER_SECOND * seconds;
+            row.position = Math.max(row.slider.min, Math.min(100, row.position));
+            int value = Math.round(row.position);
+            if (value != row.slider.value.get()) {
+                setSliderValue(row, value);
+            }
+        }
+        if (moving) {
+            postDelayed(stickTicker, SLIDER_STICK_TICK_MS);
+        } else {
+            stickTickerRunning = false;
+        }
+    }
+
+    private void stopSliderSticks() {
+        removeCallbacks(stickTicker);
+        stickTickerRunning = false;
+        for (SliderRow row : sliderRows) {
+            row.stick = 0;
+        }
+    }
+
+    // ---- Quick action buttons ----
+
+    // One row of connected buttons, like a Material 3 button group
+    private void addButtonGroup(List<QuickAction> actions) {
+        if (actions.isEmpty()) {
+            return;
+        }
+        LinearLayout line = new LinearLayout(getContext());
+        line.setOrientation(LinearLayout.HORIZONTAL);
+        for (int i = 0; i < actions.size(); i++) {
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(56), 1);
+            if (i > 0) {
+                params.leftMargin = dp(3);
+            }
+            Tile tile = createTile(actions.get(i), groupRadii(i, actions.size()));
+            tiles.add(tile);
+            line.addView(tile.view, params);
+        }
+        LinearLayout.LayoutParams lineParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lineParams.bottomMargin = dp(8);
+        content.addView(line, lineParams);
     }
 
     private int tileLabelColor(QuickAction action, boolean active) {
         return action.danger ? colors.error : active ? colors.onSecondaryContainer : colors.onSurface;
     }
 
-    private Tile createTile(QuickAction action) {
+    private Tile createTile(QuickAction action, float[] radii) {
         boolean active = action.active != null && action.active.isOn();
 
         LinearLayout view = new LinearLayout(getContext());
-        view.setOrientation(LinearLayout.HORIZONTAL);
-        view.setGravity(Gravity.CENTER_VERTICAL);
-        view.setPadding(dp(10), 0, dp(10), 0);
-        GradientDrawable background = roundRect(active ? colors.secondaryContainer : colors.surfaceContainerHigh, dp(16));
-        view.setBackground(ripple(background, dp(16)));
+        view.setOrientation(LinearLayout.VERTICAL);
+        view.setGravity(Gravity.CENTER);
+        view.setPadding(dp(4), 0, dp(4), 0);
+        GradientDrawable background = new GradientDrawable();
+        background.setColor(active ? colors.secondaryContainer : colors.surfaceContainerHigh);
+        background.setCornerRadii(radii);
+        view.setBackground(ripple(background, radii));
 
         FrameLayout badgeBox = new FrameLayout(getContext());
+        badgeBox.setMinimumWidth(dp(28));
         if (action.holdToConfirm) {
             // Square and centered like the badge, so the ring is a circle around it
             holdRing = new ApolloWidgets.RingView(getContext(), colors.error);
@@ -902,12 +1186,15 @@ public class GameMenuView extends FrameLayout {
             badgeBox.addView(icon(actionIcon(action.keyCode), tileLabelColor(action, active), 20),
                     new LayoutParams(dp(20), dp(20), Gravity.CENTER));
         }
-        view.addView(badgeBox, new LinearLayout.LayoutParams(dp(!padConnected ? 28 : isDpad(action.keyCode) ? 24 : 34), dp(28)));
+        view.addView(badgeBox, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(28)));
 
-        TextView label = text(action.label, 13, tileLabelColor(action, active), true);
-        label.setMaxLines(2);
-        label.setPadding(dp(8), 0, 0, 0);
-        view.addView(label, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        TextView label = text(action.shortLabel != null ? action.shortLabel : action.label, 11.5f,
+                tileLabelColor(action, active), true);
+        label.setSingleLine(true);
+        label.setEllipsize(TextUtils.TruncateAt.END);
+        label.setGravity(Gravity.CENTER);
+        view.addView(label, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
         Tile tile = new Tile(action, view, background, label, active);
         if (action.holdToConfirm) {
@@ -1021,24 +1308,16 @@ public class GameMenuView extends FrameLayout {
     }
 
     private void buildHintRow() {
+        // LB and RB are already drawn beside the tabs
         hintRow.removeAllViews();
-        if (currentTab != 0) {
+        if (currentTab == 0) {
+            for (QuickSlider slider : quickSliders) {
+                addHint(hint(slider.rightStick ? KeyEvent.KEYCODE_BUTTON_THUMBR : KeyEvent.KEYCODE_BUTTON_THUMBL, slider.name));
+            }
+        } else {
             addHint(hint(KeyEvent.KEYCODE_BUTTON_A, str(R.string.game_menu_hint_select)));
         }
         addHint(hint(KeyEvent.KEYCODE_BUTTON_B, str(R.string.game_menu_hint_close)));
-
-        LinearLayout tabsHint = new LinearLayout(getContext());
-        tabsHint.setGravity(Gravity.CENTER_VERTICAL);
-        // The bumpers drawn like in the top bar of the app
-        tabsHint.addView(ButtonGlyph.create(getContext(), colors, KeyEvent.KEYCODE_BUTTON_L1),
-                new LinearLayout.LayoutParams(dp(28), dp(18)));
-        LinearLayout.LayoutParams rbParams = new LinearLayout.LayoutParams(dp(28), dp(18));
-        rbParams.leftMargin = dp(3);
-        tabsHint.addView(ButtonGlyph.create(getContext(), colors, KeyEvent.KEYCODE_BUTTON_R1), rbParams);
-        TextView label = text(str(R.string.game_menu_hint_tabs), 12, colors.onSurfaceVariant, false);
-        label.setPadding(dp(6), 0, 0, 0);
-        tabsHint.addView(label);
-        addHint(tabsHint);
     }
 
     private void addHint(View hint) {
@@ -1584,8 +1863,11 @@ public class GameMenuView extends FrameLayout {
             return true;
         }
 
-        // The left stick only navigates lists, it would trigger quick actions by accident
+        // In the quick actions tab the sticks move the sliders: navigating would trigger actions by accident
         if (currentTab == 0 && dropdownRow == null) {
+            if (!isDialogShown()) {
+                onSliderSticks(event);
+            }
             return true;
         }
 
@@ -1619,8 +1901,20 @@ public class GameMenuView extends FrameLayout {
                 left = cutout.getSafeInsetLeft();
             }
         }
-        panel.setPadding(dp(10) + left, dp(10), dp(10), dp(6));
+        setPanelPadding(dp(10) + left);
         return super.onApplyWindowInsets(insets);
+    }
+
+    // The scroll area reaches the panel edges and pads the content back in, so the content is not
+    // cut while it slides between tabs or grows on a press
+    private void setPanelPadding(int left) {
+        int right = dp(10);
+        panel.setPadding(left, dp(10), right, dp(6));
+        scrollView.setPadding(left, 0, right, 0);
+        LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) scrollView.getLayoutParams();
+        params.leftMargin = -left;
+        params.rightMargin = -right;
+        scrollView.setLayoutParams(params);
     }
 
     private static int flipFaceButton(int keyCode) {

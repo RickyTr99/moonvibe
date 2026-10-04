@@ -105,7 +105,7 @@ final class SettingsLayout {
         categories.add(new Category(R.string.apollo_settings_touch, R.drawable.ic_apollo_cat_touch,
                 k("list_touch_mode"), k("checkbox_multi_touch_gestures"), k("list_gesture_3_finger"),
                 k("list_gesture_4_finger"), k("list_gesture_5_finger"), k("checkbox_mouse_nav_buttons"),
-                k("checkbox_absolute_mouse_mode")));
+                k("checkbox_absolute_mouse_mode"), k("checkbox_brightness_edge_slider")));
         categories.add(new Category(R.string.apollo_settings_onscreen, R.drawable.ic_apollo_cat_keyboard,
                 new Section(R.string.apollo_section_onscreen_gamepad, true,
                         k("checkbox_show_onscreen_controls"), k("checkbox_vibrate_osc"), k("checkbox_only_show_L3R3"),

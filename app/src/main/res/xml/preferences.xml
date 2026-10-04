@@ -203,6 +203,11 @@
             android:title="@string/title_checkbox_absolute_mouse_mode"
             android:summary="@string/summary_checkbox_absolute_mouse_mode"
             android:defaultValue="false" />
+        <CheckBoxPreference
+            android:key="checkbox_brightness_edge_slider"
+            android:title="@string/title_checkbox_brightness_edge_slider"
+            android:summary="@string/summary_checkbox_brightness_edge_slider"
+            android:defaultValue="false" />
     </PreferenceCategory>
     <PreferenceCategory android:title="@string/category_on_screen_controls_settings"
         android:key="category_onscreen_controls">
