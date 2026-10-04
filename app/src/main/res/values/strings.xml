@@ -110,7 +110,7 @@
     <string name="perf_overlay_fps">FPS in/render: %1$.2f/%2$.2f FPS (%3$+.1f%%)</string>
     <string name="perf_overlay_hostprocessinglatency">Host latency min/max/avg: %1$.1f/%2$.1f/%3$.1f ms</string>
     <string name="perf_overlay_netdrops">Frames dropped: %1$.2f%%</string>
-    <string name="perf_overlay_netdrops_partial">Frames dropped/partial: %1$.2f%%/%2$.2f%%</string>
+    <string name="perf_overlay_netdrops_partial">Frames dropped: %1$.2f%% (partial %2$.2f%%)</string>
     <string name="perf_overlay_netlatency">Network latency: %1$d ms (variance %2$d ms)</string>
     <string name="perf_overlay_dectime">Decoding time: %1$.2f ms</string>
     <string name="perf_overlay_bandwidth">Network bandwidth: %1$.1f Mbps</string>
@@ -284,6 +284,13 @@
     <string name="title_disable_frame_drop">Never drop frames</string>
     <string name="summary_disable_frame_drop">May reduce micro-stuttering on some devices, but can increase latency</string>
     <string name="title_video_format">Change codec settings</string>
+    <string name="title_pyrowave_late_frames">PyroWave late frames</string>
+    <string name="summary_pyrowave_late_frames">Only used with PyroWave and host frame timing pacing: a frame still arriving when it should be ready is cut short and shown with what has arrived, a little blurred, rather than shown a refresh late, and frames that lost packets are shown with less of them rather than dropped. More of both means fewer stutters on a busy network, but more blur.</string>
+    <string name="pyrowave_late_frames_off">Off (show late frames late)</string>
+    <string name="pyrowave_late_frames_sharp">Sharper (cut fewer frames)</string>
+    <string name="pyrowave_late_frames_balanced">Balanced (Recommended)</string>
+    <string name="pyrowave_late_frames_smooth">Smoother (cut more frames, more blur)</string>
+    <string name="pyrowave_late_frames_smoothest">Smoothest (show almost anything, most blur)</string>
     <string name="summary_video_format">Newer codecs can lower video bandwidth requirements if your device supports them. Codec selections may be ignored if not supported by the host software or GPU.</string>
     <string name="title_enable_hdr">Enable HDR / 10-bit SDR (Experimental)</string>
     <string name="summary_enable_hdr">Stream HDR / 10-bit SDR when the game and PC GPU support it. Requires a GPU with HEVC Main 10 encoding support.</string>
@@ -349,7 +356,7 @@
     <string name="pacing_balanced_alt">Balanced with FPS limit</string>
     <string name="pacing_smoothness">Prefer smoothest video (may significantly increase latency)</string>
     <string name="title_jitter_buffer">Jitter buffer</string>
-    <string name="summary_jitter_buffer">Only used with host frame timing pacing: how much delay to add so frames delayed by the network still arrive in time for their vsync. With the Vulkan renderer, Low latency also skips evening out the host\'s frame timing when the stream rate matches the display, and Lowest latency always skips it and buffers less, for some unevenly shown frames. The direct renderer only buffers less.</string>
+    <string name="summary_jitter_buffer">Only used with host frame timing pacing: how much delay to add so frames delayed by the network still arrive in time for their vsync. With the Vulkan renderer, Low latency and Lowest latency also skip evening out the host\'s frame timing when the stream rate matches the display, and Lowest latency buffers less, for some unevenly shown frames. The direct renderer only buffers less.</string>
     <string name="jitter_buffer_lowest_latency">Lowest latency (less even)</string>
     <string name="jitter_buffer_low_latency">Low latency</string>
     <string name="jitter_buffer_balanced">Balanced (Recommended)</string>

@@ -101,6 +101,7 @@ public class PreferenceConfiguration {
     private static final String VIDEO_RENDERER_PREF_STRING = "video_renderer";
     private static final String SPATIAL_DITHERING_PREF_STRING = "spatial_dithering";
     private static final String JITTER_BUFFER_PREF_STRING = "jitter_buffer";
+    private static final String PYROWAVE_LATE_FRAMES_PREF_STRING = "pyrowave_late_frames";
 
     public static final String DEFAULT_RESOLUTION = "1280x720";
     public static final String DEFAULT_FPS = "60";
@@ -118,6 +119,7 @@ public class PreferenceConfiguration {
     private static final String DEFAULT_VIDEO_RENDERER = "auto";
     private static final String DEFAULT_SPATIAL_DITHERING = "off";
     private static final String DEFAULT_JITTER_BUFFER = "balanced";
+    private static final String DEFAULT_PYROWAVE_LATE_FRAMES = "balanced";
 
     private static final boolean ONSCREEN_CONTROLLER_DEFAULT = false;
     private static final boolean ONLY_L3_R3_DEFAULT = false;
@@ -182,6 +184,15 @@ public class PreferenceConfiguration {
     public static final int JITTER_BUFFER_SMOOTH = 2;
     public static final int JITTER_BUFFER_LOWEST_LATENCY = 3;
 
+    // What to do with a PyroWave frame still arriving when it should be ready to show: show it
+    // late, or cut it short then and show it with what arrived, missing some fine detail. The
+    // presets trade blur for fewer late frames (see VulkanRenderer's constructor).
+    public static final int PYROWAVE_LATE_FRAMES_OFF = 0;
+    public static final int PYROWAVE_LATE_FRAMES_SHARP = 1;
+    public static final int PYROWAVE_LATE_FRAMES_BALANCED = 2;
+    public static final int PYROWAVE_LATE_FRAMES_SMOOTH = 3;
+    public static final int PYROWAVE_LATE_FRAMES_SMOOTHEST = 4;
+
     public static final String RES_360P = "640x360";
     public static final String RES_480P = "854x480";
     public static final String RES_720P = "1280x720";
@@ -234,6 +245,7 @@ public class PreferenceConfiguration {
     public MoonBridge.AudioConfiguration audioConfiguration;
     public int framePacing;
     public int jitterBuffer;
+    public int pyrowaveLateFrames;
     public boolean absoluteMouseMode;
     public boolean enableAudioFx;
     public boolean reduceRefreshRate;
@@ -491,6 +503,27 @@ public class PreferenceConfiguration {
         }
     }
 
+    private static int getPyrowaveLateFramesValue(Context context) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+
+        String str = prefs.getString(PYROWAVE_LATE_FRAMES_PREF_STRING, DEFAULT_PYROWAVE_LATE_FRAMES);
+        if (str.equals("off")) {
+            return PYROWAVE_LATE_FRAMES_OFF;
+        }
+        else if (str.equals("sharp")) {
+            return PYROWAVE_LATE_FRAMES_SHARP;
+        }
+        else if (str.equals("smooth")) {
+            return PYROWAVE_LATE_FRAMES_SMOOTH;
+        }
+        else if (str.equals("smoothest")) {
+            return PYROWAVE_LATE_FRAMES_SMOOTHEST;
+        }
+        else {
+            return PYROWAVE_LATE_FRAMES_BALANCED;
+        }
+    }
+
     private static int getJitterBufferValue(Context context) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
 
@@ -729,6 +762,7 @@ public class PreferenceConfiguration {
         config.spatialDithering = getSpatialDitheringValue(context);
         config.framePacing = getFramePacingValue(context);
         config.jitterBuffer = getJitterBufferValue(context);
+        config.pyrowaveLateFrames = getPyrowaveLateFramesValue(context);
 
         config.analogStickForScrolling = getAnalogStickForScrollingValue(context);
 
