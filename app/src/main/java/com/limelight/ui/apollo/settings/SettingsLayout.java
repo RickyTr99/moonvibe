@@ -100,6 +100,9 @@ final class SettingsLayout {
                 k("checkbox_gamepad_motion_fallback"), k("analog_scrolling"),
                 new Section(R.string.apollo_section_vibration, false,
                         k("checkbox_vibrate_fallback"), k("seekbar_vibrate_fallback_strength")),
+                // Only on AYN handhelds, the settings are removed elsewhere
+                new Section(R.string.apollo_section_ayn_buttons, true,
+                        k("list_ayn_back_button"), k("list_ayn_m1_button"), k("list_ayn_m2_button")),
                 new Section(R.string.apollo_section_advanced, false,
                         k("checkbox_usb_driver"), k("checkbox_usb_bind_all"))));
         categories.add(new Category(R.string.apollo_settings_touch, R.drawable.ic_apollo_cat_touch,

@@ -137,6 +137,27 @@
             android:title="@string/title_checkbox_gamepad_motion_fallback"
             android:summary="@string/summary_checkbox_gamepad_motion_fallback"
             android:defaultValue="false" />
+        <ListPreference
+            android:key="list_ayn_back_button"
+            android:title="@string/title_list_ayn_back_button"
+            android:summary="%s"
+            android:entries="@array/ayn_back_button_names"
+            android:entryValues="@array/ayn_back_button_values"
+            android:defaultValue="game_menu" />
+        <ListPreference
+            android:key="list_ayn_m1_button"
+            android:title="@string/title_list_ayn_m1_button"
+            android:summary="%s"
+            android:entries="@array/ayn_extra_button_names"
+            android:entryValues="@array/ayn_extra_button_values"
+            android:defaultValue="guide" />
+        <ListPreference
+            android:key="list_ayn_m2_button"
+            android:title="@string/title_list_ayn_m2_button"
+            android:summary="%s"
+            android:entries="@array/ayn_extra_button_names"
+            android:entryValues="@array/ayn_extra_button_values"
+            android:defaultValue="none" />
     </PreferenceCategory>
     <PreferenceCategory android:title="@string/category_overlay_menu"
         android:key="category_overlay_menu">

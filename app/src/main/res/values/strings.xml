@@ -221,6 +221,15 @@
     <string name="title_list_gesture_3_finger">3-finger tap</string>
     <string name="title_list_gesture_4_finger">4-finger tap</string>
     <string name="title_list_gesture_5_finger">5-finger tap</string>
+    <string name="apollo_section_ayn_buttons">AYN buttons</string>
+    <string name="title_list_ayn_back_button">Back button</string>
+    <string name="title_list_ayn_m1_button">M1 button</string>
+    <string name="title_list_ayn_m2_button">M2 button</string>
+    <string name="ayn_button_game_menu">Game menu</string>
+    <string name="ayn_button_select">Select</string>
+    <string name="ayn_button_guide">Xbox button (Game Bar)</string>
+    <string name="ayn_button_share">Share (capture)</string>
+    <string name="ayn_button_none">Nothing</string>
     <string name="gesture_action_none">Do nothing</string>
     <string name="gesture_action_game_menu">Open the game menu</string>
     <string name="gesture_action_soft_keyboard">Show the Android keyboard</string>

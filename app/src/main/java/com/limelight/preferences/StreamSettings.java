@@ -33,6 +33,7 @@ import android.widget.FrameLayout;
 import com.limelight.LimeLog;
 import com.limelight.PcView;
 import com.limelight.R;
+import com.limelight.binding.input.ControllerHandler;
 import com.limelight.binding.video.MediaCodecHelper;
 import com.limelight.ui.apollo.ApolloTopBar;
 import com.limelight.ui.apollo.hints.HintRow;
@@ -427,6 +428,15 @@ public class StreamSettings extends Activity {
                 PreferenceCategory category =
                         (PreferenceCategory) findPreference("category_gamepad_settings");
                 category.removePreference(findPreference("checkbox_gamepad_motion_fallback"));
+            }
+
+            // The extra buttons of the built-in controller exist only on AYN handhelds
+            if (!ControllerHandler.IS_AYN_DEVICE) {
+                PreferenceCategory category =
+                        (PreferenceCategory) findPreference("category_gamepad_settings");
+                category.removePreference(findPreference("list_ayn_back_button"));
+                category.removePreference(findPreference("list_ayn_m1_button"));
+                category.removePreference(findPreference("list_ayn_m2_button"));
             }
 
             // Hide USB driver options on devices without USB host support

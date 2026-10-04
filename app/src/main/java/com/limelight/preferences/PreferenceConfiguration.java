@@ -79,6 +79,9 @@ public class PreferenceConfiguration {
     private static final String TOUCH_MODE_PREF_STRING = "list_touch_mode";
     private static final String MULTI_TOUCH_GESTURES_PREF_STRING = "checkbox_multi_touch_gestures";
     private static final String BRIGHTNESS_EDGE_SLIDER_PREF_STRING = "checkbox_brightness_edge_slider";
+    private static final String AYN_BACK_BUTTON_PREF_STRING = "list_ayn_back_button";
+    private static final String AYN_M1_BUTTON_PREF_STRING = "list_ayn_m1_button";
+    private static final String AYN_M2_BUTTON_PREF_STRING = "list_ayn_m2_button";
     private static final String GESTURE_3_FINGER_PREF_STRING = "list_gesture_3_finger";
     private static final String GESTURE_4_FINGER_PREF_STRING = "list_gesture_4_finger";
     private static final String GESTURE_5_FINGER_PREF_STRING = "list_gesture_5_finger";
@@ -134,6 +137,9 @@ public class PreferenceConfiguration {
     private static final boolean DEFAULT_TOUCHSCREEN_TRACKPAD = true;
     private static final boolean DEFAULT_MULTI_TOUCH_GESTURES = true;
     private static final boolean DEFAULT_BRIGHTNESS_EDGE_SLIDER = false;
+    private static final String DEFAULT_AYN_BACK_BUTTON = "game_menu";
+    private static final String DEFAULT_AYN_M1_BUTTON = "guide";
+    private static final String DEFAULT_AYN_M2_BUTTON = "none";
     private static final String DEFAULT_GESTURE_3_FINGER = "soft_keyboard";
     private static final String DEFAULT_GESTURE_4_FINGER = "full_keyboard";
     private static final String DEFAULT_GESTURE_5_FINGER = "game_menu";
@@ -218,6 +224,10 @@ public class PreferenceConfiguration {
     public boolean enableMultiTouchGestures;
     // Touching the left edge shows the brightness slider (MoreOrLess); the game menu has it too
     public boolean brightnessEdgeSlider;
+    // Back, M1 and M2 of the controller built into AYN handhelds: game_menu, select, guide, share or none
+    public String aynBackButton;
+    public String aynM1Button;
+    public String aynM2Button;
     public String gesture3Finger;
     public String gesture4Finger;
     public String gesture5Finger;
@@ -758,6 +768,9 @@ public class PreferenceConfiguration {
         config.touchscreenTrackpad = TOUCH_MODE_TRACKPAD.equals(config.touchMode);
         config.enableMultiTouchGestures = prefs.getBoolean(MULTI_TOUCH_GESTURES_PREF_STRING, DEFAULT_MULTI_TOUCH_GESTURES);
         config.brightnessEdgeSlider = prefs.getBoolean(BRIGHTNESS_EDGE_SLIDER_PREF_STRING, DEFAULT_BRIGHTNESS_EDGE_SLIDER);
+        config.aynBackButton = prefs.getString(AYN_BACK_BUTTON_PREF_STRING, DEFAULT_AYN_BACK_BUTTON);
+        config.aynM1Button = prefs.getString(AYN_M1_BUTTON_PREF_STRING, DEFAULT_AYN_M1_BUTTON);
+        config.aynM2Button = prefs.getString(AYN_M2_BUTTON_PREF_STRING, DEFAULT_AYN_M2_BUTTON);
         config.gesture3Finger = readGestureAction(prefs, GESTURE_3_FINGER_PREF_STRING, DEFAULT_GESTURE_3_FINGER);
         config.gesture4Finger = readGestureAction(prefs, GESTURE_4_FINGER_PREF_STRING, DEFAULT_GESTURE_4_FINGER);
         config.gesture5Finger = readGestureAction(prefs, GESTURE_5_FINGER_PREF_STRING, DEFAULT_GESTURE_5_FINGER);

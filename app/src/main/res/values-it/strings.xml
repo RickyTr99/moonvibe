@@ -190,6 +190,15 @@
     <string name="title_list_gesture_3_finger">Tap a 3 dita</string>
     <string name="title_list_gesture_4_finger">Tap a 4 dita</string>
     <string name="title_list_gesture_5_finger">Tap a 5 dita</string>
+    <string name="apollo_section_ayn_buttons">Tasti AYN</string>
+    <string name="title_list_ayn_back_button">Tasto Indietro</string>
+    <string name="title_list_ayn_m1_button">Tasto M1</string>
+    <string name="title_list_ayn_m2_button">Tasto M2</string>
+    <string name="ayn_button_game_menu">Menu di gioco</string>
+    <string name="ayn_button_select">Select</string>
+    <string name="ayn_button_guide">Tasto Xbox (Game Bar)</string>
+    <string name="ayn_button_share">Condividi (cattura)</string>
+    <string name="ayn_button_none">Niente</string>
     <string name="gesture_action_none">Nessuna azione</string>
     <string name="gesture_action_game_menu">Apri il menu di gioco</string>
     <string name="gesture_action_soft_keyboard">Mostra la tastiera Android</string>

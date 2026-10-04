@@ -1431,6 +1431,56 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
     private final int REMAP_IGNORE = -1;
     private final int REMAP_CONSUME = -2;
 
+    // AYN handhelds (Odin 2 family). Their built-in controller sends Back as KEYCODE_BACK
+    // and the M1/M2 buttons as BUTTON_C/BUTTON_Z; Home is taken by the system before us.
+    public static final boolean IS_AYN_DEVICE = "AYN".equalsIgnoreCase(Build.MANUFACTURER);
+    private static final int AYN_CONTROLLER_VENDOR_ID = 0x2020;
+
+    private static boolean isAynController(InputDevice device) {
+        return IS_AYN_DEVICE && device != null && device.getVendorId() == AYN_CONTROLLER_VENDOR_ID;
+    }
+
+    // Applies the action chosen in the settings for Back, M1 and M2 of an AYN built-in controller.
+    // Returns the key to handle instead, REMAP_CONSUME, or 0 to handle the key as usual.
+    private int handleAynButton(InputDeviceContext context, KeyEvent event, boolean down) {
+        if (!IS_AYN_DEVICE || context.vendorId != AYN_CONTROLLER_VENDOR_ID) {
+            return 0;
+        }
+
+        String action;
+        switch (event.getKeyCode()) {
+            case KeyEvent.KEYCODE_BACK:
+                action = prefConfig.aynBackButton;
+                break;
+            case KeyEvent.KEYCODE_BUTTON_C:
+                action = prefConfig.aynM1Button;
+                break;
+            case KeyEvent.KEYCODE_BUTTON_Z:
+                action = prefConfig.aynM2Button;
+                break;
+            default:
+                return 0;
+        }
+
+        switch (action) {
+            case "select":
+                // Back already works as Select
+                return event.getKeyCode() == KeyEvent.KEYCODE_BACK ? 0 : KeyEvent.KEYCODE_BUTTON_SELECT;
+            case "guide":
+                return KeyEvent.KEYCODE_BUTTON_MODE;
+            case "share":
+                return KeyEvent.KEYCODE_MEDIA_RECORD;
+            case "game_menu":
+                // Opens on press; the release then goes to the menu, which ignores it
+                if (down && event.getRepeatCount() == 0 && overlayMenuListener != null) {
+                    overlayMenuListener.onOverlayMenuOpen();
+                }
+                return REMAP_CONSUME;
+            default:
+                return REMAP_CONSUME;
+        }
+    }
+
     // Return a valid keycode, -2 to consume, or -1 to not consume the event
     // Device MAY BE NULL
     private int handleRemapping(InputDeviceContext context, KeyEvent event) {
@@ -2561,7 +2611,8 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
             return true;
         }
 
-        int keyCode = handleRemapping(context, event);
+        int aynKeyCode = handleAynButton(context, event, false);
+        int keyCode = aynKeyCode != 0 ? aynKeyCode : handleRemapping(context, event);
         if (keyCode < 0) {
             return (keyCode == REMAP_CONSUME);
         }
@@ -2836,7 +2887,8 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
             return true;
         }
 
-        int keyCode = handleRemapping(context, event);
+        int aynKeyCode = handleAynButton(context, event, true);
+        int keyCode = aynKeyCode != 0 ? aynKeyCode : handleRemapping(context, event);
         if (keyCode < 0) {
             return (keyCode == REMAP_CONSUME);
         }
@@ -3449,7 +3501,8 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
                         ControllerPacket.PADDLE3_FLAG |
                         ControllerPacket.PADDLE4_FLAG;
             }
-            if (hasShare) {
+            // M1/M2 of AYN handhelds can be set to work as Share
+            if (hasShare || isAynController(inputDevice)) {
                 supportedButtonFlags |= ControllerPacket.MISC_FLAG;
             }
 

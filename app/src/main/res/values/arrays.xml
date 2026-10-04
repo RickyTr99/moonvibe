@@ -197,6 +197,30 @@
         <item>disabled</item>
     </string-array>
 
+    <string-array name="ayn_back_button_names">
+        <item>@string/ayn_button_game_menu</item>
+        <item>@string/ayn_button_select</item>
+        <item>@string/ayn_button_guide</item>
+        <item>@string/ayn_button_none</item>
+    </string-array>
+    <string-array name="ayn_back_button_values" translatable="false">
+        <item>game_menu</item>
+        <item>select</item>
+        <item>guide</item>
+        <item>none</item>
+    </string-array>
+    <string-array name="ayn_extra_button_names">
+        <item>@string/ayn_button_none</item>
+        <item>@string/ayn_button_guide</item>
+        <item>@string/ayn_button_game_menu</item>
+        <item>@string/ayn_button_share</item>
+    </string-array>
+    <string-array name="ayn_extra_button_values" translatable="false">
+        <item>none</item>
+        <item>guide</item>
+        <item>game_menu</item>
+        <item>share</item>
+    </string-array>
     <string-array name="gesture_action_names">
         <item>@string/gesture_action_none</item>
         <item>@string/gesture_action_game_menu</item>
