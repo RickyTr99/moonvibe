@@ -87,7 +87,7 @@ final class SettingsLayout {
                 k("list_resolution"), k("list_fps"), k("seekbar_bitrate_kbps"), k("video_format"),
                 k("checkbox_enable_hdr"), k("checkbox_stretch_video"),
                 new Section(R.string.apollo_section_advanced, false,
-                        k("video_renderer"), k("spatial_dithering"), k("checkbox_full_range"),
+                        k("pyrowave_late_frames"), k("video_renderer"), k("spatial_dithering"), k("checkbox_full_range"),
                         k("checkbox_unlock_fps"), k("checkbox_reduce_refresh_rate"), k("text_actual_display_refresh_rate"))));
         categories.add(new Category(R.string.apollo_settings_latency, R.drawable.ic_apollo_cat_speed,
                 k("frame_pacing"), k("jitter_buffer"), k("checkbox_ultra_low_latency"),
@@ -138,6 +138,80 @@ final class SettingsLayout {
     }
 
     static final int SHORT_TITLE_RESET_OSC = R.string.apollo_label_reset_osc;
+
+    /**
+     * What a setting does, for the popup of its "i". A list setting can also explain its options:
+     * short names and texts in the order of the values array of preferences.xml.
+     */
+    static final class Info {
+        final int text;
+        final int optionValues;
+        final int optionNames;
+        final int optionTexts;
+
+        Info(int text) {
+            this(text, 0, 0, 0);
+        }
+
+        Info(int text, int optionValues, int optionNames, int optionTexts) {
+            this.text = text;
+            this.optionValues = optionValues;
+            this.optionNames = optionNames;
+            this.optionTexts = optionTexts;
+        }
+    }
+
+    /** The settings with an "i", by preference key; the obvious ones have none. */
+    static final Map<String, Info> INFO = new HashMap<>();
+    static {
+        INFO.put("seekbar_bitrate_kbps", new Info(R.string.apollo_info_bitrate));
+        INFO.put("video_format", new Info(R.string.apollo_info_video_format, R.array.video_format_values,
+                R.array.apollo_info_video_format_names, R.array.apollo_info_video_format_texts));
+        INFO.put("checkbox_enable_hdr", new Info(R.string.apollo_info_hdr));
+        INFO.put("checkbox_stretch_video", new Info(R.string.apollo_info_stretch_video));
+        INFO.put("pyrowave_late_frames", new Info(R.string.apollo_info_pyrowave_late_frames, R.array.pyrowave_late_frames_values,
+                R.array.apollo_info_pyrowave_late_frames_names, R.array.apollo_info_pyrowave_late_frames_texts));
+        INFO.put("video_renderer", new Info(R.string.apollo_info_video_renderer, R.array.video_renderer_values,
+                R.array.apollo_info_video_renderer_names, R.array.apollo_info_video_renderer_texts));
+        INFO.put("spatial_dithering", new Info(R.string.apollo_info_spatial_dithering));
+        INFO.put("checkbox_full_range", new Info(R.string.apollo_info_full_range));
+        INFO.put("checkbox_unlock_fps", new Info(R.string.apollo_info_unlock_fps));
+        INFO.put("checkbox_reduce_refresh_rate", new Info(R.string.apollo_info_reduce_refresh_rate));
+        INFO.put("text_actual_display_refresh_rate", new Info(R.string.apollo_info_actual_refresh_rate));
+        INFO.put("frame_pacing", new Info(R.string.apollo_info_frame_pacing, R.array.video_frame_pacing_values,
+                R.array.apollo_info_frame_pacing_names, R.array.apollo_info_frame_pacing_texts));
+        INFO.put("jitter_buffer", new Info(R.string.apollo_info_jitter_buffer, R.array.jitter_buffer_values,
+                R.array.apollo_info_jitter_buffer_names, R.array.apollo_info_jitter_buffer_texts));
+        INFO.put("checkbox_ultra_low_latency", new Info(R.string.apollo_info_ultra_low_latency));
+        INFO.put("checkbox_disable_warnings", new Info(R.string.apollo_info_disable_warnings));
+        INFO.put("checkbox_enable_audiofx", new Info(R.string.apollo_info_audiofx));
+        INFO.put("checkbox_host_audio", new Info(R.string.apollo_info_host_audio));
+        INFO.put("seekbar_deadzone", new Info(R.string.apollo_info_deadzone));
+        INFO.put("checkbox_multi_controller", new Info(R.string.apollo_info_multi_controller));
+        INFO.put("checkbox_flip_face_buttons", new Info(R.string.apollo_info_flip_face_buttons));
+        INFO.put("checkbox_gamepad_touchpad_as_mouse", new Info(R.string.apollo_info_touchpad_as_mouse));
+        INFO.put("checkbox_gamepad_motion_sensors", new Info(R.string.apollo_info_motion_sensors));
+        INFO.put("checkbox_gamepad_motion_fallback", new Info(R.string.apollo_info_motion_fallback));
+        INFO.put("analog_scrolling", new Info(R.string.apollo_info_analog_scrolling));
+        INFO.put("checkbox_vibrate_fallback", new Info(R.string.apollo_info_vibrate_fallback));
+        INFO.put("checkbox_usb_driver", new Info(R.string.apollo_info_usb_driver));
+        INFO.put("checkbox_usb_bind_all", new Info(R.string.apollo_info_usb_bind_all));
+        INFO.put("list_touch_mode", new Info(R.string.apollo_info_touch_mode, R.array.touch_mode_values,
+                R.array.apollo_info_touch_mode_names, R.array.apollo_info_touch_mode_texts));
+        INFO.put("checkbox_multi_touch_gestures", new Info(R.string.apollo_info_multi_touch_gestures));
+        INFO.put("checkbox_mouse_nav_buttons", new Info(R.string.apollo_info_mouse_nav_buttons));
+        INFO.put("checkbox_absolute_mouse_mode", new Info(R.string.apollo_info_absolute_mouse_mode));
+        INFO.put("checkbox_brightness_edge_slider", new Info(R.string.apollo_info_brightness_edge_slider));
+        INFO.put("checkbox_only_show_L3R3", new Info(R.string.apollo_info_only_l3r3));
+        INFO.put("checkbox_enable_sticky_modifier_key_virtual_keyboard", new Info(R.string.apollo_info_sticky_modifiers));
+        INFO.put("overlay_trigger_button", new Info(R.string.apollo_info_overlay_trigger));
+        INFO.put("overlay_custom_commands", new Info(R.string.apollo_info_overlay_commands));
+        INFO.put("checkbox_auto_resume_stream", new Info(R.string.apollo_info_auto_resume));
+        INFO.put("checkbox_enable_sops", new Info(R.string.apollo_info_sops));
+        INFO.put("checkbox_enable_pip", new Info(R.string.apollo_info_pip));
+        INFO.put("checkbox_fullscreen_ui", new Info(R.string.apollo_info_fullscreen_ui));
+        INFO.put("checkbox_small_icon_mode", new Info(R.string.apollo_info_small_icon_mode));
+    }
 
     /** Shorter labels for a few options, by preference key and option value. */
     static final Map<String, Integer> SHORT_OPTIONS = new HashMap<>();

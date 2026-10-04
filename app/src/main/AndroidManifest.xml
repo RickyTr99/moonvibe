@@ -143,6 +143,7 @@
         <activity
             android:name=".preferences.StreamSettings"
             android:resizeableActivity="true"
+            android:windowSoftInputMode="stateHidden|adjustResize"
             android:enableOnBackInvokedCallback="true"
             android:screenOrientation="sensorLandscape"
             android:configChanges="mcc|mnc|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection"

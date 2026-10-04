@@ -465,4 +465,132 @@
     <string name="game_menu_key_paste">Incolla</string>
     <string name="game_menu_key_move_monitor">Sposta sull\'altro monitor</string>
     <string name="game_menu_key_toggle_hdr">Attiva/disattiva HDR</string>
+
+    <!-- What a setting does, in the popup of its "i" (Y on a gamepad) -->
+    <string name="apollo_hint_info">Info</string>
+    <string name="apollo_hint_search">Cerca</string>
+    <string name="apollo_hint_close_search">Chiudi ricerca</string>
+    <string name="apollo_hint_write">Scrivi</string>
+    <string name="apollo_search_hint">Cerca</string>
+    <string name="apollo_search_clear">Cancella</string>
+    <string name="apollo_search_results">Risultati per «%1$s»</string>
+    <string name="apollo_search_none">Nessuna impostazione trovata</string>
+    <string name="apollo_info_options">Opzioni</string>
+    <string name="apollo_info_bitrate">Quanti dati al secondo usa il video. Più è alto, più l\'immagine è nitida, soprattutto in movimento; se la rete non regge compaiono scatti e artefatti. Si reimposta da solo quando cambi risoluzione o FPS.</string>
+    <string name="apollo_info_video_format">Il codec con cui il PC comprime il video. Se il PC o questo dispositivo non supportano quello scelto, ne viene usato un altro.</string>
+    <string-array name="apollo_info_video_format_names">
+        <item>Automatico</item>
+        <item>AV1</item>
+        <item>HEVC</item>
+        <item>H.264</item>
+        <item>PyroWave</item>
+    </string-array>
+    <string-array name="apollo_info_video_format_texts">
+        <item>Il migliore supportato sia dal PC sia da questo dispositivo (consigliato)</item>
+        <item>Il più efficiente: stessa qualità con meno dati. Serve una GPU recente</item>
+        <item>Più efficiente di H.264, supportato quasi ovunque</item>
+        <item>Il più compatibile, ma serve più bitrate per la stessa qualità</item>
+        <item>Latenza bassissima, solo in rete locale veloce (200 Mbps o più). Sperimentale</item>
+    </string-array>
+    <string name="apollo_info_hdr">Trasmette in HDR (o SDR a 10 bit) quando il gioco e la scheda video del PC lo supportano. Serve una GPU in grado di codificare HEVC Main 10.</string>
+    <string name="apollo_info_stretch_video">Allarga l\'immagine fino a riempire tutto lo schermo, anche se le proporzioni non coincidono. Da spento, il resto dello schermo resta nero.</string>
+    <string name="apollo_info_pyrowave_late_frames">Solo con PyroWave e «Sincronizza con il timing dell\'host». Quando un frame arriva in ritardo o perde dei pacchetti, invece di saltarlo lo mostra con i dati arrivati, un po\' sfocato. Più si taglia, meno scatti sulla rete carica, ma più sfocatura.</string>
+    <string-array name="apollo_info_pyrowave_late_frames_names">
+        <item>Off</item>
+        <item>Sharper</item>
+        <item>Balanced</item>
+        <item>Smoother</item>
+        <item>Smoothest</item>
+    </string-array>
+    <string-array name="apollo_info_pyrowave_late_frames_texts">
+        <item>I frame in ritardo vengono mostrati in ritardo, sempre nitidi</item>
+        <item>Taglia pochi frame, sfocatura rara</item>
+        <item>Il giusto mezzo (consigliato)</item>
+        <item>Taglia più frame: meno scatti, più sfocatura</item>
+        <item>Mostra quasi tutto: il minimo di scatti, la massima sfocatura</item>
+    </string-array>
+    <string name="apollo_info_video_renderer">Come il video arriva sullo schermo.</string>
+    <string-array name="apollo_info_video_renderer_names">
+        <item>Automatic</item>
+        <item>Direct Surface</item>
+        <item>Vulkan</item>
+    </string-array>
+    <string-array name="apollo_info_video_renderer_texts">
+        <item>Usa il renderer diretto (consigliato)</item>
+        <item>Il decoder disegna direttamente sullo schermo: il più semplice e collaudato</item>
+        <item>Aggiunge il dithering e un suo frame pacing, più regolare. Sperimentale</item>
+    </string-array>
+    <string name="apollo_info_spatial_dithering">Aggiunge un rumore finissimo e in movimento che nasconde le bande di colore nelle sfumature, soprattutto in HDR. Solo con il renderer Vulkan.</string>
+    <string name="apollo_info_full_range">Usa tutta la gamma di colori invece di quella ridotta del video. Se lo schermo non la gestisce bene, si perdono dettagli nelle zone molto chiare e molto scure.</string>
+    <string name="apollo_info_unlock_fps">Mostra anche i frame rate più alti, come 90, 120 o 144 FPS. Sui dispositivi potenti riducono il ritardo, ma su quelli che non li reggono causano scatti e instabilità.</string>
+    <string name="apollo_info_reduce_refresh_rate">Lascia scendere lo schermo al frame rate dello stream invece di tenerlo alla frequenza massima. Si risparmia batteria, con un po\' di ritardo in più.</string>
+    <string name="apollo_info_actual_refresh_rate">Lascia 0 per misurare la frequenza reale dello schermo all\'avvio dello stream e chiedere al PC un frame rate allineato (143,65 FPS su un pannello da 143,65 Hz). Se inserisci un valore, viene usato quello. Sperimentale.</string>
+    <string name="apollo_info_frame_pacing">Come vengono mostrati i frame quando arrivano: quanto contano il ritardo e la fluidità.</string>
+    <string-array name="apollo_info_frame_pacing_names">
+        <item>Ritardi minori</item>
+        <item>Bilanciato</item>
+        <item>Limite FPS</item>
+        <item>Più fluido</item>
+        <item>Timing dell\'host</item>
+    </string-array>
+    <string-array name="apollo_info_frame_pacing_texts">
+        <item>Mostra subito l\'ultimo frame arrivato: il minimo ritardo, ma possono esserci scatti</item>
+        <item>Allinea i frame allo schermo e salta quelli in più</item>
+        <item>Come Bilanciato, ma chiede al PC 1 FPS in meno dello schermo, così i frame non si accumulano</item>
+        <item>Non salta mai un frame: il più fluido, ma il ritardo può crescere parecchio</item>
+        <item>Mostra i frame al ritmo con cui il PC li ha creati, con un piccolo margine deciso dal jitter buffer. Il migliore con Vulkan</item>
+    </string-array>
+    <string name="apollo_info_jitter_buffer">Solo con «Sincronizza con il timing dell\'host». Aggiunge un piccolo ritardo per assorbire gli sbalzi della rete, così ogni frame arriva in tempo per essere mostrato: più ritardo, meno scatti.</string>
+    <string-array name="apollo_info_jitter_buffer_names">
+        <item>Lowest latency</item>
+        <item>Low latency</item>
+        <item>Balanced</item>
+        <item>Smooth</item>
+    </string-array>
+    <string-array name="apollo_info_jitter_buffer_texts">
+        <item>Il minimo ritardo, ma qualche frame può arrivare irregolare</item>
+        <item>Poco ritardo, scatti rari</item>
+        <item>Il giusto mezzo tra ritardo e fluidità (consigliato)</item>
+        <item>Il più fluido, con circa 10 ms di ritardo in più</item>
+    </string-array>
+    <string name="apollo_info_ultra_low_latency">Attiva sul decoder delle opzioni extra che possono ridurre il ritardo sui chip Snapdragon 8 Gen 2, 8 Gen 3 e 8 Elite, Exynos e MediaTek. Sperimentale: se il video dà problemi, spegnila.</string>
+    <string name="apollo_info_disable_warnings">Nasconde gli avvisi che compaiono durante lo stream quando la connessione è lenta o instabile.</string>
+    <string name="apollo_info_audiofx">Fa funzionare gli effetti audio del sistema (equalizzatori, Dolby e simili) durante lo stream, ma può aumentare il ritardo dell\'audio.</string>
+    <string name="apollo_info_host_audio">Riproduce l\'audio sia sul PC sia su questo dispositivo.</string>
+    <string name="apollo_info_deadzone">Quanto deve muoversi la levetta prima che il movimento conti, così una levetta consumata non muove nulla da sola. Alcuni giochi usano comunque una zona morta più grande.</string>
+    <string name="apollo_info_multi_controller">Ogni controller collegato è un giocatore diverso sul PC. Da spento, tutti i controller diventano uno solo e il PC ne vede sempre uno, anche se non ce n\'è nessuno collegato.</string>
+    <string name="apollo_info_flip_face_buttons">Scambia A con B e X con Y, sui controller e sui controlli a schermo. Comodo con i controller in stile Nintendo.</string>
+    <string name="apollo_info_touchpad_as_mouse">Il touchpad del controller (come quello del DualSense) muove il mouse del PC, anche quando il PC vede un controller con touchpad.</string>
+    <string name="apollo_info_motion_sensors">Permette al PC di chiedere i dati del giroscopio quando il controller li ha. Da spento si risparmia un po\' di batteria e di rete, se il gioco non li usa.</string>
+    <string name="apollo_info_motion_fallback">Se il controller non ha il giroscopio, o la tua versione di Android non lo supporta, usa quello di questo dispositivo. Nota: il PC potrebbe vedere il controller come uno PlayStation.</string>
+    <string name="apollo_info_analog_scrolling">Quando il controller fa da mouse (tenendo premuto Start), la levetta scelta fa scorrere le pagine.</string>
+    <string name="apollo_info_vibrate_fallback">Se il controller non può vibrare, vibra questo dispositivo al suo posto.</string>
+    <string name="apollo_info_usb_driver">Usa un driver USB integrato per i controller Xbox, sui dispositivi che non li supportano da soli.</string>
+    <string name="apollo_info_usb_bind_all">Usa il driver USB integrato per tutti i controller supportati, anche quando Android li supporta già. Provalo se un controller Xbox non funziona bene.</string>
+    <string name="apollo_info_touch_mode">Cosa fa il tocco sullo schermo durante lo stream.</string>
+    <string-array name="apollo_info_touch_mode_names">
+        <item>Multi-touch</item>
+        <item>Mouse</item>
+        <item>Trackpad</item>
+        <item>Disattivato</item>
+    </string-array>
+    <string-array name="apollo_info_touch_mode_texts">
+        <item>I tocchi arrivano al PC come su uno schermo touch, anche con più dita</item>
+        <item>Tocca dove vuoi cliccare: il cursore salta lì</item>
+        <item>Lo schermo fa da touchpad: trascina per muovere il cursore, tocca per cliccare</item>
+        <item>Il tocco non arriva al PC</item>
+    </string-array>
+    <string name="apollo_info_multi_touch_gestures">Riconosce i tap a 3, 4 e 5 dita in modalità multi-touch. Disattivala se un\'app sul PC ha bisogno di quei tocchi. Nelle altre modalità le gesture funzionano sempre.</string>
+    <string name="apollo_info_mouse_nav_buttons">Invia al PC i tasti Indietro e Avanti del mouse. Su alcuni dispositivi può impedire il clic destro.</string>
+    <string name="apollo_info_absolute_mouse_mode">Il cursore va esattamente dove punti, come in un desktop remoto, e l\'accelerazione del mouse risulta più naturale. Non funziona con molti giochi.</string>
+    <string name="apollo_info_brightness_edge_slider">Tocca il bordo sinistro dello schermo durante lo stream per mostrare la barra della luminosità. Quei tocchi non arrivano al PC.</string>
+    <string name="apollo_info_only_l3r3">Nasconde tutti i tasti a schermo tranne L3 e R3.</string>
+    <string name="apollo_info_sticky_modifiers">Tieni premuto Ctrl, Shift, Alt o Win per bloccarlo: resta premuto finché non lo tocchi di nuovo. Comodo per le scorciatoie come Ctrl+C.</string>
+    <string name="apollo_info_overlay_trigger">Il tasto del controller da tenere premuto durante lo stream per aprire il menu di gioco.</string>
+    <string name="apollo_info_overlay_commands">Scorciatoie da tastiera tue (come Alt+Tab o Win+D) da inviare al PC dal menu di gioco.</string>
+    <string name="apollo_info_auto_resume">Se lo stream è in corso quando il dispositivo va in standby, riprende da solo al risveglio.</string>
+    <string name="apollo_info_sops">Permette a GeForce Experience di cambiare le impostazioni del gioco per adattarle allo stream.</string>
+    <string name="apollo_info_pip">Quando passi a un\'altra app, lo stream resta visibile in una piccola finestra. Puoi guardarlo, ma non controllarlo.</string>
+    <string name="apollo_info_fullscreen_ui">Nasconde le barre di Android nell\'app. Scorri dal bordo dello schermo per farle ricomparire.</string>
+    <string name="apollo_info_small_icon_mode">Copertine più piccole nella griglia dei giochi, così ne vedi di più.</string>
 </resources>

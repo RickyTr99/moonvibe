@@ -21,8 +21,14 @@ import android.preference.TwoStatePreference;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextUtils;
+import android.os.Build;
+import android.text.style.AbsoluteSizeSpan;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
+import android.text.style.ForegroundColorSpan;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
@@ -69,6 +75,11 @@ public class SettingsView extends FrameLayout {
     private final LinearLayout rowList;
     private final ScrollView rowScroll;
     private final OptionsPopup popup;
+    private final InfoPopup infoPopup;
+    // On top of the categories; null on a single page
+    private final SearchField searchField;
+    // What is searched for, empty while a category shows
+    private String query = "";
 
     private PreferenceScreen screen;
     private ListAdapter screenAdapter;
@@ -114,6 +125,9 @@ public class SettingsView extends FrameLayout {
         // Shown after the name while the setting differs from its default
         DotSpan dot;
         boolean modified;
+        // What the setting does, behind the "i" after its name; null for the obvious ones
+        SettingsLayout.Info info;
+        InfoSpan infoSpan;
     }
 
     // Defaults of the settings, to mark the changed ones and restore a category; null on a single page
@@ -167,8 +181,42 @@ public class SettingsView extends FrameLayout {
         categoryList.setOrientation(LinearLayout.VERTICAL);
         categoryList.setPadding(dp(2), dp(2), dp(2), dp(8));
         categoryScroll.addView(categoryList);
-        content.addView(categoryScroll, new LinearLayout.LayoutParams(dp(218), ViewGroup.LayoutParams.MATCH_PARENT));
-        categoryScroll.setVisibility(singlePage ? GONE : VISIBLE);
+
+        // The search box stays on top of the categories, which scroll under it
+        LinearLayout leftColumn = new LinearLayout(activity);
+        leftColumn.setOrientation(LinearLayout.VERTICAL);
+        searchField = singlePage ? null : new SearchField(activity, colors);
+        if (searchField != null) {
+            LinearLayout.LayoutParams fieldParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(40));
+            fieldParams.setMargins(dp(2), dp(2), dp(2), dp(6));
+            leftColumn.addView(searchField, fieldParams);
+            searchField.setListener(new SearchField.Listener() {
+                @Override
+                public void onQueryChanged(String newQuery) {
+                    if (newQuery.equals(query)) {
+                        return;
+                    }
+                    if (newQuery.isEmpty()) {
+                        showCategory(exitSearch(), true);
+                    } else {
+                        boolean entering = query.isEmpty();
+                        query = newQuery;
+                        showSearch(entering);
+                    }
+                }
+
+                @Override
+                public void onSearchSubmitted() {
+                    View first = firstFocusableRow();
+                    if (first != null) {
+                        first.requestFocus();
+                    }
+                }
+            });
+        }
+        leftColumn.addView(categoryScroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        content.addView(leftColumn, new LinearLayout.LayoutParams(dp(218), ViewGroup.LayoutParams.MATCH_PARENT));
+        leftColumn.setVisibility(singlePage ? GONE : VISIBLE);
 
         rowScroll = new ScrollView(activity) {
             @Override
@@ -193,6 +241,7 @@ public class SettingsView extends FrameLayout {
         content.addView(rowScroll, rowParams);
 
         popup = new OptionsPopup(this, content, colors);
+        infoPopup = new InfoPopup(this, content, colors);
     }
 
     private int dp(float value) {
@@ -238,7 +287,12 @@ public class SettingsView extends FrameLayout {
         boolean categoryFocused = categoryList.hasFocus();
 
         buildCategories();
-        showCategory(Math.max(0, Math.min(selectedCategory, shownCategories.size() - 1)), false);
+        selectedCategory = Math.max(0, Math.min(selectedCategory, shownCategories.size() - 1));
+        if (searching()) {
+            showSearch(false);
+        } else {
+            showCategory(selectedCategory, false);
+        }
         if (categoryViews.isEmpty()) {
             return;
         }
@@ -274,14 +328,23 @@ public class SettingsView extends FrameLayout {
         }
     }
 
-    /** B closes the options menu first */
+    /** Back closes the explanation, the options menu or the search first */
     public boolean onBackPressed() {
-        return popup.dismiss(true);
+        return infoPopup.dismiss(true) || popup.dismiss(true) || closeSearch();
     }
 
-    /** B of a gamepad: closes the options menu, or goes from the settings back to their category */
+    /**
+     * B of a gamepad: closes the explanation, the options menu or the search,
+     * or goes from the settings back to their category
+     */
     public boolean onButtonB() {
-        if (popup.dismiss(true)) {
+        if (infoPopup.dismiss(true) || popup.dismiss(true) || closeSearch()) {
+            return true;
+        }
+        // From the empty search box, back to the categories
+        if (searchField != null && searchField.edit.hasFocus() && !categoryViews.isEmpty()) {
+            searchField.hideKeyboard();
+            categoryViews.get(Math.max(0, selectedCategory)).requestFocus();
             return true;
         }
         if (!singlePage && rowList.hasFocus() && !categoryViews.isEmpty()) {
@@ -289,6 +352,162 @@ public class SettingsView extends FrameLayout {
             return true;
         }
         return false;
+    }
+
+    // --- Search
+
+    private boolean searching() {
+        return !query.isEmpty();
+    }
+
+    // Android 13+ with predictive back sends back to this instead of onBackPressed(), while a search is open
+    private Object searchBackCallback;
+
+    private void updateSearchBack() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return;
+        }
+        if (searching() && searchBackCallback == null) {
+            OnBackInvokedCallback callback = this::closeSearch;
+            activity.getOnBackInvokedDispatcher().registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback);
+            searchBackCallback = callback;
+        } else if (!searching() && searchBackCallback != null) {
+            activity.getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback((OnBackInvokedCallback) searchBackCallback);
+            searchBackCallback = null;
+        }
+    }
+
+    /** Leaves the search without showing anything: @return the category to show again */
+    private int exitSearch() {
+        int category = selectedCategory;
+        query = "";
+        if (searchField != null) {
+            searchField.setQuery("");
+            searchField.hideKeyboard();
+        }
+        updateSearchBack();
+        // Makes the category count as a new one, so it comes back with its animation
+        selectedCategory = -1;
+        return Math.max(0, category);
+    }
+
+    // B or back during a search: back to the category shown before it
+    private boolean closeSearch() {
+        if (!searching()) {
+            return false;
+        }
+        int category = exitSearch();
+        showCategory(category, true);
+        if (category < categoryViews.size()) {
+            categoryViews.get(category).requestFocus();
+        }
+        return true;
+    }
+
+    private View firstFocusableRow() {
+        for (int i = 0; i < rowList.getChildCount(); i++) {
+            View child = rowList.getChildAt(i);
+            if (child.isFocusable() && child.getVisibility() == VISIBLE) {
+                return child;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The settings whose name, explanation or options hold the query, in the order of the categories,
+     * each under the category (and section) it belongs to.
+     */
+    private void showSearch(boolean animate) {
+        rows.clear();
+        rowList.removeAllViews();
+        restoreRow = null;
+        styleCategories();
+        updateSearchBack();
+
+        String folded = SettingsSearch.fold(query);
+        List<Preference> seen = new ArrayList<>();
+        int found = 0;
+        for (SettingsLayout.Category category : shownCategories) {
+            String categoryTitle = category.title(getContext()).toString();
+            for (Object entry : category.entries) {
+                List<SettingsLayout.Item> items = entry instanceof SettingsLayout.Section
+                        ? ((SettingsLayout.Section) entry).items : java.util.Collections.singletonList((SettingsLayout.Item) entry);
+                String path = entry instanceof SettingsLayout.Section
+                        ? categoryTitle + " › " + getContext().getString(((SettingsLayout.Section) entry).titleRes) : categoryTitle;
+                for (SettingsLayout.Item item : items) {
+                    Preference pref = find(item);
+                    if (pref == null || seen.contains(pref)) {
+                        continue;
+                    }
+                    seen.add(pref);
+                    int inTitle = SettingsSearch.indexOf(title(pref), folded);
+                    CharSequence snippet = inTitle >= 0 ? null : explanationMatch(pref, folded);
+                    if (inTitle >= 0 || snippet != null) {
+                        addRow(pref, path, inTitle, snippet);
+                        found++;
+                    }
+                }
+            }
+        }
+
+        // The title of the page, with how many settings were found
+        LinearLayout header = new LinearLayout(getContext());
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.BOTTOM);
+        header.setPadding(dp(14), dp(14), dp(14), dp(6));
+        TextView title = ApolloUi.text(getContext(), getContext().getString(R.string.apollo_search_results, query), 18, colors.onSurface, true);
+        title.setSingleLine(true);
+        title.setEllipsize(TextUtils.TruncateAt.END);
+        header.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        if (found > 0) {
+            header.addView(ApolloUi.text(getContext(), String.valueOf(found), 13, colors.outline, false));
+        }
+        rowList.addView(header, 0);
+        if (found == 0) {
+            TextView none = ApolloUi.text(getContext(), getContext().getString(R.string.apollo_search_none), 14, colors.onSurfaceVariant, false);
+            none.setPadding(dp(14), dp(10), dp(14), dp(10));
+            rowList.addView(none);
+        }
+
+        bindRows(false);
+        linkFocus();
+        rowScroll.scrollTo(0, 0);
+        if (animate) {
+            rowList.setAlpha(0f);
+            rowList.setTranslationY(dp(12));
+            rowList.animate().alpha(1f).translationY(0).setDuration(ApolloMotion.MEDIUM)
+                    .setInterpolator(ApolloMotion.EMPHASIZED_DECELERATE).start();
+        }
+    }
+
+    // The query in what the "i" of a setting explains, or in one of its options: the words around it, or null
+    private CharSequence explanationMatch(Preference pref, String folded) {
+        List<String> texts = new ArrayList<>();
+        SettingsLayout.Info info = pref.getKey() != null ? SettingsLayout.INFO.get(pref.getKey()) : null;
+        if (info != null) {
+            texts.add(getContext().getString(info.text));
+            if (info.optionValues != 0) {
+                String[] names = getResources().getStringArray(info.optionNames);
+                String[] optionTexts = getResources().getStringArray(info.optionTexts);
+                for (int i = 0; i < names.length && i < optionTexts.length; i++) {
+                    texts.add(names[i] + ": " + optionTexts[i]);
+                }
+            }
+        }
+        if (pref instanceof ListPreference && !(pref instanceof LanguagePreference) && ((ListPreference) pref).getEntries() != null) {
+            ListPreference list = (ListPreference) pref;
+            for (int i = 0; i < list.getEntries().length; i++) {
+                texts.add(optionLabel(list, i).toString());
+            }
+        }
+        for (String text : texts) {
+            int at = SettingsSearch.indexOf(text, folded);
+            if (at >= 0) {
+                return SettingsSearch.snippet(text, at, folded.length(), colors.onSurfaceVariant, colors.primary);
+            }
+        }
+        return null;
     }
 
     // --- Preferences
@@ -439,12 +658,21 @@ public class SettingsView extends FrameLayout {
             label.setEllipsize(TextUtils.TruncateAt.END);
             button.addView(label);
 
-            button.setOnClickListener(v -> showCategory(index, true));
-            HintRow.set(button, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_open, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_home,
-                    KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings);
+            // A category also closes the search
+            button.setOnClickListener(v -> {
+                if (searching()) {
+                    exitSearch();
+                }
+                showCategory(index, true);
+            });
+            HintRow.set(button, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_open, KeyEvent.KEYCODE_BUTTON_X, R.string.apollo_hint_search,
+                    KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_home, KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings);
             // The D-pad selects a category just by moving on it, like tabs
             button.setOnFocusChangeListener((v, hasFocus) -> {
-                if (hasFocus && index != selectedCategory) {
+                if (hasFocus && (index != selectedCategory || searching())) {
+                    if (searching()) {
+                        exitSearch();
+                    }
                     showCategory(index, true);
                 }
             });
@@ -459,7 +687,8 @@ public class SettingsView extends FrameLayout {
     private void styleCategories() {
         for (int i = 0; i < categoryViews.size(); i++) {
             LinearLayout button = (LinearLayout) categoryViews.get(i);
-            boolean selected = i == selectedCategory;
+            // None while searching: the results come from all of them
+            boolean selected = i == selectedCategory && !searching();
             if (button.isActivated() == selected && button.getTag() != null) {
                 continue;
             }
@@ -518,7 +747,7 @@ public class SettingsView extends FrameLayout {
             if (entry instanceof SettingsLayout.Item) {
                 Preference pref = find((SettingsLayout.Item) entry);
                 if (pref != null) {
-                    addRow(pref);
+                    addRow(pref, null, -1, null);
                 }
                 continue;
             }
@@ -541,7 +770,7 @@ public class SettingsView extends FrameLayout {
             View sectionHeader = sectionHeader(getContext().getString(section.titleRes), open, sectionKey, sectionRows);
             rowList.addView(sectionHeader);
             for (Preference pref : prefs) {
-                View row = addRow(pref);
+                View row = addRow(pref, null, -1, null);
                 row.setVisibility(open ? VISIBLE : GONE);
                 sectionRows.add(row);
             }
@@ -733,11 +962,38 @@ public class SettingsView extends FrameLayout {
         return header;
     }
 
-    private View addRow(Preference pref) {
+    /**
+     * @param path in the search results, the category (and section) of the setting, over its name
+     * @param titleMatch in the search results, where the query starts in the name, or -1
+     * @param snippet in the search results, the words of the explanation that hold the query, under the name
+     */
+    private View addRow(Preference pref, String path, int titleMatch, CharSequence snippet) {
         Row row = new Row();
         row.pref = pref;
+        row.info = pref.getKey() != null ? SettingsLayout.INFO.get(pref.getKey()) : null;
 
-        LinearLayout view = new LinearLayout(getContext());
+        LinearLayout view = new LinearLayout(getContext()) {
+            // A touch on the "i" (a 48 dp square around it) opens the explanation instead of the setting,
+            // also on a setting that is turned off
+            private boolean onInfo;
+
+            @Override
+            public boolean dispatchTouchEvent(MotionEvent event) {
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                    onInfo = isOnInfo(row, event.getX(), event.getY());
+                }
+                if (!onInfo) {
+                    return super.dispatchTouchEvent(event);
+                }
+                if (event.getActionMasked() == MotionEvent.ACTION_UP && isOnInfo(row, event.getX(), event.getY())) {
+                    showInfo(row);
+                }
+                if (event.getActionMasked() == MotionEvent.ACTION_UP || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                    onInfo = false;
+                }
+                return true;
+            }
+        };
         view.setId(View.generateViewId());
         view.setOrientation(LinearLayout.HORIZONTAL);
         view.setGravity(Gravity.CENTER_VERTICAL);
@@ -751,12 +1007,37 @@ public class SettingsView extends FrameLayout {
         row.label = ApolloUi.text(getContext(), title(pref), 14, colors.onSurface, true);
         row.label.setPadding(0, dp(6), dp(12), dp(6));
         row.label.setLineSpacing(0, 1.15f);
-        if (defaults != null) {
-            // Part of the text, so it stays right after the last word when the name wraps;
-            // a no-break space keeps it on the line of that word
-            row.dot = new DotSpan(colors.primary, dp(4), dp(5));
-            SpannableStringBuilder text = new SpannableStringBuilder(title(pref)).append(' ');
-            text.setSpan(row.dot, text.length() - 1, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        if (defaults != null || row.info != null || path != null) {
+            SpannableStringBuilder text = new SpannableStringBuilder();
+            if (path != null) {
+                text.append(path);
+                text.setSpan(new AbsoluteSizeSpan(12, true), 0, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                text.setSpan(new ForegroundColorSpan(colors.outline), 0, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                text.append('\n');
+            }
+            int titleStart = text.length();
+            text.append(title(pref));
+            if (titleMatch >= 0) {
+                SettingsSearch.mark(text, titleStart + titleMatch, query.length(), colors.primary);
+            }
+            // The "i" and the dot are part of the text, so they stay right after the last word when the name wraps;
+            // a no-break space keeps them on the line of that word
+            if (row.info != null) {
+                row.infoSpan = new InfoSpan(colors.surfaceContainerHighest, colors.onSurfaceVariant, dp(16), dp(6));
+                text.append(' ');
+                text.setSpan(row.infoSpan, text.length() - 1, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+            if (defaults != null) {
+                row.dot = new DotSpan(colors.primary, dp(4), dp(5));
+                text.append(' ');
+                text.setSpan(row.dot, text.length() - 1, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+            if (snippet != null) {
+                text.append('\n');
+                int snippetStart = text.length();
+                text.append(snippet);
+                text.setSpan(new AbsoluteSizeSpan(12, true), snippetStart, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
             row.label.setText(text);
         }
         view.addView(row.label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
@@ -832,13 +1113,97 @@ public class SettingsView extends FrameLayout {
             HintRow.set(view, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_open, KeyEvent.KEYCODE_BUTTON_B, backHint());
         }
 
+        if (row.info != null) {
+            insertHint(view, KeyEvent.KEYCODE_BUTTON_Y, R.string.apollo_hint_info);
+        }
+        if (searchField != null) {
+            insertHint(view, KeyEvent.KEYCODE_BUTTON_X, R.string.apollo_hint_search);
+        }
+
         rows.add(row);
         rowList.addView(view, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return view;
     }
 
+    // "Y Info" and "X Search" go before the last hint of a row, which is always B
+    @SuppressWarnings("unchecked")
+    private void insertHint(View view, int key, int labelRes) {
+        Object tag = view.getTag(R.id.apollo_hints);
+        List<HintRow.Hint> hints = tag instanceof List ? new ArrayList<>((List<HintRow.Hint>) tag) : new ArrayList<>();
+        hints.add(Math.max(0, hints.size() - 1), new HintRow.Hint(key, getContext().getString(labelRes)));
+        HintRow.set(view, hints.toArray(new HintRow.Hint[0]));
+    }
+
+    private boolean isOnInfo(Row row, float x, float y) {
+        if (row.infoSpan == null) {
+            return false;
+        }
+        float[] center = row.infoSpan.center(row.label);
+        if (center == null) {
+            return false;
+        }
+        float half = dp(24);
+        float cx = row.label.getLeft() + center[0], cy = row.label.getTop() + center[1];
+        return Math.abs(x - cx) <= half && Math.abs(y - cy) <= half;
+    }
+
+    private void showInfo(Row row) {
+        if (row.info == null) {
+            return;
+        }
+        popup.dismiss(false);
+        List<InfoPopup.Option> options = null;
+        SettingsLayout.Info info = row.info;
+        if (info.optionValues != 0 && row.pref instanceof ListPreference) {
+            ListPreference list = (ListPreference) row.pref;
+            String[] values = getResources().getStringArray(info.optionValues);
+            String[] names = getResources().getStringArray(info.optionNames);
+            String[] texts = getResources().getStringArray(info.optionTexts);
+            options = new ArrayList<>();
+            for (int i = 0; i < values.length && i < names.length && i < texts.length; i++) {
+                // Only the options this device offers
+                if (list.findIndexOfValue(values[i]) >= 0) {
+                    options.add(new InfoPopup.Option(names[i], texts[i], values[i].equals(list.getValue())));
+                }
+            }
+        }
+        infoPopup.show(row.view, title(row.pref), getContext().getString(info.text), options);
+    }
+
+    // Y on a setting with an "i" opens its explanation, and closes it again; X goes to the search from anywhere
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getKeyCode() == KeyEvent.KEYCODE_BUTTON_X && searchField != null
+                && !infoPopup.isShowing() && !popup.isShowing()) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                searchField.openKeyboard();
+            }
+            return true;
+        }
+        if (event.getKeyCode() == KeyEvent.KEYCODE_BUTTON_Y) {
+            if (infoPopup.isShowing()) {
+                if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                    infoPopup.dismiss(true);
+                }
+                return true;
+            }
+            for (Row row : rows) {
+                if (row.info != null && row.view.isFocused()) {
+                    if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                        showInfo(row);
+                    }
+                    return true;
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
     // B leaves a single page, or goes back to the categories
     private int backHint() {
+        if (searching()) {
+            return R.string.apollo_hint_close_search;
+        }
         return singlePage ? R.string.apollo_hint_back : R.string.apollo_hint_categories;
     }
 
@@ -938,7 +1303,9 @@ public class SettingsView extends FrameLayout {
         if (categoryViews.isEmpty()) {
             return;
         }
-        View category = categoryViews.get(selectedCategory);
+        View category = categoryViews.get(Math.max(0, selectedCategory));
+        // Left from the search results goes back to the search box
+        View left = searching() && searchField != null ? searchField.edit : category;
         View first = null, last = null;
         for (int i = 0; i < rowList.getChildCount(); i++) {
             View child = rowList.getChildAt(i);
@@ -946,7 +1313,7 @@ public class SettingsView extends FrameLayout {
                 if (child.getId() == View.NO_ID) {
                     child.setId(View.generateViewId());
                 }
-                child.setNextFocusLeftId(singlePage ? child.getId() : category.getId());
+                child.setNextFocusLeftId(singlePage ? child.getId() : left.getId());
                 child.setNextFocusRightId(child.getId());
                 child.setNextFocusUpId(View.NO_ID);
                 child.setNextFocusDownId(View.NO_ID);
@@ -968,6 +1335,16 @@ public class SettingsView extends FrameLayout {
             view.setNextFocusLeftId(view.getId());
             view.setNextFocusUpId(categoryViews.get((i - 1 + count) % count).getId());
             view.setNextFocusDownId(categoryViews.get((i + 1) % count).getId());
+        }
+
+        // The search box sits over the first category; down from it goes to the results while there are some
+        if (searchField != null) {
+            View edit = searchField.edit;
+            categoryViews.get(0).setNextFocusUpId(edit.getId());
+            edit.setNextFocusUpId(edit.getId());
+            edit.setNextFocusLeftId(edit.getId());
+            edit.setNextFocusRightId(first != null ? first.getId() : edit.getId());
+            edit.setNextFocusDownId(searching() && first != null ? first.getId() : categoryViews.get(0).getId());
         }
     }
 }

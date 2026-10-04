@@ -620,4 +620,132 @@
     <string name="game_menu_key_paste">Paste</string>
     <string name="game_menu_key_move_monitor">Move to other monitor</string>
     <string name="game_menu_key_toggle_hdr">Toggle HDR</string>
+
+    <!-- What a setting does, in the popup of its "i" (Y on a gamepad) -->
+    <string name="apollo_hint_info">Info</string>
+    <string name="apollo_hint_search">Search</string>
+    <string name="apollo_hint_close_search">Close search</string>
+    <string name="apollo_hint_write">Type</string>
+    <string name="apollo_search_hint">Search</string>
+    <string name="apollo_search_clear">Clear</string>
+    <string name="apollo_search_results">Results for “%1$s”</string>
+    <string name="apollo_search_none">No settings found</string>
+    <string name="apollo_info_options">Options</string>
+    <string name="apollo_info_bitrate">How much data per second the video uses. Higher looks sharper, especially in motion; if your network can\'t keep up, you\'ll see stutter and artifacts. It\'s set again by itself when you change the resolution or the frame rate.</string>
+    <string name="apollo_info_video_format">The codec the PC compresses the video with. If the PC or this device doesn\'t support the one you pick, another one is used.</string>
+    <string-array name="apollo_info_video_format_names">
+        <item>Automatic</item>
+        <item>AV1</item>
+        <item>HEVC</item>
+        <item>H.264</item>
+        <item>PyroWave</item>
+    </string-array>
+    <string-array name="apollo_info_video_format_texts">
+        <item>The best one both the PC and this device support (recommended)</item>
+        <item>The most efficient: the same quality with less data. Needs a recent GPU</item>
+        <item>More efficient than H.264, supported almost everywhere</item>
+        <item>The most compatible, but needs more bitrate for the same quality</item>
+        <item>Very low latency, only on a fast local network (200 Mbps or more). Experimental</item>
+    </string-array>
+    <string name="apollo_info_hdr">Streams in HDR (or 10-bit SDR) when the game and the PC\'s graphics card support it. Needs a GPU that can encode HEVC Main 10.</string>
+    <string name="apollo_info_stretch_video">Stretches the picture to fill the whole screen, even when the aspect ratios don\'t match. When off, black bars fill the rest.</string>
+    <string name="apollo_info_pyrowave_late_frames">Only with PyroWave and \"Sync to host frame timing\". When a frame arrives late or loses packets, it\'s shown with what has arrived, a little blurred, instead of being skipped. Cutting more means fewer stutters on a busy network, but more blur.</string>
+    <string-array name="apollo_info_pyrowave_late_frames_names">
+        <item>Off</item>
+        <item>Sharper</item>
+        <item>Balanced</item>
+        <item>Smoother</item>
+        <item>Smoothest</item>
+    </string-array>
+    <string-array name="apollo_info_pyrowave_late_frames_texts">
+        <item>Late frames are shown late, always sharp</item>
+        <item>Cuts few frames, blur is rare</item>
+        <item>The middle ground (recommended)</item>
+        <item>Cuts more frames: fewer stutters, more blur</item>
+        <item>Shows almost anything: the fewest stutters, the most blur</item>
+    </string-array>
+    <string name="apollo_info_video_renderer">How the video gets to the screen.</string>
+    <string-array name="apollo_info_video_renderer_names">
+        <item>Automatic</item>
+        <item>Direct Surface</item>
+        <item>Vulkan</item>
+    </string-array>
+    <string-array name="apollo_info_video_renderer_texts">
+        <item>Uses the direct renderer (recommended)</item>
+        <item>The decoder draws straight to the screen: the simplest and most proven</item>
+        <item>Adds dithering and its own, more even frame pacing. Experimental</item>
+    </string-array>
+    <string name="apollo_info_spatial_dithering">Adds very fine moving noise that hides the color banding in gradients, most visible in HDR. Vulkan renderer only.</string>
+    <string name="apollo_info_full_range">Uses the full range of colors instead of the reduced one of video. If your screen doesn\'t handle it properly, detail is lost in very light and very dark areas.</string>
+    <string name="apollo_info_unlock_fps">Also lists the highest frame rates, like 90, 120 or 144 FPS. They can lower latency on high-end devices, but cause stutter and instability on devices that can\'t keep up.</string>
+    <string name="apollo_info_reduce_refresh_rate">Lets the screen drop to the frame rate of the stream instead of staying at its highest refresh rate. Saves battery, for a little more latency.</string>
+    <string name="apollo_info_actual_refresh_rate">Leave at 0 to measure the real refresh rate of the screen when the stream starts and ask the PC for a frame rate that lines up with it (143.65 FPS on a 143.65 Hz panel). Enter a rate to send that one instead. Experimental.</string>
+    <string name="apollo_info_frame_pacing">How frames are shown as they arrive: how much latency and smoothness count.</string>
+    <string-array name="apollo_info_frame_pacing_names">
+        <item>Lowest latency</item>
+        <item>Balanced</item>
+        <item>FPS limit</item>
+        <item>Smoothest</item>
+        <item>Host timing</item>
+    </string-array>
+    <string-array name="apollo_info_frame_pacing_texts">
+        <item>Shows the latest frame right away: the least latency, but it can stutter</item>
+        <item>Lines frames up with the screen and skips the extra ones</item>
+        <item>Like Balanced, but asks the PC for 1 FPS less than the screen, so frames never pile up</item>
+        <item>Never skips a frame: the smoothest, but latency can grow a lot</item>
+        <item>Shows frames at the pace the PC made them, with a small margin set by the jitter buffer. Best with Vulkan</item>
+    </string-array>
+    <string name="apollo_info_jitter_buffer">Only with \"Sync to host frame timing\". Adds a small delay to absorb network hiccups, so every frame arrives in time to be shown: more delay, fewer stutters.</string>
+    <string-array name="apollo_info_jitter_buffer_names">
+        <item>Lowest latency</item>
+        <item>Low latency</item>
+        <item>Balanced</item>
+        <item>Smooth</item>
+    </string-array>
+    <string-array name="apollo_info_jitter_buffer_texts">
+        <item>The least delay, but a few frames may show unevenly</item>
+        <item>Little delay, rare stutters</item>
+        <item>The middle ground between latency and smoothness (recommended)</item>
+        <item>The smoothest, with about 10 ms more delay</item>
+    </string-array>
+    <string name="apollo_info_ultra_low_latency">Turns on extra decoder options that can lower latency on Snapdragon 8 Gen 2, 8 Gen 3 and 8 Elite, Exynos and MediaTek chips. Experimental: if the video misbehaves, turn it off.</string>
+    <string name="apollo_info_disable_warnings">Hides the warnings that show during the stream when the connection is slow or unstable.</string>
+    <string name="apollo_info_audiofx">Lets the system audio effects (equalizers, Dolby and the like) work during the stream, but can add audio latency.</string>
+    <string name="apollo_info_host_audio">Plays the audio both on the PC and on this device.</string>
+    <string name="apollo_info_deadzone">How far a stick has to move before the movement counts, so a worn stick doesn\'t move things by itself. Some games use a larger deadzone anyway.</string>
+    <string name="apollo_info_multi_controller">Each connected controller is a different player on the PC. When off, all controllers act as one, and the PC always sees a controller, even with none connected.</string>
+    <string name="apollo_info_flip_face_buttons">Swaps A with B and X with Y, on controllers and on the on-screen controls. Handy with Nintendo-style controllers.</string>
+    <string name="apollo_info_touchpad_as_mouse">The controller\'s touchpad (like the DualSense one) moves the PC\'s mouse, even when the PC sees a controller with a touchpad.</string>
+    <string name="apollo_info_motion_sensors">Lets the PC ask for gyroscope data when the controller has it. When off, it saves a little battery and network if the game doesn\'t use it.</string>
+    <string name="apollo_info_motion_fallback">If the controller has no gyroscope, or your Android version doesn\'t support it, this device\'s own is used. Note: the PC may then see the controller as a PlayStation one.</string>
+    <string name="apollo_info_analog_scrolling">When the controller acts as a mouse (hold Start), the chosen stick scrolls pages.</string>
+    <string name="apollo_info_vibrate_fallback">If the controller can\'t vibrate, this device vibrates in its place.</string>
+    <string name="apollo_info_usb_driver">Uses a built-in USB driver for Xbox controllers on devices that don\'t support them by themselves.</string>
+    <string name="apollo_info_usb_bind_all">Uses the built-in USB driver for all supported controllers, even when Android already supports them. Try it if an Xbox controller doesn\'t work properly.</string>
+    <string name="apollo_info_touch_mode">What touching the screen does during the stream.</string>
+    <string-array name="apollo_info_touch_mode_names">
+        <item>Multi-touch</item>
+        <item>Mouse</item>
+        <item>Trackpad</item>
+        <item>Disabled</item>
+    </string-array>
+    <string-array name="apollo_info_touch_mode_texts">
+        <item>Touches reach the PC as on a touch screen, several fingers at once</item>
+        <item>Tap where you want to click: the cursor jumps there</item>
+        <item>The screen is a touchpad: drag to move the cursor, tap to click</item>
+        <item>Touches don\'t reach the PC</item>
+    </string-array>
+    <string name="apollo_info_multi_touch_gestures">Recognizes 3, 4 and 5 finger taps in multi-touch mode. Turn it off if an app on the PC needs those touches itself. In the other modes the gestures always work.</string>
+    <string name="apollo_info_mouse_nav_buttons">Sends the Back and Forward mouse buttons to the PC. On some devices it can stop right click from working.</string>
+    <string name="apollo_info_absolute_mouse_mode">The cursor goes exactly where you point, as in a remote desktop, so mouse acceleration feels more natural. It doesn\'t work with many games.</string>
+    <string name="apollo_info_brightness_edge_slider">Touch the left edge of the screen during the stream to show the brightness slider. Those touches don\'t reach the PC.</string>
+    <string name="apollo_info_only_l3r3">Hides all the on-screen buttons except L3 and R3.</string>
+    <string name="apollo_info_sticky_modifiers">Long press Ctrl, Shift, Alt or Win to keep it held down until you tap it again. Handy for shortcuts like Ctrl+C.</string>
+    <string name="apollo_info_overlay_trigger">The controller button to hold during the stream to open the game menu.</string>
+    <string name="apollo_info_overlay_commands">Keyboard shortcuts of your own (like Alt+Tab or Win+D) to send to the PC from the game menu.</string>
+    <string name="apollo_info_auto_resume">If a stream is running when the device goes to sleep, it resumes by itself when it wakes up.</string>
+    <string name="apollo_info_sops">Lets GeForce Experience change the game\'s settings to suit the stream.</string>
+    <string name="apollo_info_pip">When you switch to another app, the stream stays visible in a small window. You can watch it, not control it.</string>
+    <string name="apollo_info_fullscreen_ui">Hides the Android bars in the app. Swipe from the edge of the screen to bring them back.</string>
+    <string name="apollo_info_small_icon_mode">Smaller covers in the games grid, so more of them fit on screen.</string>
 </resources>
