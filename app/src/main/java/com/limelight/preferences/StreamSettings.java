@@ -97,7 +97,7 @@ public class StreamSettings extends Activity {
         // Gamepad hints at the bottom
         HintRow hintRow = ScreenHints.attach(this, findViewById(R.id.settingsColumn));
         hintRow.setFallback(HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_home),
-                HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_hint_quick_settings));
+                HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings));
 
         // Keep the content clear of a notch, the window draws under it
         findViewById(R.id.settingsColumn).setOnApplyWindowInsetsListener((v, insets) -> {
@@ -141,7 +141,7 @@ public class StreamSettings extends Activity {
                         return true;
                     }
                     break;
-                case KeyEvent.KEYCODE_BUTTON_SELECT:
+                case KeyEvent.KEYCODE_BUTTON_START:
                     QuickSettingsPanel.of(this).toggle();
                     return true;
             }

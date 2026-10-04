@@ -414,7 +414,7 @@ public class SettingsView extends FrameLayout {
 
             button.setOnClickListener(v -> showCategory(index, true));
             HintRow.set(button, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_open, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_home,
-                    KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_hint_quick_settings);
+                    KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings);
             // The D-pad selects a category just by moving on it, like tabs
             button.setOnFocusChangeListener((v, hasFocus) -> {
                 if (hasFocus && index != selectedCategory) {

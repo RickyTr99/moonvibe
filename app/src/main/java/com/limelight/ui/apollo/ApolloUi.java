@@ -25,6 +25,7 @@ import com.limelight.ui.theme.ApolloMotion;
 public final class ApolloUi {
     public static final int COLOR_RIPPLE = 0x33FFFFFF;
     private static final float FOCUSED_SCALE = 1.05f;
+    private static final float PRESSED_SCALE = 0.96f;
     // Corners of the rows of lists (settings, sheets, menus) and of their focus tint: Material 3 medium shape
     public static final int ROW_RADIUS_DP = 12;
 
@@ -106,7 +107,7 @@ public final class ApolloUi {
     // Grows the view a little while it has the focus
     public static void scaleOnFocus(View view) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // The ring drawn by the card replaces the gray highlight of the system
+            // The growth replaces the gray highlight of the system
             view.setDefaultFocusHighlightEnabled(false);
         }
         view.setOnFocusChangeListener((v, hasFocus) -> v.animate()
@@ -115,6 +116,25 @@ public final class ApolloUi {
                 .setDuration(ApolloMotion.SHORT)
                 .setInterpolator(ApolloMotion.STANDARD)
                 .start());
+    }
+
+    // Shrinks the view a little while it is touched, like a Material pressed state
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    public static void pressFeedback(View view) {
+        view.setOnTouchListener((v, event) -> {
+            switch (event.getActionMasked()) {
+                case android.view.MotionEvent.ACTION_DOWN:
+                    v.animate().scaleX(PRESSED_SCALE).scaleY(PRESSED_SCALE)
+                            .setDuration(ApolloMotion.SHORT).setInterpolator(ApolloMotion.STANDARD).start();
+                    break;
+                case android.view.MotionEvent.ACTION_UP:
+                case android.view.MotionEvent.ACTION_CANCEL:
+                    v.animate().scaleX(1).scaleY(1)
+                            .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
+                    break;
+            }
+            return false;
+        });
     }
 
     public static TextView text(Context context, CharSequence value, float sizeSp, int color, boolean medium) {

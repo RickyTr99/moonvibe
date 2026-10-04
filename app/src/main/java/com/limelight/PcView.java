@@ -207,14 +207,14 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
         // Gamepad hints at the bottom, from the focused card
         hintRow = ScreenHints.attach(this, findViewById(R.id.homeColumn));
         hintRow.setFallback(HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_X, R.string.apollo_hint_add_pc),
-                HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_hint_quick_settings));
+                HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings));
 
         noPcFoundLayout = findViewById(R.id.no_pc_found_layout);
         View emptyAddPcButton = findViewById(R.id.emptyAddPcButton);
         emptyAddPcButton.setOnClickListener(v -> startActivity(new Intent(PcView.this, AddComputerManually.class)));
         ApolloUi.scaleOnFocus(emptyAddPcButton);
         HintRow.set(emptyAddPcButton, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_add_pc,
-                KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_hint_quick_settings);
+                KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings);
         if (pcGridAdapter.getCount() == 0) {
             noPcFoundLayout.setVisibility(View.VISIBLE);
         }
@@ -924,7 +924,7 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
                 case KeyEvent.KEYCODE_BUTTON_R1:
                     topBar.switchTab(1);
                     return true;
-                case KeyEvent.KEYCODE_BUTTON_SELECT:
+                case KeyEvent.KEYCODE_BUTTON_START:
                     toggleQuickSettings();
                     return true;
             }

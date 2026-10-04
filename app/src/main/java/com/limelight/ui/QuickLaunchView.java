@@ -294,7 +294,7 @@ public class QuickLaunchView {
             card.setTag(entry.computerUuid + "/" + entry.appId);
             HintRow.set(card, KeyEvent.KEYCODE_BUTTON_A, entry.running ? R.string.apollo_hint_resume : R.string.apollo_hint_start,
                     KeyEvent.KEYCODE_BUTTON_Y, R.string.apollo_hint_options, KeyEvent.KEYCODE_BUTTON_X, R.string.apollo_hint_add_pc,
-                    KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_hint_quick_settings);
+                    KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings);
             card.setOnClickListener(v -> launch(entry));
             card.setOnLongClickListener(v -> {
                 showActions(entry);

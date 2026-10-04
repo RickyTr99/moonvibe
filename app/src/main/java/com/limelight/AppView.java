@@ -693,7 +693,7 @@ public class AppView extends Activity {
         // Gamepad hints at the bottom
         HintRow hintRow = ScreenHints.attach(this, findViewById(R.id.libraryColumn));
         hintRow.setFallback(HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_back),
-                HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_hint_quick_settings));
+                HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings));
 
         libraryGrid = findViewById(R.id.libraryGrid);
         int side = ApolloUi.dp(this, 22) - gridRoom(this);
@@ -810,7 +810,7 @@ public class AppView extends Activity {
             holder.card.setAlpha(app.isHidden ? 0.4f : 1f);
             HintRow.set(holder.card, KeyEvent.KEYCODE_BUTTON_A, app.isRunning ? R.string.apollo_hint_resume : R.string.apollo_hint_start,
                     KeyEvent.KEYCODE_BUTTON_Y, R.string.apollo_hint_options, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_back,
-                    KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_hint_quick_settings);
+                    KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings);
             appGridAdapter.populateCover(app, holder.card.getCover(), holder.card.getPlaceholderSignal());
 
             // A gamepad starts from the first game
@@ -854,7 +854,7 @@ public class AppView extends Activity {
                 case KeyEvent.KEYCODE_BUTTON_R1:
                     topBar.switchTab(1);
                     return true;
-                case KeyEvent.KEYCODE_BUTTON_SELECT:
+                case KeyEvent.KEYCODE_BUTTON_START:
                     QuickSettingsPanel.of(this).toggle();
                     return true;
             }

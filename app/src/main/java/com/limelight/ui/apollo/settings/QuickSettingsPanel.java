@@ -5,7 +5,6 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
-import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.preference.PreferenceManager;
 import android.text.TextUtils;
@@ -38,8 +37,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Quick settings, from the left with Select or the button at the top left: shortcuts to the settings
- * changed most often. They write the very same settings as the settings screen.
+ * Quick settings, dropping down from the status pill of the top bar (Start on a gamepad): shortcuts to
+ * the settings changed most often. They write the very same settings as the settings screen.
  */
 public class QuickSettingsPanel extends FrameLayout {
     private static final int WIDTH_DP = 340;
@@ -71,9 +70,10 @@ public class QuickSettingsPanel extends FrameLayout {
     private SliderView bitrateSlider;
     private TextView resolutionValue, fpsValue, bitrateValue, codecValue;
 
-    // The panel of the activity, added over its content the first time
+    // The panel of the activity, added the first time over the whole window: the content area stops
+    // under the status bar zone, which the dimming has to cover too
     public static QuickSettingsPanel of(Activity activity) {
-        ViewGroup content = activity.findViewById(android.R.id.content);
+        ViewGroup content = (ViewGroup) activity.getWindow().getDecorView();
         for (int i = 0; i < content.getChildCount(); i++) {
             if (content.getChildAt(i) instanceof QuickSettingsPanel) {
                 return (QuickSettingsPanel) content.getChildAt(i);
@@ -90,29 +90,23 @@ public class QuickSettingsPanel extends FrameLayout {
         prefs = PreferenceManager.getDefaultSharedPreferences(context);
         setVisibility(GONE);
 
+        // The whole screen dims evenly, a tap outside closes it
         scrim = new View(context);
-        scrim.setBackgroundColor(0x52000000);
+        scrim.setBackgroundColor(0x47000000);
         scrim.setOnClickListener(v -> dismiss());
         addView(scrim, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
         panel = new LinearLayout(context);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setClickable(true);
-        GradientDrawable background = new GradientDrawable();
-        background.setColor(colors.surfaceContainerLow);
-        float radius = dp(24);
-        background.setCornerRadii(new float[] {0, 0, radius, radius, radius, radius, 0, 0});
-        panel.setBackground(background);
-        panel.setPadding(dp(10), dp(18), dp(10), dp(10));
-        addView(panel, new LayoutParams(dp(WIDTH_DP), LayoutParams.MATCH_PARENT, Gravity.START));
+        panel.setBackground(ApolloUi.roundRect(colors.surfaceContainerHigh, dp(20)));
+        panel.setPadding(dp(8), dp(8), dp(8), dp(4));
+        addView(panel, new LayoutParams(dp(WIDTH_DP), LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END));
 
-        TextView title = ApolloUi.text(context, context.getString(R.string.apollo_quick_settings), 18, colors.onSurface, true);
-        title.setPadding(dp(14), dp(2), dp(14), dp(20));
-        panel.addView(title);
-
+        // Shrinks to fit a short screen, then scrolls
         ScrollView scroll = new ScrollView(context);
         scroll.setVerticalScrollBarEnabled(false);
-        panel.addView(scroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
+        panel.addView(scroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
         list = new LinearLayout(context);
         list.setOrientation(LinearLayout.VERTICAL);
         scroll.addView(list);
@@ -129,6 +123,11 @@ public class QuickSettingsPanel extends FrameLayout {
 
     private int dp(float value) {
         return ApolloUi.dp(getContext(), value);
+    }
+
+    // The option menus line up with the right side of the panel, inside its padding
+    private int popupRightEdge() {
+        return panel.getRight() - dp(16);
     }
 
     // --- Rows
@@ -187,7 +186,7 @@ public class QuickSettingsPanel extends FrameLayout {
                     selected = i;
                 }
             }
-            popup.show(codecRow, dp(WIDTH_DP) - dp(16), getResources().getStringArray(R.array.video_format_names), selected,
+            popup.show(codecRow, popupRightEdge(), getResources().getStringArray(R.array.video_format_names), selected,
                     index -> {
                         prefs.edit().putString(PREF_VIDEO_FORMAT, values[index]).apply();
                         bind(true);
@@ -219,7 +218,8 @@ public class QuickSettingsPanel extends FrameLayout {
         row.setPadding(dp(14), 0, dp(14), 0);
         row.setFocusable(true);
         row.setClickable(true);
-        row.setBackground(ApolloUi.stateLayer(colors.surfaceContainerHigh, Color.TRANSPARENT, dp(ApolloUi.ROW_RADIUS_DP)));
+        // The panel is surfaceContainerHigh: the focus tint is one step lighter
+        row.setBackground(ApolloUi.stateLayer(colors.surfaceContainerHighest, Color.TRANSPARENT, dp(ApolloUi.ROW_RADIUS_DP)));
         list.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         rows.add(row);
         return row;
@@ -261,7 +261,7 @@ public class QuickSettingsPanel extends FrameLayout {
         chip.setMaxWidth(dp(170));
         chip.setMinHeight(dp(30));
         chip.setPadding(dp(12), 0, dp(6), 0);
-        chip.setBackground(ApolloUi.roundRect(colors.surfaceContainerHighest, dp(8)));
+        chip.setBackground(ApolloUi.roundRect(colors.surfaceContainer, dp(8)));
         chip.setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, R.drawable.ic_apollo_expand, 0);
         chip.setCompoundDrawableTintList(ColorStateList.valueOf(colors.onSurfaceVariant));
         chip.setCompoundDrawablePadding(dp(2));
@@ -405,7 +405,7 @@ public class QuickSettingsPanel extends FrameLayout {
 
     private void showChoice(View row, Choices choices, String key, String defaultValue) {
         String current = prefs.getString(key, defaultValue);
-        popup.show(row, dp(WIDTH_DP) - dp(16), choices.names.toArray(new String[0]), Math.max(0, choices.values.indexOf(current)),
+        popup.show(row, popupRightEdge(), choices.names.toArray(new String[0]), Math.max(0, choices.values.indexOf(current)),
                 index -> {
                     String value = choices.values.get(index);
                     // Like the settings: a new resolution or frame rate resets the bitrate to its default
@@ -428,6 +428,38 @@ public class QuickSettingsPanel extends FrameLayout {
 
     // --- Show and hide
 
+    private View anchor() {
+        return ((Activity) getContext()).findViewById(R.id.apollo_quick_settings_anchor);
+    }
+
+    // Right under the status pill of the top bar, its right edges lined up
+    private void placeUnderAnchor() {
+        int top = dp(56), right = dp(16);
+        View anchor = anchor();
+        if (anchor != null && anchor.isShown()) {
+            // Measured against the content frame: this panel may not be laid out yet
+            View frame = (View) getParent();
+            int[] anchorLocation = new int[2];
+            int[] frameLocation = new int[2];
+            anchor.getLocationInWindow(anchorLocation);
+            frame.getLocationInWindow(frameLocation);
+            top = anchorLocation[1] - frameLocation[1] + anchor.getHeight() + dp(6);
+            right = Math.max(dp(8), frameLocation[0] + frame.getWidth() - (anchorLocation[0] + anchor.getWidth()));
+        }
+        LayoutParams panelParams = (LayoutParams) panel.getLayoutParams();
+        panelParams.topMargin = top;
+        panelParams.rightMargin = right;
+        panelParams.bottomMargin = dp(12);
+        panel.setLayoutParams(panelParams);
+    }
+
+    private void setAnchorOpen(boolean open) {
+        View anchor = anchor();
+        if (anchor != null && anchor.getParent() instanceof com.limelight.ui.apollo.ApolloTopBar) {
+            ((com.limelight.ui.apollo.ApolloTopBar) anchor.getParent()).setQuickSettingsOpen(open);
+        }
+    }
+
     public boolean isShowing() {
         return showing;
     }
@@ -449,17 +481,35 @@ public class QuickSettingsPanel extends FrameLayout {
         focusBeforeShow = activity.getCurrentFocus();
         showing = true;
         bringToFront();
+        placeUnderAnchor();
         setVisibility(VISIBLE);
+        setAnchorOpen(true);
 
+        // It unfolds from the pill, at its top right corner
         panel.animate().cancel();
         scrim.animate().cancel();
-        panel.setTranslationX(-dp(WIDTH_DP));
+        panel.setPivotX(dp(WIDTH_DP));
+        panel.setPivotY(0);
+        panel.setAlpha(0);
+        panel.setScaleX(0.92f);
+        panel.setScaleY(0.8f);
+        panel.setTranslationY(-dp(8));
         scrim.setAlpha(0);
-        panel.animate().translationX(0)
-                .setDuration(ApolloMotion.LONG).setInterpolator(ApolloMotion.EMPHASIZED_DECELERATE).start();
+        panel.animate().alpha(1).scaleX(1).scaleY(1).translationY(0)
+                .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.EMPHASIZED_DECELERATE).start();
         scrim.animate().alpha(1)
                 .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
-        rows.get(0).requestFocus();
+        // A gamepad lands in the panel, also when it was opened by touch; the focus is taken once the
+        // panel is laid out, a request made before that may be dropped
+        View first = rows.get(0);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            first.setFocusedByDefault(true);
+        }
+        post(() -> {
+            if (showing && !first.isInTouchMode()) {
+                first.requestFocus();
+            }
+        });
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             OnBackInvokedCallback callback = this::dismiss;
@@ -481,8 +531,13 @@ public class QuickSettingsPanel extends FrameLayout {
             ((Activity) getContext()).getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback((OnBackInvokedCallback) backCallback);
             backCallback = null;
         }
-        panel.animate().translationX(-panel.getWidth())
-                .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.EMPHASIZED_ACCELERATE)
+        setAnchorOpen(false);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // The screen's own default focus takes over again
+            rows.get(0).setFocusedByDefault(false);
+        }
+        panel.animate().alpha(0).scaleY(0.9f).translationY(-dp(6))
+                .setDuration(ApolloMotion.SHORT).setInterpolator(ApolloMotion.EMPHASIZED_ACCELERATE)
                 .withEndAction(() -> {
                     if (!showing) {
                         setVisibility(GONE);

@@ -30,6 +30,10 @@ class OptionsPopup {
         void onOptionSelected(int index);
     }
 
+    // The menu fits its options within these widths
+    private static final int MIN_WIDTH_DP = 160;
+    private static final int MAX_WIDTH_DP = 320;
+
     private final FrameLayout host;
     // The screen behind the menu, kept out of reach of the D-pad while the menu is open
     private final ViewGroup content;
@@ -86,14 +90,13 @@ class OptionsPopup {
         host.addView(scrim, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         ScrollView card = new ScrollView(host.getContext());
-        card.setBackground(ApolloUi.roundRect(colors.surfaceContainerHigh, dp(16)));
+        card.setBackground(ApolloUi.roundRect(colors.surfaceContainerHigh, dp(14)));
         card.setClipToOutline(true);
         card.setVerticalScrollBarEnabled(false);
-        card.setElevation(dp(3));
 
         LinearLayout list = new LinearLayout(host.getContext());
         list.setOrientation(LinearLayout.VERTICAL);
-        list.setPadding(0, dp(6), 0, dp(6));
+        list.setPadding(0, dp(4), 0, dp(4));
         card.addView(list);
 
         View selectedView = null;
@@ -102,8 +105,8 @@ class OptionsPopup {
             LinearLayout row = new LinearLayout(host.getContext());
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setMinimumHeight(dp(44));
-            row.setPadding(dp(14), dp(8), dp(16), dp(8));
+            row.setMinimumHeight(dp(40));
+            row.setPadding(dp(12), dp(6), dp(16), dp(6));
             row.setFocusable(true);
             row.setClickable(true);
             // A light tint marks the option with the focus, as in the settings
@@ -115,8 +118,8 @@ class OptionsPopup {
             check.setVisibility(i == selected ? View.VISIBLE : View.INVISIBLE);
             row.addView(check, new LinearLayout.LayoutParams(dp(18), dp(18)));
 
-            TextView label = ApolloUi.text(host.getContext(), options[i], 14, colors.onSurface, i == selected);
-            label.setPadding(dp(12), 0, 0, 0);
+            TextView label = ApolloUi.text(host.getContext(), options[i], 13.5f, colors.onSurface, i == selected);
+            label.setPadding(dp(10), 0, 0, 0);
             row.addView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
             HintRow.set(row, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_choose, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_cancel);
@@ -130,8 +133,10 @@ class OptionsPopup {
             }
         }
 
-        // Next to the row, kept inside the screen
-        int width = Math.min(dp(380), host.getWidth() - dp(32));
+        // As wide as its longest option, between a minimum and a maximum; next to the row, inside the screen
+        list.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
+        int width = Math.max(dp(MIN_WIDTH_DP), Math.min(list.getMeasuredWidth(), dp(MAX_WIDTH_DP)));
+        width = Math.min(width, host.getWidth() - dp(32));
         int[] hostLocation = new int[2], anchorLocation = new int[2];
         host.getLocationInWindow(hostLocation);
         anchor.getLocationInWindow(anchorLocation);

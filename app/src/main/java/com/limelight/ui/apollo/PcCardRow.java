@@ -171,7 +171,7 @@ public class PcCardRow {
 
         Card card = new Card(frame, iconBox, icon, name, dot, status);
         HintRow.set(frame, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_open, KeyEvent.KEYCODE_BUTTON_Y, R.string.apollo_hint_options,
-                KeyEvent.KEYCODE_BUTTON_X, R.string.apollo_hint_add_pc, KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_hint_quick_settings);
+                KeyEvent.KEYCODE_BUTTON_X, R.string.apollo_hint_add_pc, KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings);
         frame.setOnClickListener(v -> listener.onPcClicked(card.computer));
         frame.setOnLongClickListener(v -> {
             listener.onPcLongClicked(card.computer);
@@ -218,7 +218,7 @@ public class PcCardRow {
         plus.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         frame.addView(plus, new FrameLayout.LayoutParams(dp(64), dp(64)));
         frame.setOnClickListener(v -> listener.onAddPcClicked());
-        HintRow.set(frame, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_add_pc, KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_hint_quick_settings);
+        HintRow.set(frame, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_add_pc, KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings);
         return frame;
     }
 }
