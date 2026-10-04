@@ -1,7 +1,5 @@
 package com.limelight.ui.theme;
 
-import android.graphics.Bitmap;
-import android.graphics.BitmapShader;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
@@ -14,8 +12,6 @@ import android.graphics.Rect;
 import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.os.SystemClock;
-
-import java.util.Random;
 
 /**
  * The window background of the MoonVibe screens: a dark vertical gradient with a soft glow of the primary
@@ -30,28 +26,16 @@ public class ApolloBackground extends Drawable implements Runnable {
     private final int top;
     private final int middle;
     private final int bottom;
-    private static final int NOISE_SIZE = 128;
-    private static final int NOISE_MAX_ALPHA = 3;
 
     private final Paint gradientPaint = new Paint(Paint.DITHER_FLAG);
     private final Paint glowPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
-    private final Paint noisePaint = new Paint();
+    // Dark gradients show bands on OLED screens without it
+    private final GrainDrawable grain = new GrainDrawable();
     private final Matrix glowMatrix = new Matrix();
     private final long start = SystemClock.uptimeMillis();
     private boolean running = true;
 
     public ApolloBackground(ApolloColors colors) {
-        // Dark gradients have so few color steps that OLED screens show them as bands: a fixed grain
-        // of a few levels on top dithers the steps away. Not every renderer honors the dither flag.
-        Bitmap noise = Bitmap.createBitmap(NOISE_SIZE, NOISE_SIZE, Bitmap.Config.ARGB_8888);
-        int[] pixels = new int[NOISE_SIZE * NOISE_SIZE];
-        Random random = new Random(42);
-        for (int i = 0; i < pixels.length; i++) {
-            pixels[i] = Color.argb(random.nextInt(NOISE_MAX_ALPHA + 1), 255, 255, 255);
-        }
-        noise.setPixels(pixels, 0, NOISE_SIZE, 0, 0, NOISE_SIZE, NOISE_SIZE);
-        noisePaint.setShader(new BitmapShader(noise, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT));
-
         top = ApolloColors.blend(colors.surfaceContainerLow, Color.BLACK, 0.3f);
         middle = colors.surfaceContainerLow;
         bottom = ApolloColors.blend(colors.surfaceContainerLow, colors.primary, 0.07f);
@@ -65,6 +49,7 @@ public class ApolloBackground extends Drawable implements Runnable {
     @Override
     protected void onBoundsChange(Rect bounds) {
         super.onBoundsChange(bounds);
+        grain.setBounds(bounds);
         gradientPaint.setShader(new LinearGradient(0, bounds.top, 0, bounds.bottom,
                 new int[] {top, middle, bottom}, new float[] {0f, 0.55f, 1f}, Shader.TileMode.CLAMP));
     }
@@ -88,7 +73,7 @@ public class ApolloBackground extends Drawable implements Runnable {
         glowPaint.getShader().setLocalMatrix(glowMatrix);
         glowPaint.setAlpha((int) (180 + 75 * breath));
         canvas.drawRect(bounds, glowPaint);
-        canvas.drawRect(bounds, noisePaint);
+        grain.draw(canvas);
 
         if (running) {
             scheduleSelf(this, SystemClock.uptimeMillis() + FRAME_MS);

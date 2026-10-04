@@ -34,6 +34,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.limelight.R;
+import com.limelight.ui.apollo.ApolloUi;
 import com.limelight.ui.apollo.ApolloWidgets;
 import com.limelight.ui.apollo.BumperDrawable;
 import com.limelight.ui.apollo.hints.InputMode;
@@ -303,7 +304,6 @@ public class GameMenuView extends FrameLayout {
         ApolloWidgets.SwitchView toggle;
         TextView value;
         int backgroundColor = Color.TRANSPARENT;
-        int strokeColor = Color.TRANSPARENT;
         int labelColor;
         int iconColor;
         ValueAnimator animator;
@@ -1245,8 +1245,8 @@ public class GameMenuView extends FrameLayout {
         view.setMinimumHeight(dp(46));
         view.setPadding(dp(14), 0, dp(12), 0);
 
-        GradientDrawable background = roundRect(Color.TRANSPARENT, dp(23));
-        view.setBackground(ripple(background, dp(23)));
+        GradientDrawable background = roundRect(Color.TRANSPARENT, dp(ApolloUi.ROW_RADIUS_DP));
+        view.setBackground(ripple(background, dp(ApolloUi.ROW_RADIUS_DP)));
 
         ImageView icon = null;
         if (item.iconResId != 0) {
@@ -1343,26 +1343,24 @@ public class GameMenuView extends FrameLayout {
             Row row = rows.get(i);
             boolean selected = gamepadMode && i == selectedRow;
             int background = selected ? colors.secondaryContainer : Color.TRANSPARENT;
-            int stroke = selected && dropdownRow == null ? colors.primary : Color.TRANSPARENT;
             int label = row.item.accent ? colors.primary : selected ? colors.onSecondaryContainer : colors.onSurface;
             int icon = row.item.accent ? colors.primary : selected ? colors.onSecondaryContainer : colors.onSurfaceVariant;
 
-            if (background == row.backgroundColor && stroke == row.strokeColor && label == row.labelColor) {
+            if (background == row.backgroundColor && label == row.labelColor) {
                 continue;
             }
             if (row.animator != null) {
                 row.animator.cancel();
             }
 
-            int fromBackground = row.backgroundColor, fromStroke = row.strokeColor;
+            int fromBackground = row.backgroundColor;
             int fromLabel = row.labelColor, fromIcon = row.iconColor;
             row.backgroundColor = background;
-            row.strokeColor = stroke;
             row.labelColor = label;
             row.iconColor = icon;
 
             if (!animate) {
-                applyRowColors(row, background, stroke, label, icon);
+                applyRowColors(row, background, label, icon);
                 continue;
             }
             row.animator = ValueAnimator.ofFloat(0, 1);
@@ -1372,7 +1370,6 @@ public class GameMenuView extends FrameLayout {
                 float f = animation.getAnimatedFraction();
                 applyRowColors(row,
                         (int) ARGB.evaluate(f, fromBackground, background),
-                        (int) ARGB.evaluate(f, fromStroke, stroke),
                         (int) ARGB.evaluate(f, fromLabel, label),
                         (int) ARGB.evaluate(f, fromIcon, icon));
             });
@@ -1395,9 +1392,8 @@ public class GameMenuView extends FrameLayout {
         }
     }
 
-    private void applyRowColors(Row row, int background, int stroke, int label, int icon) {
+    private void applyRowColors(Row row, int background, int label, int icon) {
         row.background.setColor(background);
-        row.background.setStroke(dp(2), stroke);
         row.label.setTextColor(label);
         if (row.icon != null) {
             row.icon.setImageTintList(ColorStateList.valueOf(icon));

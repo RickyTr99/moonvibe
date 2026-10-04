@@ -28,6 +28,7 @@ import com.limelight.ui.apollo.hints.ButtonGlyph;
 import com.limelight.ui.apollo.hints.InputMode;
 import com.limelight.ui.theme.ApolloColors;
 import com.limelight.ui.theme.ApolloMotion;
+import com.limelight.ui.theme.GrainDrawable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -83,6 +84,11 @@ public class LaunchOverlayView extends FrameLayout {
         scrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
                 new int[] {0x80000000 | base, 0xD1000000 | base, 0xF0000000 | base}));
         addView(scrim, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+
+        // The blurred cover under the dark scrim shows bands on OLED screens without the grain, as the app background
+        View grain = new View(context);
+        grain.setBackground(new GrainDrawable());
+        addView(grain, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);

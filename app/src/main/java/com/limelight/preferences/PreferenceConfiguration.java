@@ -39,9 +39,9 @@ public class PreferenceConfiguration {
     private static final String LEGACY_RES_FPS_PREF_STRING = "list_resolution_fps";
     private static final String LEGACY_ENABLE_51_SURROUND_PREF_STRING = "checkbox_51_surround";
 
-    static final String RESOLUTION_PREF_STRING = "list_resolution";
-    static final String FPS_PREF_STRING = "list_fps";
-    static final String BITRATE_PREF_STRING = "seekbar_bitrate_kbps";
+    public static final String RESOLUTION_PREF_STRING = "list_resolution";
+    public static final String FPS_PREF_STRING = "list_fps";
+    public static final String BITRATE_PREF_STRING = "seekbar_bitrate_kbps";
     private static final String ENABLE_ULTRA_LOW_LATENCY_PREF_STRING = "checkbox_ultra_low_latency";
     private static final String BITRATE_PREF_OLD_STRING = "seekbar_bitrate";
     private static final String STRETCH_PREF_STRING = "checkbox_stretch_video";
@@ -102,8 +102,8 @@ public class PreferenceConfiguration {
     private static final String SPATIAL_DITHERING_PREF_STRING = "spatial_dithering";
     private static final String JITTER_BUFFER_PREF_STRING = "jitter_buffer";
 
-    static final String DEFAULT_RESOLUTION = "1280x720";
-    static final String DEFAULT_FPS = "60";
+    public static final String DEFAULT_RESOLUTION = "1280x720";
+    public static final String DEFAULT_FPS = "60";
     private static final boolean DEFAULT_ENABLE_ULTRA_LOW_LATENCY = false;
     private static final boolean DEFAULT_STRETCH = false;
     private static final boolean DEFAULT_SOPS = true;

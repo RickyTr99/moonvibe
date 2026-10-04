@@ -384,6 +384,11 @@
     <string name="apollo_hint_categories">Categorie</string>
     <string name="apollo_hint_home">Home</string>
     <string name="apollo_not_set">Non impostato</string>
+    <string name="apollo_settings_restore">Ripristina predefiniti</string>
+    <string name="apollo_settings_restore_title">Ripristinare %1$s?</string>
+    <string name="apollo_settings_restore_message">Le impostazioni modificate di questa categoria tornano ai valori predefiniti. Le altre categorie restano come sono.</string>
+    <string name="apollo_settings_restore_confirm">Ripristina</string>
+    <string name="apollo_settings_restore_cancel">Annulla</string>
     <string name="apollo_add_pc_hint">Indirizzo del PC (IP o nome)</string>
     <string name="apollo_add">Aggiungi</string>
     <string name="apollo_cancel">Annulla</string>

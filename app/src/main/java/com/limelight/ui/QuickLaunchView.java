@@ -38,7 +38,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The quick launch row of the home screen: the game running on a PC first, then the pinned games.
+ * The quick launch row of the home screen: the pinned games, then the recent ones, each in a fixed place.
  * Their options open in a side sheet with a long press, or Y on a gamepad.
  */
 public class QuickLaunchView {
@@ -108,6 +108,9 @@ public class QuickLaunchView {
         this.callback = callback;
         this.colors = ApolloColors.dark(activity);
         ApolloUi.allowFocusOverflow(quickLaunchContainer, ApolloUi.dp(activity, 8));
+        // More room on top: the focused card grows upwards from the bottom of its cover and lifts
+        quickLaunchContainer.setPadding(quickLaunchContainer.getPaddingLeft(), ApolloUi.dp(activity, 14),
+                quickLaunchContainer.getPaddingRight(), quickLaunchContainer.getPaddingBottom());
 
         // The running game goes first, so a change rebuilds the row
         this.quickLaunchManager.setRunningStatusListener(new QuickLaunchManager.RunningStatusListener() {
@@ -174,49 +177,51 @@ public class QuickLaunchView {
         }
     }
 
+    // Every game keeps its place: the pinned ones in their order, then the recent ones.
+    // A running game is only marked, so the row does not move when a game starts.
     private List<Entry> buildEntries() {
-        List<QuickLaunchManager.QuickLaunchItem> items = quickLaunchManager.getAllQuickLaunchItems();
-        List<Entry> running = new ArrayList<>();
-        List<Entry> pinned = new ArrayList<>();
-
-        for (QuickLaunchManager.QuickLaunchItem item : items) {
-            boolean isRunning = quickLaunchManager.isQuickLaunchItemRunning(item.key);
-            Entry entry = new Entry(item, item.computerUuid, item.appId, item.getDisplayName(), item.computerName, isRunning);
-            (isRunning ? running : pinned).add(entry);
+        List<Entry> entries = new ArrayList<>();
+        for (QuickLaunchManager.QuickLaunchItem item : quickLaunchManager.getAllQuickLaunchItems()) {
+            entries.add(new Entry(item, item.computerUuid, item.appId, item.getDisplayName(), item.computerName,
+                    quickLaunchManager.isQuickLaunchItemRunning(item.key)));
         }
 
-        // Games running on a PC without being pinned
-        for (Map.Entry<String, Integer> server : quickLaunchManager.getRunningAppIds().entrySet()) {
-            String name = appName(server.getKey(), server.getValue());
-            // It may have been started from another device, so it stays here once it is closed
-            RecentGames.add(activity, server.getKey(), server.getValue(), name);
-            if (!contains(running, server.getKey(), server.getValue())) {
-                ComputerDetails computer = getComputer(server.getKey());
-                if (computer != null) {
-                    // The library of that PC was never opened if the name is unknown
-                    running.add(new Entry(null, server.getKey(), server.getValue(),
-                            name != null ? name : activity.getString(R.string.apollo_running_on, computer.name),
-                            computer.name, true, name != null));
-                }
-            }
+        // A game running on a PC may have been started from another device: it joins the recent ones
+        Map<String, Integer> runningApps = quickLaunchManager.getRunningAppIds();
+        for (Map.Entry<String, Integer> server : runningApps.entrySet()) {
+            ComputerDetails computer = getComputer(server.getKey());
+            RecentGames.add(activity, server.getKey(), server.getValue(), appName(server.getKey(), server.getValue()),
+                    computer != null ? computer.name : null);
         }
 
-        // The games started last that are not pinned
-        List<Entry> recent = new ArrayList<>();
+        // The recent games keep their PC name, so they show before the PCs are loaded
         for (RecentGames.Game game : RecentGames.get(activity)) {
-            if (contains(running, game.computerUuid, game.appId) || contains(pinned, game.computerUuid, game.appId)) {
+            if (contains(entries, game.computerUuid, game.appId)) {
                 continue;
             }
-            ComputerDetails computer = getComputer(game.computerUuid);
+            String computerName = game.computerName;
+            if (computerName == null) {
+                // Saved by an older version: learn the name once the PC is known
+                ComputerDetails computer = getComputer(game.computerUuid);
+                if (computer == null) {
+                    continue;
+                }
+                computerName = computer.name;
+                RecentGames.add(activity, game.computerUuid, game.appId, null, computerName);
+            }
+
+            Integer runningAppId = runningApps.get(game.computerUuid);
+            boolean running = runningAppId != null && runningAppId == game.appId;
             String name = game.name != null ? game.name : appName(game.computerUuid, game.appId);
-            if (computer != null && name != null) {
-                recent.add(new Entry(null, game.computerUuid, game.appId, name, computer.name, false, true));
+            if (name != null) {
+                entries.add(new Entry(null, game.computerUuid, game.appId, name, computerName, running, true));
+            } else if (running) {
+                // The library of that PC was never opened, so the name is unknown
+                entries.add(new Entry(null, game.computerUuid, game.appId,
+                        activity.getString(R.string.apollo_running_on, computerName), computerName, true, false));
             }
         }
-
-        running.addAll(pinned);
-        running.addAll(recent);
-        return running;
+        return entries;
     }
 
     private static boolean contains(List<Entry> entries, String computerUuid, int appId) {

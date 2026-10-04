@@ -4,9 +4,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
-import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.LayerDrawable;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -209,10 +207,8 @@ public class ActionSheet extends FrameLayout {
         HintRow.set(row, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_select, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_close);
         row.setClickable(true);
 
-        row.setBackground(new LayerDrawable(new Drawable[] {
-                ApolloUi.ripple(ApolloUi.roundRect(Color.TRANSPARENT, dp(23)), dp(23)),
-                ApolloUi.focusRing(context, colors, dp(23))
-        }));
+        // A light tint marks the row with the focus, as in the settings
+        row.setBackground(ApolloUi.stateLayer(colors.surfaceContainerHigh, Color.TRANSPARENT, dp(ApolloUi.ROW_RADIUS_DP)));
 
         ImageView icon = new ImageView(context);
         icon.setImageResource(action.iconResId);

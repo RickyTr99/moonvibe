@@ -25,6 +25,8 @@ import com.limelight.ui.theme.ApolloMotion;
 public final class ApolloUi {
     public static final int COLOR_RIPPLE = 0x33FFFFFF;
     private static final float FOCUSED_SCALE = 1.05f;
+    // Corners of the rows of lists (settings, sheets, menus) and of their focus tint: Material 3 medium shape
+    public static final int ROW_RADIUS_DP = 12;
 
     private ApolloUi() {
     }
@@ -68,22 +70,6 @@ public final class ApolloUi {
             states.addState(new int[] {android.R.attr.state_focused}, roundRect(focusedColor, radius));
         }
         states.addState(new int[] {}, roundRect(Color.TRANSPARENT, radius));
-        return states;
-    }
-
-    // Outline shown over a view while it has the focus, for gamepad and keyboard navigation
-    public static Drawable focusRing(Context context, ApolloColors colors, float radius) {
-        // The stroke is drawn inset by half its width, so a corner that much smaller lines its outer
-        // edge up with the view's own corner and nothing shows outside the ring
-        int stroke = dp(context, 3);
-        GradientDrawable ring = roundRect(Color.TRANSPARENT, Math.max(0, radius - stroke / 2f));
-        ring.setStroke(stroke, colors.primary);
-
-        StateListDrawable states = new StateListDrawable();
-        states.setEnterFadeDuration((int) ApolloMotion.SHORT);
-        states.setExitFadeDuration((int) ApolloMotion.SHORT);
-        states.addState(new int[] {android.R.attr.state_focused}, ring);
-        states.addState(new int[] {}, new GradientDrawable());
         return states;
     }
 

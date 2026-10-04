@@ -1,5 +1,6 @@
 package com.limelight.ui.apollo;
 
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Outline;
@@ -14,6 +15,7 @@ import android.widget.TextView;
 
 import com.limelight.R;
 import com.limelight.ui.theme.ApolloColors;
+import com.limelight.ui.theme.ApolloMotion;
 
 /**
  * A game card: box art with an optional "running" badge, the name and an optional subtitle below.
@@ -21,6 +23,8 @@ import com.limelight.ui.theme.ApolloColors;
  */
 public class GameCardView extends LinearLayout {
     public static final int WIDTH_DP = 100;
+    private static final float QUICK_LAUNCH_FOCUSED_SCALE = 1.08f;
+    private static final float QUICK_LAUNCH_FOCUSED_LIFT_DP = 3;
     private static final int[] PLACEHOLDER_COLORS = {
             0xFF3B4A6B, 0xFF5B3F5E, 0xFF2F5D50, 0xFF6B4E2E, 0xFF3E3A6E, 0xFF2E5566, 0xFF5E3A3A, 0xFF46533A
     };
@@ -71,7 +75,6 @@ public class GameCardView extends LinearLayout {
         setClipChildren(false);
 
         coverFrame = new FrameLayout(context);
-        coverFrame.setForeground(ApolloUi.focusRing(context, colors, radius));
         coverFrame.setDuplicateParentStateEnabled(true);
         coverFrame.setOutlineProvider(new ViewOutlineProvider() {
             @Override
@@ -152,6 +155,7 @@ public class GameCardView extends LinearLayout {
         this(context, colors, ApolloUi.dp(context, WIDTH_DP));
         bind(title, subtitle, appId);
         setRunning(running);
+        emphasizeFocus();
 
         if (computerUuid != null) {
             int coverWidth = dp(WIDTH_DP);
@@ -160,6 +164,27 @@ public class GameCardView extends LinearLayout {
                 cover.setVisibility(VISIBLE);
             });
         }
+    }
+
+    // The quick launch row has few cards: the focused one grows more, lifts a little and its title
+    // takes the primary color, so it stands out without an outline
+    private void emphasizeFocus() {
+        setOnFocusChangeListener((v, hasFocus) -> {
+            animate().scaleX(hasFocus ? QUICK_LAUNCH_FOCUSED_SCALE : 1)
+                    .scaleY(hasFocus ? QUICK_LAUNCH_FOCUSED_SCALE : 1)
+                    .translationY(hasFocus ? -dp(QUICK_LAUNCH_FOCUSED_LIFT_DP) : 0)
+                    .setDuration(ApolloMotion.MEDIUM)
+                    .setInterpolator(ApolloMotion.EMPHASIZED_DECELERATE)
+                    .start();
+
+            int from = titleView.getCurrentTextColor();
+            int to = hasFocus ? colors.primary : colors.onSurface;
+            ValueAnimator fade = ValueAnimator.ofArgb(from, to);
+            fade.setDuration(ApolloMotion.MEDIUM);
+            fade.setInterpolator(ApolloMotion.STANDARD);
+            fade.addUpdateListener(animation -> titleView.setTextColor((int) animation.getAnimatedValue()));
+            fade.start();
+        });
     }
 
     private int dp(float value) {

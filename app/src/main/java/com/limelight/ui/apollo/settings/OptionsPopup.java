@@ -106,8 +106,8 @@ class OptionsPopup {
             row.setPadding(dp(14), dp(8), dp(16), dp(8));
             row.setFocusable(true);
             row.setClickable(true);
-            row.setBackground(ApolloUi.ripple(ApolloUi.roundRect(Color.TRANSPARENT, 0), 0));
-            row.setForeground(ApolloUi.focusRing(host.getContext(), colors, dp(12)));
+            // A light tint marks the option with the focus, as in the settings
+            row.setBackground(ApolloUi.stateLayer(colors.surfaceContainerHighest, Color.TRANSPARENT, 0));
 
             ImageView check = new ImageView(host.getContext());
             check.setImageResource(R.drawable.ic_menu_check);

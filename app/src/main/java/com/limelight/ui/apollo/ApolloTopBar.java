@@ -4,8 +4,6 @@ import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
-import android.graphics.drawable.Drawable;
-import android.graphics.drawable.LayerDrawable;
 import android.hardware.input.InputManager;
 import android.os.Looper;
 import android.text.SpannableString;
@@ -81,10 +79,7 @@ public class ApolloTopBar extends FrameLayout {
         quickSettingsButton.setImageResource(R.drawable.ic_apollo_tune);
         quickSettingsButton.setImageTintList(ColorStateList.valueOf(colors.onSurface));
         quickSettingsButton.setScaleType(ImageView.ScaleType.CENTER);
-        quickSettingsButton.setBackground(new LayerDrawable(new Drawable[] {
-                ApolloUi.ripple(ApolloUi.roundRect(colors.surfaceContainerHigh, dp(22)), dp(22)),
-                ApolloUi.focusRing(context, colors, dp(22))
-        }));
+        quickSettingsButton.setBackground(ApolloUi.ripple(ApolloUi.roundRect(colors.surfaceContainerHigh, dp(22)), dp(22)));
         // The top bar is for touch, a gamepad has Select for this and LB/RB for the tabs
         quickSettingsButton.setFocusable(false);
         quickSettingsButton.setContentDescription(context.getString(R.string.apollo_quick_settings));

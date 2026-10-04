@@ -212,7 +212,7 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
         noPcFoundLayout = findViewById(R.id.no_pc_found_layout);
         View emptyAddPcButton = findViewById(R.id.emptyAddPcButton);
         emptyAddPcButton.setOnClickListener(v -> startActivity(new Intent(PcView.this, AddComputerManually.class)));
-        emptyAddPcButton.setForeground(ApolloUi.focusRing(this, ApolloColors.dark(this), ApolloUi.dp(this, 20)));
+        ApolloUi.scaleOnFocus(emptyAddPcButton);
         HintRow.set(emptyAddPcButton, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_add_pc,
                 KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_hint_quick_settings);
         if (pcGridAdapter.getCount() == 0) {

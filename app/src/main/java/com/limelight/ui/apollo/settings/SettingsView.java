@@ -3,6 +3,7 @@ package com.limelight.ui.apollo.settings;
 import android.animation.ArgbEvaluator;
 import android.animation.ValueAnimator;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.database.DataSetObserver;
@@ -17,6 +18,8 @@ import android.preference.PreferenceGroup;
 import android.preference.PreferenceManager;
 import android.preference.PreferenceScreen;
 import android.preference.TwoStatePreference;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -108,7 +111,14 @@ public class SettingsView extends FrameLayout {
         TextView value;
         SliderView slider;
         int sliderValue;
+        // Shown after the name while the setting differs from its default
+        DotSpan dot;
+        boolean modified;
     }
+
+    // Defaults of the settings, to mark the changed ones and restore a category; null on a single page
+    private final SettingsDefaults defaults;
+    private View restoreRow;
 
     public SettingsView(Activity activity, ApolloColors colors) {
         this(activity, colors, SettingsLayout.categories(), false);
@@ -142,6 +152,8 @@ public class SettingsView extends FrameLayout {
         this.colors = colors;
         this.categories = categories;
         this.singlePage = singlePage;
+        // A game page shows its own overrides, which have no defaults to go back to
+        this.defaults = singlePage ? null : new SettingsDefaults(activity);
 
         content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.HORIZONTAL);
@@ -389,8 +401,7 @@ public class SettingsView extends FrameLayout {
             button.setPadding(dp(14), 0, dp(14), 0);
             button.setFocusable(true);
             button.setClickable(true);
-            button.setForeground(ApolloUi.focusRing(getContext(), colors, dp(20)));
-            button.setBackground(ApolloUi.stateLayer(colors.surfaceContainerHigh, colors.secondaryContainer, dp(20)));
+            button.setBackground(ApolloUi.stateLayer(colors.surfaceContainerHigh, colors.secondaryContainer, dp(ApolloUi.ROW_RADIUS_DP)));
 
             ImageView icon = new ImageView(getContext());
             icon.setImageResource(category.iconRes);
@@ -509,8 +520,145 @@ public class SettingsView extends FrameLayout {
             }
         }
 
+        restoreRow = defaults != null ? addRestoreRow(category) : null;
+
         bindRows(false);
         linkFocus();
+    }
+
+    // At the end of the category, shown while some of its settings differ from the defaults
+    private View addRestoreRow(SettingsLayout.Category category) {
+        LinearLayout view = new LinearLayout(getContext());
+        view.setId(View.generateViewId());
+        view.setOrientation(LinearLayout.HORIZONTAL);
+        view.setGravity(Gravity.CENTER_VERTICAL);
+        view.setMinimumHeight(dp(46));
+        view.setPadding(dp(14), 0, dp(14), 0);
+        view.setFocusable(true);
+        view.setClickable(true);
+        view.setBackground(ApolloUi.stateLayer(colors.surfaceContainerHigh, Color.TRANSPARENT, dp(ApolloUi.ROW_RADIUS_DP)));
+
+        ImageView icon = new ImageView(getContext());
+        icon.setImageResource(R.drawable.ic_apollo_restore);
+        icon.setImageTintList(ColorStateList.valueOf(colors.primary));
+        view.addView(icon, new LinearLayout.LayoutParams(dp(20), dp(20)));
+        TextView label = ApolloUi.text(getContext(), getContext().getString(R.string.apollo_settings_restore), 14, colors.primary, true);
+        label.setPadding(dp(12), 0, 0, 0);
+        view.addView(label);
+
+        view.setOnClickListener(v -> confirmRestore(category));
+        HintRow.set(view, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_select, KeyEvent.KEYCODE_BUTTON_B, backHint());
+
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.topMargin = dp(8);
+        rowList.addView(view, params);
+        return view;
+    }
+
+    private List<Preference> modifiedPrefs(SettingsLayout.Category category) {
+        List<Preference> modified = new ArrayList<>();
+        for (Object entry : category.entries) {
+            List<SettingsLayout.Item> items = entry instanceof SettingsLayout.Section
+                    ? ((SettingsLayout.Section) entry).items : java.util.Collections.singletonList((SettingsLayout.Item) entry);
+            for (SettingsLayout.Item item : items) {
+                Preference pref = find(item);
+                if (pref != null && defaults.isModified(pref)) {
+                    modified.add(pref);
+                }
+            }
+        }
+        return modified;
+    }
+
+    private void confirmRestore(SettingsLayout.Category category) {
+        new AlertDialog.Builder(activity)
+                .setTitle(getContext().getString(R.string.apollo_settings_restore_title, category.title(getContext())))
+                .setMessage(R.string.apollo_settings_restore_message)
+                .setNegativeButton(R.string.apollo_settings_restore_cancel, null)
+                .setPositiveButton(R.string.apollo_settings_restore_confirm, (dialog, which) -> restore(category))
+                .show();
+    }
+
+    // Puts the changed settings back the way the original list would set them, change listeners included,
+    // so restoring the resolution also restores the bitrate that follows it
+    private void restore(SettingsLayout.Category category) {
+        for (Preference pref : modifiedPrefs(category)) {
+            // A setting restored before may have already brought this one back
+            Object def = defaults.defaultOf(pref);
+            if (def == null || !defaults.isModified(pref)) {
+                continue;
+            }
+            if (pref instanceof SeekBarPreference) {
+                ((SeekBarPreference) pref).applyValue((Integer) def);
+            } else if (pref instanceof TwoStatePreference) {
+                boolean value = (Boolean) def;
+                if (callChangeListener(pref, value)) {
+                    ((TwoStatePreference) pref).setChecked(value);
+                }
+            } else if (pref instanceof ListPreference) {
+                String value = def.toString();
+                if (callChangeListener(pref, value)) {
+                    ((ListPreference) pref).setValue(value);
+                }
+            }
+        }
+        bindRows(true);
+        if (restoreRow != null && restoreRow.hasFocus() && !rows.isEmpty()) {
+            // The row goes away: the focus moves to the last setting
+            rows.get(rows.size() - 1).view.requestFocus();
+        }
+    }
+
+    private static void fadeTo(View view, boolean shown, boolean animate) {
+        float alpha = shown ? 1f : 0f;
+        if (view.getAlpha() == alpha) {
+            return;
+        }
+        view.animate().cancel();
+        if (animate) {
+            view.animate().alpha(alpha).setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
+        } else {
+            view.setAlpha(alpha);
+        }
+    }
+
+    // Marks the changed settings and their categories, and shows the restore row when there is something to restore
+    private void bindModified(boolean animate) {
+        if (defaults == null) {
+            return;
+        }
+        for (Row row : rows) {
+            boolean modified = defaults.isModified(row.pref);
+            if (row.dot == null || (modified == row.modified && animate)) {
+                continue;
+            }
+            row.modified = modified;
+            int to = modified ? 255 : 0;
+            if (!animate) {
+                row.dot.setAlpha(to);
+                row.label.invalidate();
+                continue;
+            }
+            ValueAnimator fade = ValueAnimator.ofInt(row.dot.getAlpha(), to);
+            fade.setDuration(ApolloMotion.MEDIUM);
+            fade.setInterpolator(ApolloMotion.STANDARD);
+            fade.addUpdateListener(a -> {
+                row.dot.setAlpha((int) a.getAnimatedValue());
+                row.label.invalidate();
+            });
+            fade.start();
+        }
+
+        if (restoreRow != null && selectedCategory < shownCategories.size()) {
+            boolean show = !modifiedPrefs(shownCategories.get(selectedCategory)).isEmpty();
+            if (show && restoreRow.getVisibility() != VISIBLE) {
+                restoreRow.setVisibility(VISIBLE);
+                restoreRow.setAlpha(0f);
+                fadeTo(restoreRow, true, animate);
+            } else if (!show) {
+                restoreRow.setVisibility(GONE);
+            }
+        }
     }
 
     private View sectionHeader(String label, boolean open, String sectionKey, List<View> sectionRows) {
@@ -520,8 +668,7 @@ public class SettingsView extends FrameLayout {
         header.setPadding(dp(14), 0, dp(10), 0);
         header.setFocusable(true);
         header.setClickable(true);
-        header.setBackground(ApolloUi.stateLayer(colors.surfaceContainerHigh, Color.TRANSPARENT, dp(20)));
-        header.setForeground(ApolloUi.focusRing(getContext(), colors, dp(20)));
+        header.setBackground(ApolloUi.stateLayer(colors.surfaceContainerHigh, Color.TRANSPARENT, dp(ApolloUi.ROW_RADIUS_DP)));
 
         TextView text = ApolloUi.text(getContext(), label.toUpperCase(), 12, colors.primary, true);
         text.setLetterSpacing(0.08f);
@@ -571,13 +718,20 @@ public class SettingsView extends FrameLayout {
         view.setPadding(dp(14), 0, dp(14), 0);
         view.setFocusable(true);
         view.setClickable(true);
-        view.setBackground(ApolloUi.stateLayer(colors.surfaceContainerHigh, Color.TRANSPARENT, dp(23)));
-        view.setForeground(ApolloUi.focusRing(getContext(), colors, dp(23)));
+        view.setBackground(ApolloUi.stateLayer(colors.surfaceContainerHigh, Color.TRANSPARENT, dp(ApolloUi.ROW_RADIUS_DP)));
         row.view = view;
 
         row.label = ApolloUi.text(getContext(), title(pref), 14, colors.onSurface, true);
         row.label.setPadding(0, dp(6), dp(12), dp(6));
         row.label.setLineSpacing(0, 1.15f);
+        if (defaults != null) {
+            // Part of the text, so it stays right after the last word when the name wraps;
+            // a no-break space keeps it on the line of that word
+            row.dot = new DotSpan(colors.primary, dp(4), dp(5));
+            SpannableStringBuilder text = new SpannableStringBuilder(title(pref)).append(' ');
+            text.setSpan(row.dot, text.length() - 1, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            row.label.setText(text);
+        }
         view.addView(row.label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
         if (pref instanceof TwoStatePreference) {
@@ -741,6 +895,8 @@ public class SettingsView extends FrameLayout {
                 row.value.setText(text != null ? text : "");
             }
         }
+
+        bindModified(animate);
 
         // A setting that turned on or off changes where the list starts and ends
         linkFocus();

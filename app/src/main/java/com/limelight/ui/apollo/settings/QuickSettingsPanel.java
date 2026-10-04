@@ -219,8 +219,7 @@ public class QuickSettingsPanel extends FrameLayout {
         row.setPadding(dp(14), 0, dp(14), 0);
         row.setFocusable(true);
         row.setClickable(true);
-        row.setBackground(ApolloUi.stateLayer(colors.surfaceContainerHigh, Color.TRANSPARENT, dp(23)));
-        row.setForeground(ApolloUi.focusRing(getContext(), colors, dp(23)));
+        row.setBackground(ApolloUi.stateLayer(colors.surfaceContainerHigh, Color.TRANSPARENT, dp(ApolloUi.ROW_RADIUS_DP)));
         list.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         rows.add(row);
         return row;

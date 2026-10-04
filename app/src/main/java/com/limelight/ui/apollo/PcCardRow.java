@@ -121,7 +121,6 @@ public class PcCardRow {
         int radius = dp(16);
         FrameLayout frame = new FrameLayout(context);
         frame.setBackground(ApolloUi.ripple(ApolloUi.roundRect(colors.surfaceContainerHigh, radius), radius));
-        frame.setForeground(ApolloUi.focusRing(context, colors, radius));
         frame.setFocusable(true);
         frame.setClickable(true);
         frame.setMinimumWidth(dp(widthDp));
