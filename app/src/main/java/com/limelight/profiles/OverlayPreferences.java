@@ -98,39 +98,66 @@ final class OverlayPreferences implements SharedPreferences {
             return profileKeys.contains(key) ? profile : general;
         }
 
+        // A setting of the profile set back to the general value is taken out of the profile: null, nothing to put
+        private Editor target(String key, Object value) {
+            if (profileKeys.contains(key) && Profiles.sameValue(value, OverlayPreferences.this.general.getAll().get(key))) {
+                profile.remove(key);
+                return null;
+            }
+            return target(key);
+        }
+
         @Override
         public Editor putString(String key, String value) {
-            target(key).putString(key, value);
+            Editor target = target(key, value);
+            if (target != null) {
+                target.putString(key, value);
+            }
             return this;
         }
 
         @Override
         public Editor putStringSet(String key, Set<String> values) {
-            target(key).putStringSet(key, values);
+            Editor target = target(key, values);
+            if (target != null) {
+                target.putStringSet(key, values);
+            }
             return this;
         }
 
         @Override
         public Editor putInt(String key, int value) {
-            target(key).putInt(key, value);
+            Editor target = target(key, value);
+            if (target != null) {
+                target.putInt(key, value);
+            }
             return this;
         }
 
         @Override
         public Editor putLong(String key, long value) {
-            target(key).putLong(key, value);
+            Editor target = target(key, value);
+            if (target != null) {
+                target.putLong(key, value);
+            }
             return this;
         }
 
         @Override
         public Editor putFloat(String key, float value) {
-            target(key).putFloat(key, value);
+            Editor target = target(key, value);
+            if (target != null) {
+                target.putFloat(key, value);
+            }
             return this;
         }
 
         @Override
         public Editor putBoolean(String key, boolean value) {
-            target(key).putBoolean(key, value);
+            Editor target = target(key, value);
+            if (target != null) {
+                target.putBoolean(key, value);
+            }
             return this;
         }
 

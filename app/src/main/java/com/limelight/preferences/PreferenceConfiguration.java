@@ -7,6 +7,7 @@ import android.os.Build;
 import android.preference.PreferenceManager;
 import android.view.Display;
 
+import com.limelight.binding.input.Shortcuts;
 import com.limelight.nvstream.jni.MoonBridge;
 import com.limelight.profiles.Profiles;
 
@@ -98,7 +99,6 @@ public class PreferenceConfiguration {
     private static final String GAMEPAD_MOTION_SENSORS_PREF_STRING = "checkbox_gamepad_motion_sensors";
     private static final String GAMEPAD_MOTION_FALLBACK_PREF_STRING = "checkbox_gamepad_motion_fallback";
     private static final String AUTO_CONNECT_CONTROLLERS_PREF_STRING = "checkbox_auto_connect_controllers";
-    private static final String OVERLAY_TRIGGER_BUTTON_PREF_STRING = "overlay_trigger_button";
     private static final String OVERLAY_HOLD_DURATION_PREF_STRING = "overlay_hold_duration";
     private static final String AUTO_RESUME_STREAM_PREF_STRING = "checkbox_auto_resume_stream";
     private static final String LEAVE_APP_PREF_STRING = "list_leave_app";
@@ -173,7 +173,6 @@ public class PreferenceConfiguration {
     private static final boolean DEFAULT_GAMEPAD_MOTION_SENSORS = true;
     private static final boolean DEFAULT_GAMEPAD_MOTION_FALLBACK = false;
     private static final boolean DEFAULT_AUTO_CONNECT_CONTROLLERS = true;
-    private static final String DEFAULT_OVERLAY_TRIGGER_BUTTON = "select";
     private static final String DEFAULT_OVERLAY_HOLD_DURATION = "1500";
     private static final boolean DEFAULT_AUTO_RESUME_STREAM = false;
     private static final String DEFAULT_LEAVE_APP = "close";
@@ -269,8 +268,19 @@ public class PreferenceConfiguration {
     public boolean gamepadTouchpadAsMouse;
     public boolean gamepadMotionSensorsFallbackToDevice;
     public boolean autoConnectControllers;
-    public String overlayTriggerButton;
+    // MoonVibe: the controller shortcuts (Shortcuts), one action each
+    public String shortcutHoldSelect;
+    public String shortcutHoldStart;
+    public String shortcutHoldGuide;
+    public String shortcutHoldLbRb;
+    public String shortcutSelectLb;
+    public String shortcutSelectRb;
     public int overlayHoldDurationMs;
+    // MoonVibe: speed of the pointer moved by a stick in mouse emulation, in percent of the original
+    public int mouseEmulationSpeed;
+    // ...and of the scrolling done by the other stick
+    public int mouseScrollSpeed;
+    public boolean invertScroll;
     public boolean autoResumeStream;
     public int leaveApp;
     public boolean backgroundAudio;
@@ -647,6 +657,10 @@ public class PreferenceConfiguration {
         return value;
     }
 
+    private static String readShortcut(SharedPreferences prefs, String key) {
+        return prefs.getString(key, Shortcuts.defaultValue(key));
+    }
+
     public static PreferenceConfiguration readPreferences(Context context) {
         SharedPreferences prefs = Profiles.prefs(context);
         PreferenceConfiguration config = new PreferenceConfiguration();
@@ -660,6 +674,9 @@ public class PreferenceConfiguration {
                         .apply();
             }
         }
+
+        // MoonVibe: the button held for the game menu became one of the controller shortcuts
+        Shortcuts.migrate(prefs);
 
         // MoonVibe: picture-in-picture became an option of "When you leave the app"
         if (prefs.contains(ENABLE_PIP_PREF_STRING)) {
@@ -843,7 +860,15 @@ public class PreferenceConfiguration {
         config.gamepadMotionSensors = prefs.getBoolean(GAMEPAD_MOTION_SENSORS_PREF_STRING, DEFAULT_GAMEPAD_MOTION_SENSORS);
         config.gamepadMotionSensorsFallbackToDevice = prefs.getBoolean(GAMEPAD_MOTION_FALLBACK_PREF_STRING, DEFAULT_GAMEPAD_MOTION_FALLBACK);
         config.autoConnectControllers = prefs.getBoolean(AUTO_CONNECT_CONTROLLERS_PREF_STRING, DEFAULT_AUTO_CONNECT_CONTROLLERS);
-        config.overlayTriggerButton = prefs.getString(OVERLAY_TRIGGER_BUTTON_PREF_STRING, DEFAULT_OVERLAY_TRIGGER_BUTTON);
+        config.shortcutHoldSelect = readShortcut(prefs, Shortcuts.HOLD_SELECT);
+        config.shortcutHoldStart = readShortcut(prefs, Shortcuts.HOLD_START);
+        config.shortcutHoldGuide = readShortcut(prefs, Shortcuts.HOLD_GUIDE);
+        config.shortcutHoldLbRb = readShortcut(prefs, Shortcuts.HOLD_LB_RB);
+        config.shortcutSelectLb = readShortcut(prefs, Shortcuts.SELECT_LB);
+        config.shortcutSelectRb = readShortcut(prefs, Shortcuts.SELECT_RB);
+        config.mouseEmulationSpeed = prefs.getInt("seekbar_mouse_emulation_speed", 100);
+        config.mouseScrollSpeed = prefs.getInt("seekbar_mouse_scroll_speed", 100);
+        config.invertScroll = prefs.getBoolean("checkbox_invert_scroll", false);
         config.overlayHoldDurationMs = Integer.parseInt(prefs.getString(OVERLAY_HOLD_DURATION_PREF_STRING, DEFAULT_OVERLAY_HOLD_DURATION));
         config.autoResumeStream = prefs.getBoolean(AUTO_RESUME_STREAM_PREF_STRING, DEFAULT_AUTO_RESUME_STREAM);
         switch (prefs.getString(LEAVE_APP_PREF_STRING, DEFAULT_LEAVE_APP)) {

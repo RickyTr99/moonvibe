@@ -31,6 +31,7 @@ import android.window.OnBackInvokedDispatcher;
 
 import com.limelight.R;
 import com.limelight.ui.apollo.ApolloUi;
+import com.limelight.ui.apollo.ScreenLayer;
 import com.limelight.ui.apollo.hints.ButtonGlyph;
 import com.limelight.ui.apollo.hints.HintRow;
 import com.limelight.ui.apollo.hints.InputMode;
@@ -54,6 +55,8 @@ class ValuePopup {
     private static final int FIELD_FILL = 0xFF3A3C42;
 
     private final FrameLayout host;
+    // The top of the window, where the veil and the card go (ScreenLayer)
+    private FrameLayout layer;
     private final ViewGroup content;
     private final ApolloColors colors;
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -132,7 +135,9 @@ class ValuePopup {
         scrim.setBackgroundColor(Color.argb(128, 0, 0, 0));
         scrim.setClickable(true);
         scrim.setOnClickListener(v -> dismiss(true));
-        host.addView(scrim, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        layer = ScreenLayer.of(host);
+        ScreenLayer.blockApp(host, true);
+        layer.addView(scrim, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         LinearLayout column = new LinearLayout(context());
         column.setOrientation(LinearLayout.VERTICAL);
@@ -207,11 +212,11 @@ class ValuePopup {
         updateBumpers();
         showValue(true);
 
-        int width = Math.min(dp(WIDTH_DP), host.getWidth() - dp(32));
+        int width = Math.min(dp(WIDTH_DP), layer.getWidth() - dp(32));
         // Near the top, so the keyboard has room below it
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(width, ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER_HORIZONTAL | Gravity.TOP);
-        params.topMargin = Math.max(dp(16), host.getHeight() / 8);
+        params.topMargin = Math.max(dp(16), layer.getHeight() / 8);
         scrim.addView(column, params);
 
         scrim.setAlpha(0f);
@@ -541,6 +546,7 @@ class ValuePopup {
         handler.removeCallbacksAndMessages(null);
         ((InputManager) context().getSystemService(Context.INPUT_SERVICE)).unregisterInputDeviceListener(deviceListener);
         content.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
+        ScreenLayer.blockApp(host, false);
         unregisterBack();
         if (anchor != null && anchor.isAttachedToWindow()) {
             anchor.requestFocus();
@@ -550,9 +556,9 @@ class ValuePopup {
             closing.setClickable(false);
             closing.animate().alpha(0f).setDuration(ApolloMotion.SHORT)
                     .setInterpolator(ApolloMotion.EMPHASIZED_ACCELERATE)
-                    .withEndAction(() -> host.removeView(closing)).start();
+                    .withEndAction(() -> ScreenLayer.remove(closing)).start();
         } else {
-            host.removeView(closing);
+            ScreenLayer.remove(closing);
         }
         return true;
     }

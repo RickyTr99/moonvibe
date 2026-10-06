@@ -96,7 +96,8 @@ class OptionsPopup {
 
         LinearLayout list = new LinearLayout(host.getContext());
         list.setOrientation(LinearLayout.VERTICAL);
-        list.setPadding(0, dp(4), 0, dp(4));
+        // No padding: the focus tint of the first and last option reaches the rounded edge of the card
+        list.setPadding(0, 0, 0, 0);
         card.addView(list);
 
         View selectedView = null;

@@ -58,7 +58,7 @@ public class ApolloTopBar extends FrameLayout {
     private final StatusRowView status;
     // The name and the profile icon open the profiles. A profile in use shows in a veil shaped like
     // the status one, with its name and a green dot (the same green as a PC online)
-    private static final int PROFILE_DOT = 0xFF6DD58C;
+    public static final int PROFILE_DOT = 0xFF6DD58C;
     private final LinearLayout profileButton;
     private final LinearLayout profileChip;
     private final GradientDrawable profileChipBackground;
@@ -359,7 +359,10 @@ public class ApolloTopBar extends FrameLayout {
                     i == selected ? colors.onSurface : colors.outline, true);
             tab.setGravity(Gravity.CENTER);
             tab.setPadding(dp(4), 0, dp(4), 0);
-            tab.setOnClickListener(v -> selectTab(index));
+            tab.setOnClickListener(v -> {
+                switchedByGamepad = false;
+                selectTab(index);
+            });
             tab.setFocusable(false);
 
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT);
@@ -375,9 +378,20 @@ public class ApolloTopBar extends FrameLayout {
         }
     }
 
+    // Whether the last change of tab came from LB/RB: the new screen then takes the gamepad focus at once
+    private static boolean switchedByGamepad;
+
+    /** Read once by the new screen: true if the user came with LB/RB. */
+    public static boolean takeSwitchedByGamepad() {
+        boolean value = switchedByGamepad;
+        switchedByGamepad = false;
+        return value;
+    }
+
     // LB/RB
     public void switchTab(int direction) {
         if (tabCount > 1) {
+            switchedByGamepad = true;
             selectTab((selectedTab + direction + tabCount) % tabCount);
         }
     }
@@ -476,6 +490,8 @@ public class ApolloTopBar extends FrameLayout {
      * heavy work for {@link #SLIDE_SETTLE_MS}, or the slide stutters on fast screens.
      */
     public boolean onResume() {
+        // The flag is for the screen being built (read in its onCreate), not for a later one
+        switchedByGamepad = false;
         // A profile may have been changed or its rule met while this screen was away
         showProfile(false);
         // Coming from another tab, the mark slides from that tab to this screen's one

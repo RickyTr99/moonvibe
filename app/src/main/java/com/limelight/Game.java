@@ -4,6 +4,7 @@ package com.limelight;
 import com.limelight.binding.PlatformBinding;
 import com.limelight.binding.audio.AndroidAudioRenderer;
 import com.limelight.binding.input.ControllerHandler;
+import com.limelight.binding.input.Shortcuts;
 import com.limelight.binding.input.KeyboardTranslator;
 import com.limelight.binding.input.capture.InputCaptureManager;
 import com.limelight.binding.input.capture.InputCaptureProvider;
@@ -37,6 +38,7 @@ import com.limelight.ui.GameGestures;
 import com.limelight.ui.StreamView;
 import com.limelight.ui.apollo.launch.LaunchOverlayView;
 import com.limelight.ui.overlay.CustomCommand;
+import com.limelight.ui.apollo.MousePill;
 import com.limelight.ui.gamemenu.GameMenuView;
 import com.limelight.utils.Dialog;
 import com.limelight.utils.ServerHelper;
@@ -68,6 +70,7 @@ import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.PowerManager;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
@@ -99,6 +102,7 @@ import java.lang.reflect.Method;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.util.Arrays;
 import java.util.Locale;
 
 
@@ -178,6 +182,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     private int requestedNotificationOverlayVisibility = View.GONE;
     private TextView performanceOverlayView;
     private BrightnessSliderView brightnessSliderView;
+    private MousePill mousePill;
     // A touch that started on the left edge and opened the brightness slider
     private boolean brightnessEdgeTouch;
     private GameMenuView gameMenuView;
@@ -3388,6 +3393,27 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     }
 
     // Toggles mouse emulation for the primary controller
+    // Speed of the pointer moved by a stick, in percent; saved, so the settings show it too
+    public int getMouseEmulationSpeed() {
+        return prefConfig.mouseEmulationSpeed;
+    }
+
+    public void setMouseEmulationSpeed(int percent) {
+        prefConfig.mouseEmulationSpeed = percent;
+        PreferenceManager.getDefaultSharedPreferences(this).edit()
+                .putInt("seekbar_mouse_emulation_speed", percent).apply();
+    }
+
+    public int getMouseScrollSpeed() {
+        return prefConfig.mouseScrollSpeed;
+    }
+
+    public void setMouseScrollSpeed(int percent) {
+        prefConfig.mouseScrollSpeed = percent;
+        PreferenceManager.getDefaultSharedPreferences(this).edit()
+                .putInt("seekbar_mouse_scroll_speed", percent).apply();
+    }
+
     public void toggleMouseEmulation() {
         controllerHandler.toggleMouseEmulationForController0();
     }
@@ -3423,31 +3449,82 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             public void onOverlayMenuCancel() {
                 // Nothing to do - no progress indicator to hide
             }
+
+            @Override
+            public void onShortcut(String action) {
+                runOnUiThread(() -> runShortcut(action));
+            }
+
+            @Override
+            public void onMouseEmulationChanged(boolean active) {
+                runOnUiThread(() -> {
+                    if (mousePill == null) {
+                        mousePill = new MousePill((FrameLayout) streamView.getParent());
+                    }
+                    mousePill.show(active);
+                });
+            }
         });
+    }
+
+    // MoonVibe: what a controller shortcut does in the stream (the game menu and the mouse are handled before)
+    private void runShortcut(String action) {
+        if (!connected) {
+            return;
+        }
+        switch (action) {
+            case Shortcuts.KEYBOARD:
+                toggleKeyboard();
+                return;
+            case Shortcuts.FULL_KEYBOARD:
+                toggleFullKeyboard();
+                return;
+            case Shortcuts.STATS:
+                toggleStatsOverlay();
+                return;
+            case Shortcuts.VIRTUAL_CONTROLLER:
+                toggleVirtualController();
+                return;
+            case Shortcuts.TOUCH_MODE: {
+                String[] modes = getResources().getStringArray(R.array.touch_mode_values);
+                int current = Arrays.asList(modes).indexOf(getTouchMode());
+                setTouchMode(modes[(current + 1) % modes.length]);
+                String[] names = getResources().getStringArray(R.array.touch_mode_names);
+                Toast.makeText(this, names[(current + 1) % names.length], Toast.LENGTH_SHORT).show();
+                return;
+            }
+            case Shortcuts.DISCONNECT:
+                disconnectFromMenu();
+                return;
+        }
+
+        CustomCommand command = Shortcuts.command(this, action);
+        if (command == null) {
+            CustomCommand.KeyCombination keys = Shortcuts.keys(action);
+            if (keys == null) {
+                return;
+            }
+            command = new CustomCommand("", 0, keys);
+        }
+        sendCustomKeyCommand(command, null);
     }
 
     /**
      * Show a toast hint about how to open the overlay menu
      */
     private void showOverlayMenuHint() {
-        // Get the trigger button name
+        // The first button held that opens the menu; none, no hint
         int buttonNameResId;
-        switch (prefConfig.overlayTriggerButton) {
-            case "select":
-                buttonNameResId = R.string.overlay_trigger_select;
-                break;
-            case "start":
-                buttonNameResId = R.string.overlay_trigger_start;
-                break;
-            case "guide":
-                buttonNameResId = R.string.overlay_trigger_guide;
-                break;
-            case "lb_rb":
-                buttonNameResId = R.string.overlay_trigger_lb_rb;
-                break;
-            default:
-                buttonNameResId = R.string.overlay_trigger_select;
-                break;
+        if (Shortcuts.GAME_MENU.equals(prefConfig.shortcutHoldSelect)) {
+            buttonNameResId = R.string.overlay_trigger_select;
+        } else if (Shortcuts.GAME_MENU.equals(prefConfig.shortcutHoldStart)) {
+            buttonNameResId = R.string.overlay_trigger_start;
+        } else if (Shortcuts.GAME_MENU.equals(prefConfig.shortcutHoldGuide)) {
+            buttonNameResId = R.string.overlay_trigger_guide;
+        } else if (Shortcuts.GAME_MENU.equals(prefConfig.shortcutHoldLbRb)) {
+            buttonNameResId = R.string.overlay_trigger_lb_rb;
+        } else {
+            return;
         }
         String buttonName = getString(buttonNameResId);
 

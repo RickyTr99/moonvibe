@@ -81,6 +81,17 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
          * Called when select button is released before 3 seconds (cancel).
          */
         void onOverlayMenuCancel();
+
+        /**
+         * MoonVibe: a controller shortcut ran an action of the stream (Shortcuts), other than
+         * the game menu and the mouse emulation.
+         */
+        void onShortcut(String action);
+
+        /**
+         * MoonVibe: the mouse emulation of a controller was turned on or off.
+         */
+        void onMouseEmulationChanged(boolean active);
     }
 
     private static final int MAXIMUM_BUMPER_UP_DELAY_MS = 100;
@@ -165,7 +176,14 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
     private OverlayMenuListener overlayMenuListener = null;
     private long selectDownTime = 0;
     private Runnable overlayMenuOpenRunnable = null;
-    private int overlayTriggerButtonFlag = ControllerPacket.BACK_FLAG;
+    // MoonVibe: the single buttons (Select, Start, Guide) kept from the host while a shortcut may still start
+    // on them: a tap reaches the host on release, a hold runs the shortcut
+    private int heldBackButtons = 0;
+    // The hold in progress: its buttons, the controller, and its action (null: none, the buttons only
+    // wait for a Select combination and go to the host when the hold time is over)
+    private int holdMask = 0;
+    private InputDeviceContext holdContext = null;
+    private String holdAction = null;
     private boolean overlayTriggeredByRemoteBack = false;
 
     public ControllerHandler(Activity activityContext, NvConnection conn, GameGestures gestures, PreferenceConfiguration prefConfig) {
@@ -174,23 +192,17 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         this.gestures = gestures;
         this.prefConfig = prefConfig;
 
-        // Parse overlay trigger button preference to flag(s)
-        switch (prefConfig.overlayTriggerButton) {
-            case "select":
-                this.overlayTriggerButtonFlag = ControllerPacket.BACK_FLAG;
-                break;
-            case "start":
-                this.overlayTriggerButtonFlag = ControllerPacket.PLAY_FLAG;
-                break;
-            case "guide":
-                this.overlayTriggerButtonFlag = ControllerPacket.SPECIAL_BUTTON_FLAG;
-                break;
-            case "lb_rb":
-                this.overlayTriggerButtonFlag = ControllerPacket.LB_FLAG | ControllerPacket.RB_FLAG;
-                break;
-            default:
-                this.overlayTriggerButtonFlag = ControllerPacket.BACK_FLAG;
-                break;
+        // The buttons with a shortcut wait for its outcome before reaching the host. Select also waits
+        // when a Select + bumper combination is set, so the host does not see it pressed.
+        if (!Shortcuts.NONE.equals(prefConfig.shortcutHoldSelect) || !Shortcuts.NONE.equals(prefConfig.shortcutSelectLb) ||
+                !Shortcuts.NONE.equals(prefConfig.shortcutSelectRb)) {
+            this.heldBackButtons |= ControllerPacket.BACK_FLAG;
+        }
+        if (!Shortcuts.NONE.equals(prefConfig.shortcutHoldStart)) {
+            this.heldBackButtons |= ControllerPacket.PLAY_FLAG;
+        }
+        if (!Shortcuts.NONE.equals(prefConfig.shortcutHoldGuide)) {
+            this.heldBackButtons |= ControllerPacket.SPECIAL_BUTTON_FLAG;
         }
 
         this.overlayMenuOpenMs = prefConfig.overlayHoldDurationMs;
@@ -1416,6 +1428,10 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
                     conn.sendMouseButtonUp(MouseButtonPacket.BUTTON_RIGHT);
                 }
             }
+            // MoonVibe: X is the middle button, LB and RB are back and forward
+            sendEmulatedMouseButton(changedMask, inputMap, ControllerPacket.X_FLAG, MouseButtonPacket.BUTTON_MIDDLE);
+            sendEmulatedMouseButton(changedMask, inputMap, ControllerPacket.LB_FLAG, MouseButtonPacket.BUTTON_X1);
+            sendEmulatedMouseButton(changedMask, inputMap, ControllerPacket.RB_FLAG, MouseButtonPacket.BUTTON_X2);
             if ((changedMask & ControllerPacket.UP_FLAG) != 0) {
                 if ((inputMap & ControllerPacket.UP_FLAG) != 0) {
                     conn.sendMouseScroll((byte) 1);
@@ -1489,20 +1505,18 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         }
 
         switch (action) {
-            case "select":
+            case Shortcuts.AS_SELECT:
                 // Back already works as Select
                 return event.getKeyCode() == KeyEvent.KEYCODE_BACK ? 0 : KeyEvent.KEYCODE_BUTTON_SELECT;
-            case "guide":
+            case Shortcuts.AS_GUIDE:
                 return KeyEvent.KEYCODE_BUTTON_MODE;
-            case "share":
+            case Shortcuts.AS_SHARE:
                 return KeyEvent.KEYCODE_MEDIA_RECORD;
-            case "game_menu":
-                // Opens on press; the release then goes to the menu, which ignores it
-                if (down && event.getRepeatCount() == 0 && overlayMenuListener != null) {
-                    overlayMenuListener.onOverlayMenuOpen();
-                }
-                return REMAP_CONSUME;
             default:
+                // A shortcut runs on press; the release then goes to the menu, which ignores it
+                if (down && event.getRepeatCount() == 0) {
+                    runShortcut(context, action);
+                }
                 return REMAP_CONSUME;
         }
     }
@@ -2031,6 +2045,11 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         Vector2d vector = new Vector2d();
         vector.initialize(stickX, stickY);
         vector.scalarMultiply(1 / 32766.0f);
+        // MoonVibe: many sticks reach full scale on both axes at once on the diagonals (square gate),
+        // so cap the tilt at 1 and the pointer keeps the same top speed in every direction
+        if (vector.getMagnitude() > 1) {
+            vector.scalarMultiply(1 / vector.getMagnitude());
+        }
         vector.scalarMultiply(4);
         if (vector.getMagnitude() > 0) {
             // Move faster as the stick is pressed further from center
@@ -2039,18 +2058,14 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         return vector;
     }
 
-    private void sendEmulatedMouseMove(short x, short y) {
-        Vector2d vector = convertRawStickAxisToPixelMovement(x, y);
-        if (vector.getMagnitude() >= 1) {
-            conn.sendMouseMove((short)vector.getX(), (short)-vector.getY());
-        }
-    }
-
-    private void sendEmulatedMouseScroll(short x, short y) {
-        Vector2d vector = convertRawStickAxisToPixelMovement(x, y);
-        if (vector.getMagnitude() >= 1) {
-            conn.sendMouseHighResScroll((short)vector.getY());
-            conn.sendMouseHighResHScroll((short)vector.getX());
+    private void sendEmulatedMouseButton(int changedMask, int inputMap, int buttonFlag, byte mouseButton) {
+        if ((changedMask & buttonFlag) != 0) {
+            if ((inputMap & buttonFlag) != 0) {
+                conn.sendMouseButtonDown(mouseButton);
+            }
+            else {
+                conn.sendMouseButtonUp(mouseButton);
+            }
         }
     }
 
@@ -2521,16 +2536,20 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
     }
 
     /**
-     * Start the overlay menu hold detection timers.
+     * Start the hold detection of a shortcut.
+     * @param action what the hold runs, or null to only send the held button to the host once the time is over
      */
-    private void startOverlayMenuHoldDetection(long downTime) {
+    private void startHoldDetection(InputDeviceContext context, int mask, String action, long downTime) {
         if (overlayMenuListener == null) {
             return;
         }
 
         selectDownTime = downTime;
+        holdMask = mask;
+        holdContext = context;
+        holdAction = action;
 
-        // Schedule menu open callback at OVERLAY_MENU_OPEN_MS interval
+        // Schedule the shortcut at the hold duration
         overlayMenuOpenRunnable = new Runnable() {
             @Override
             public void run() {
@@ -2541,19 +2560,29 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
                     selectDownTime = 0;
                     overlayTriggeredByRemoteBack = false;
 
-                    // Release ALL gamepad inputs for all controllers before opening menu
+                    if (action == null) {
+                        // No Select combination came: from now on Select is a normal press for the host
+                        if (context.pendingOverlayTriggerPressFlag == mask) {
+                            context.pendingOverlayTriggerPressFlag = 0;
+                            context.inputMap |= mask;
+                            sendControllerInputPacket(context);
+                        }
+                        return;
+                    }
+
+                    // Release ALL gamepad inputs for all controllers before running the shortcut
                     // to ensure the host doesn't think any buttons/sticks are still pressed
                     for (int i = 0; i < inputDeviceContexts.size(); i++) {
-                        InputDeviceContext context = inputDeviceContexts.valueAt(i);
+                        InputDeviceContext deviceContext = inputDeviceContexts.valueAt(i);
                         // Reset all button flags, triggers, and analog sticks to neutral
-                        context.inputMap = 0;
-                        context.leftTrigger = 0;
-                        context.rightTrigger = 0;
-                        context.leftStickX = 0;
-                        context.leftStickY = 0;
-                        context.rightStickX = 0;
-                        context.rightStickY = 0;
-                        sendControllerInputPacket(context);
+                        deviceContext.inputMap = 0;
+                        deviceContext.leftTrigger = 0;
+                        deviceContext.rightTrigger = 0;
+                        deviceContext.leftStickX = 0;
+                        deviceContext.leftStickY = 0;
+                        deviceContext.rightStickX = 0;
+                        deviceContext.rightStickY = 0;
+                        sendControllerInputPacket(deviceContext);
                     }
 
                     // Also reset the default context
@@ -2566,13 +2595,28 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
                     defaultContext.rightStickY = 0;
                     sendControllerInputPacket(defaultContext);
 
-                    overlayMenuListener.onOverlayMenuOpen();
+                    runShortcut(context, action);
                 }
             }
         };
         mainThreadHandler.postDelayed(overlayMenuOpenRunnable, overlayMenuOpenMs);
     }
 
+    /**
+     * MoonVibe: runs the action of a controller shortcut. The mouse emulation is for the
+     * controller that asked for it; the game menu and the other actions belong to the stream.
+     */
+    private void runShortcut(GenericControllerContext context, String action) {
+        if (Shortcuts.MOUSE.equals(action)) {
+            context.toggleMouseEmulation();
+        } else if (overlayMenuListener != null) {
+            if (Shortcuts.GAME_MENU.equals(action)) {
+                overlayMenuListener.onOverlayMenuOpen();
+            } else if (!Shortcuts.NONE.equals(action)) {
+                overlayMenuListener.onShortcut(action);
+            }
+        }
+    }
 
     /**
      * Cancel the overlay menu hold detection and notify listener.
@@ -2600,35 +2644,101 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         }
     }
 
+    // The action of holding these buttons
+    private String holdShortcut(int mask) {
+        switch (mask) {
+            case ControllerPacket.BACK_FLAG:
+                return prefConfig.shortcutHoldSelect;
+            case ControllerPacket.PLAY_FLAG:
+                return prefConfig.shortcutHoldStart;
+            case ControllerPacket.SPECIAL_BUTTON_FLAG:
+                return prefConfig.shortcutHoldGuide;
+            case ControllerPacket.LB_FLAG | ControllerPacket.RB_FLAG:
+                return prefConfig.shortcutHoldLbRb;
+            default:
+                return Shortcuts.NONE;
+        }
+    }
+
+    // Whether a press of this single button must wait: it has a shortcut, and no other hold is in progress
+    // (then it goes to the host together with the button already waiting). Repeats of the press keep waiting.
+    private boolean holdsBack(InputDeviceContext context, int buttonFlag) {
+        return (heldBackButtons & buttonFlag) != 0 &&
+                (selectDownTime == 0 || context.pendingOverlayTriggerPressFlag == buttonFlag);
+    }
+
     /**
-     * Check if the pressed button should trigger the overlay menu.
-     * Uses bitwise operations to check if:
-     * 1. The button is part of the configured trigger
-     * 2. All required trigger buttons are now pressed
+     * Check if the pressed button starts the hold of a shortcut: a single button with a shortcut
+     * (kept from the host until then), LB + RB together, or the back button of a remote (game menu).
      * @param context The input device context
      * @param buttonFlag The button flag that was pressed
      * @param eventTime The event timestamp
      * @param isRemoteBack True if triggered by remote control back button
      */
     private void checkOverlayTrigger(InputDeviceContext context, int buttonFlag, long eventTime, boolean isRemoteBack) {
-        // Check if this button is part of the trigger, or if it's the back button on a remote
-        if ((buttonFlag & overlayTriggerButtonFlag) != 0 || (isRemoteBack && buttonFlag == ControllerPacket.BACK_FLAG)) {
-            // Check if ALL required trigger buttons are now pressed, or if it's the back button on a remote
-            if ((context.inputMap & overlayTriggerButtonFlag) == overlayTriggerButtonFlag || isRemoteBack) {
-                overlayTriggeredByRemoteBack = isRemoteBack;
-                startOverlayMenuHoldDetection(eventTime);
+        if (selectDownTime > 0) {
+            // One hold at a time
+            return;
+        }
+        if (isRemoteBack && buttonFlag == ControllerPacket.BACK_FLAG) {
+            overlayTriggeredByRemoteBack = true;
+            startHoldDetection(context, ControllerPacket.BACK_FLAG, Shortcuts.GAME_MENU, eventTime);
+            return;
+        }
+        if (buttonFlag == ControllerPacket.LB_FLAG || buttonFlag == ControllerPacket.RB_FLAG) {
+            int bumpers = ControllerPacket.LB_FLAG | ControllerPacket.RB_FLAG;
+            if ((context.inputMap & bumpers) == bumpers && !Shortcuts.NONE.equals(prefConfig.shortcutHoldLbRb)) {
+                startHoldDetection(context, bumpers, prefConfig.shortcutHoldLbRb, eventTime);
             }
+            return;
+        }
+        if ((heldBackButtons & buttonFlag) != 0) {
+            String action = holdShortcut(buttonFlag);
+            startHoldDetection(context, buttonFlag, Shortcuts.NONE.equals(action) ? null : action, eventTime);
         }
     }
 
     /**
-     * Check if the released button should cancel the overlay menu trigger.
-     * Uses bitwise operations to check if the button is part of the configured trigger.
+     * Check if the released button should cancel the hold in progress.
      */
     private void checkOverlayTriggerRelease(int buttonFlag) {
-        if ((buttonFlag & overlayTriggerButtonFlag) != 0 || (overlayTriggeredByRemoteBack && buttonFlag == ControllerPacket.BACK_FLAG)) {
+        if (selectDownTime > 0 &&
+                ((buttonFlag & holdMask) != 0 || (overlayTriggeredByRemoteBack && buttonFlag == ControllerPacket.BACK_FLAG))) {
             cancelOverlayMenuHoldDetection();
         }
+    }
+
+    /**
+     * MoonVibe: Select + LB or Select + RB with a shortcut runs it on the bumper press; neither
+     * button reaches the host.
+     * @return whether the bumper press is taken by the shortcut
+     */
+    private boolean handleSelectCombo(InputDeviceContext context, int bumperFlag, KeyEvent event) {
+        if ((context.comboBumpers & bumperFlag) != 0) {
+            // Repeats of a press already taken
+            return true;
+        }
+        String action = bumperFlag == ControllerPacket.LB_FLAG ? prefConfig.shortcutSelectLb : prefConfig.shortcutSelectRb;
+        if (event.getRepeatCount() != 0 || Shortcuts.NONE.equals(action)) {
+            return false;
+        }
+        boolean selectWaiting = context.pendingOverlayTriggerPressFlag == ControllerPacket.BACK_FLAG && selectDownTime > 0;
+        if (!selectWaiting && !context.comboSelect && (context.inputMap & ControllerPacket.BACK_FLAG) == 0) {
+            return false;
+        }
+
+        if (selectWaiting) {
+            // The tap of Select is not sent on its release
+            context.pendingOverlayTriggerPressFlag = 0;
+            cancelOverlayMenuHoldDetection();
+        }
+        // Select held past the hold time already reached the host: it comes up there now
+        context.inputMap &= ~ControllerPacket.BACK_FLAG;
+        context.comboSelect = true;
+        context.comboBumpers |= bumperFlag;
+        sendControllerInputPacket(context);
+        runShortcut(context, action);
+        return true;
     }
 
     public boolean handleButtonUp(KeyEvent event) {
@@ -2680,7 +2790,12 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         case KeyEvent.KEYCODE_MENU:
             if (context.pendingOverlayTriggerPressFlag == ControllerPacket.PLAY_FLAG) {
                 context.pendingOverlayTriggerPressFlag = 0;
-                if (selectDownTime > 0) {
+                if (selectDownTime > 0 && context.mouseEmulationActive) {
+                    // MoonVibe: a tap of Start turns the mouse emulation off
+                    cancelOverlayMenuHoldDetection();
+                    context.toggleMouseEmulation();
+                }
+                else if (selectDownTime > 0) {
                     context.inputMap |= ControllerPacket.PLAY_FLAG;
                     mainThreadHandler.postDelayed(() -> {
                         context.inputMap &= ~ControllerPacket.PLAY_FLAG;
@@ -2688,6 +2803,10 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
                     }, OVERLAY_TRIGGER_TAP_RELEASE_DELAY_MS);
                 }
             } else {
+                if (context.mouseEmulationActive && (context.inputMap & ControllerPacket.PLAY_FLAG) != 0) {
+                    // Start has no shortcut: any press of it turns the mouse emulation off
+                    context.toggleMouseEmulation();
+                }
                 context.inputMap &= ~ControllerPacket.PLAY_FLAG;
             }
             checkOverlayTriggerRelease(ControllerPacket.PLAY_FLAG);
@@ -2705,6 +2824,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
             } else {
                 context.inputMap &= ~ControllerPacket.BACK_FLAG;
             }
+            context.comboSelect = false;
             checkOverlayTriggerRelease(ControllerPacket.BACK_FLAG);
             break;
         case KeyEvent.KEYCODE_BACK:
@@ -2721,6 +2841,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
                 // Only clear flag if it was set (gamepad case)
                 context.inputMap &= ~ControllerPacket.BACK_FLAG;
             }
+            context.comboSelect = false;
             checkOverlayTriggerRelease(ControllerPacket.BACK_FLAG);
             break;
         case KeyEvent.KEYCODE_DPAD_LEFT:
@@ -2793,11 +2914,20 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
             context.inputMap &= ~ControllerPacket.Y_FLAG;
             break;
         case KeyEvent.KEYCODE_BUTTON_L1:
+            if ((context.comboBumpers & ControllerPacket.LB_FLAG) != 0) {
+                // The press ran a Select combination and never reached the host
+                context.comboBumpers &= ~ControllerPacket.LB_FLAG;
+                return true;
+            }
             context.inputMap &= ~ControllerPacket.LB_FLAG;
             context.lastLbUpTime = event.getEventTime();
             checkOverlayTriggerRelease(ControllerPacket.LB_FLAG);
             break;
         case KeyEvent.KEYCODE_BUTTON_R1:
+            if ((context.comboBumpers & ControllerPacket.RB_FLAG) != 0) {
+                context.comboBumpers &= ~ControllerPacket.RB_FLAG;
+                return true;
+            }
             context.inputMap &= ~ControllerPacket.RB_FLAG;
             context.lastRbUpTime = event.getEventTime();
             checkOverlayTriggerRelease(ControllerPacket.RB_FLAG);
@@ -2928,7 +3058,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         switch (keyCode) {
         case KeyEvent.KEYCODE_BUTTON_MODE:
             context.hasMode = true;
-            if (overlayTriggerButtonFlag == ControllerPacket.SPECIAL_BUTTON_FLAG) {
+            if (holdsBack(context, ControllerPacket.SPECIAL_BUTTON_FLAG)) {
                 isPendingTriggerButton = true;
                 // Guide is the overlay trigger - delay sending to host until the outcome is known
                 if (event.getRepeatCount() == 0) {
@@ -2949,7 +3079,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
             break;
         case KeyEvent.KEYCODE_BUTTON_START:
         case KeyEvent.KEYCODE_MENU:
-            if (overlayTriggerButtonFlag == ControllerPacket.PLAY_FLAG) {
+            if (holdsBack(context, ControllerPacket.PLAY_FLAG)) {
                 isPendingTriggerButton = true;
                 if (event.getRepeatCount() == 0) {
                     context.startDownTime = event.getEventTime();
@@ -2968,7 +3098,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
             break;
         case KeyEvent.KEYCODE_BUTTON_SELECT:
             context.hasSelect = true;
-            if (overlayTriggerButtonFlag == ControllerPacket.BACK_FLAG) {
+            if (holdsBack(context, ControllerPacket.BACK_FLAG)) {
                 isPendingTriggerButton = true;
                 if (event.getRepeatCount() == 0) {
                     context.inputMap |= ControllerPacket.BACK_FLAG;
@@ -2996,7 +3126,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
                 }
             } else {
                 // Gamepad - send to host and check overlay trigger
-                if (overlayTriggerButtonFlag == ControllerPacket.BACK_FLAG) {
+                if (holdsBack(context, ControllerPacket.BACK_FLAG)) {
                     isPendingTriggerButton = true;
                     if (event.getRepeatCount() == 0) {
                         context.inputMap |= ControllerPacket.BACK_FLAG;
@@ -3082,12 +3212,18 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
             context.inputMap |= ControllerPacket.Y_FLAG;
             break;
         case KeyEvent.KEYCODE_BUTTON_L1:
+            if (handleSelectCombo(context, ControllerPacket.LB_FLAG, event)) {
+                return true;
+            }
             context.inputMap |= ControllerPacket.LB_FLAG;
             if (event.getRepeatCount() == 0) {
                 checkOverlayTrigger(context, ControllerPacket.LB_FLAG, event.getEventTime(), false);
             }
             break;
         case KeyEvent.KEYCODE_BUTTON_R1:
+            if (handleSelectCombo(context, ControllerPacket.RB_FLAG, event)) {
+                return true;
+            }
             context.inputMap |= ControllerPacket.RB_FLAG;
             if (event.getRepeatCount() == 0) {
                 checkOverlayTrigger(context, ControllerPacket.RB_FLAG, event.getEventTime(), false);
@@ -3148,6 +3284,15 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
             return false;
         }
 
+        // If another button was pressed while the overlay trigger was pending,
+        // immediately send the trigger + new button combo and cancel the overlay timer.
+        // MoonVibe: before the combinations below, so they see the waiting button too
+        if (!isPendingTriggerButton && context.pendingOverlayTriggerPressFlag != 0 && selectDownTime > 0) {
+            context.inputMap |= context.pendingOverlayTriggerPressFlag;
+            context.pendingOverlayTriggerPressFlag = 0;
+            cancelOverlayMenuHoldDetection();
+        }
+
         // Start+Back+LB+RB is the quit combo
         if (context.inputMap == (ControllerPacket.BACK_FLAG | ControllerPacket.PLAY_FLAG |
                                  ControllerPacket.LB_FLAG | ControllerPacket.RB_FLAG)) {
@@ -3202,14 +3347,6 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
                     context.emulatingButtonFlags |= ControllerHandler.EMULATING_SPECIAL;
                 }
             }
-        }
-
-        // If another button was pressed while the overlay trigger was pending,
-        // immediately send the trigger + new button combo and cancel the overlay timer.
-        if (!isPendingTriggerButton && context.pendingOverlayTriggerPressFlag != 0 && selectDownTime > 0) {
-            context.inputMap |= context.pendingOverlayTriggerPressFlag;
-            context.pendingOverlayTriggerPressFlag = 0;
-            cancelOverlayMenuHoldDetection();
         }
 
         // We don't need to send repeat key down events, but the platform
@@ -3322,7 +3459,45 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
 
         public boolean mouseEmulationActive;
         public int mouseEmulationLastInputMap;
-        public final int mouseEmulationReportPeriod = 50;
+        // MoonVibe: 100 reports a second instead of 20, at the same speed per second, so the pointer moves smoothly
+        public final int mouseEmulationReportPeriod = 10;
+        // The original speeds were per report of 50 ms
+        private final float mouseEmulationTick = mouseEmulationReportPeriod / 50f;
+        // What is left below one pixel (or one scroll unit), carried to the next report
+        private float moveRestX, moveRestY, scrollRestX, scrollRestY;
+
+        private void moveFromStick(short x, short y) {
+            Vector2d vector = convertRawStickAxisToPixelMovement(x, y);
+            float scale = mouseEmulationTick * prefConfig.mouseEmulationSpeed / 100f;
+            moveRestX += vector.getX() * scale;
+            moveRestY -= vector.getY() * scale;
+            short dx = (short) moveRestX, dy = (short) moveRestY;
+            moveRestX -= dx;
+            moveRestY -= dy;
+            if (dx != 0 || dy != 0) {
+                conn.sendMouseMove(dx, dy);
+            }
+        }
+
+        private void scrollFromStick(short x, short y) {
+            Vector2d vector = convertRawStickAxisToPixelMovement(x, y);
+            // 100% scrolls twice as fast as the original, which felt too slow
+            float scale = mouseEmulationTick * 2 * prefConfig.mouseScrollSpeed / 100f;
+            if (prefConfig.invertScroll) {
+                scale = -scale;
+            }
+            scrollRestX += vector.getX() * scale;
+            scrollRestY += vector.getY() * scale;
+            short dx = (short) scrollRestX, dy = (short) scrollRestY;
+            scrollRestX -= dx;
+            scrollRestY -= dy;
+            if (dy != 0) {
+                conn.sendMouseHighResScroll(dy);
+            }
+            if (dx != 0) {
+                conn.sendMouseHighResHScroll(dx);
+            }
+        }
 
         public final Runnable mouseEmulationRunnable = new Runnable() {
             @Override
@@ -3333,16 +3508,16 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
 
                 // Send mouse events from analog sticks
                 if (prefConfig.analogStickForScrolling == PreferenceConfiguration.AnalogStickForScrolling.RIGHT) {
-                    sendEmulatedMouseMove(leftStickX, leftStickY);
-                    sendEmulatedMouseScroll(rightStickX, rightStickY);
+                    moveFromStick(leftStickX, leftStickY);
+                    scrollFromStick(rightStickX, rightStickY);
                 }
                 else if (prefConfig.analogStickForScrolling == PreferenceConfiguration.AnalogStickForScrolling.LEFT) {
-                    sendEmulatedMouseMove(rightStickX, rightStickY);
-                    sendEmulatedMouseScroll(leftStickX, leftStickY);
+                    moveFromStick(rightStickX, rightStickY);
+                    scrollFromStick(leftStickX, leftStickY);
                 }
                 else {
-                    sendEmulatedMouseMove(leftStickX, leftStickY);
-                    sendEmulatedMouseMove(rightStickX, rightStickY);
+                    moveFromStick(leftStickX, leftStickY);
+                    moveFromStick(rightStickX, rightStickY);
                 }
 
                 // Requeue the callback
@@ -3353,10 +3528,26 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         public void toggleMouseEmulation() {
             mainThreadHandler.removeCallbacks(mouseEmulationRunnable);
             mouseEmulationActive = !mouseEmulationActive;
-            Toast.makeText(activityContext, "Mouse emulation is: " + (mouseEmulationActive ? "ON" : "OFF"), Toast.LENGTH_SHORT).show();
+            if (overlayMenuListener != null) {
+                overlayMenuListener.onMouseEmulationChanged(mouseEmulationActive);
+            }
 
             if (mouseEmulationActive) {
                 mainThreadHandler.postDelayed(mouseEmulationRunnable, mouseEmulationReportPeriod);
+            }
+            else {
+                // Buttons still held as mouse buttons come up on the PC
+                int held = mouseEmulationLastInputMap;
+                mouseEmulationLastInputMap = 0;
+                if ((held & ControllerPacket.A_FLAG) != 0) {
+                    conn.sendMouseButtonUp(MouseButtonPacket.BUTTON_LEFT);
+                }
+                if ((held & ControllerPacket.B_FLAG) != 0) {
+                    conn.sendMouseButtonUp(MouseButtonPacket.BUTTON_RIGHT);
+                }
+                sendEmulatedMouseButton(held, 0, ControllerPacket.X_FLAG, MouseButtonPacket.BUTTON_MIDDLE);
+                sendEmulatedMouseButton(held, 0, ControllerPacket.LB_FLAG, MouseButtonPacket.BUTTON_X1);
+                sendEmulatedMouseButton(held, 0, ControllerPacket.RB_FLAG, MouseButtonPacket.BUTTON_X2);
             }
         }
 
@@ -3427,6 +3618,9 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         public boolean hasSelect;
         public boolean hasMode;
         public int pendingOverlayTriggerPressFlag;
+        // MoonVibe: Select is down after running a Select + bumper shortcut, and the bumpers whose press ran one
+        public boolean comboSelect;
+        public int comboBumpers;
         public boolean hasPaddles;
         public boolean hasShare;
         public boolean needsClickpadEmulation;

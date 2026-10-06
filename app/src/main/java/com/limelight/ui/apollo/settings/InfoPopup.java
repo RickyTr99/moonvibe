@@ -19,6 +19,7 @@ import android.window.OnBackInvokedDispatcher;
 
 import com.limelight.R;
 import com.limelight.ui.apollo.ApolloUi;
+import com.limelight.ui.apollo.ScreenLayer;
 import com.limelight.ui.apollo.hints.HintRow;
 import com.limelight.ui.theme.ApolloColors;
 import com.limelight.ui.theme.ApolloMotion;
@@ -62,6 +63,8 @@ class InfoPopup {
     private static final int MAX_NAME_WIDTH_DP = 140;
 
     private final FrameLayout host;
+    // The top of the window, where the veil and the card go (ScreenLayer)
+    private FrameLayout layer;
     // The screen behind the card, kept out of reach of the D-pad while it is open
     private final ViewGroup content;
     private final ApolloColors colors;
@@ -99,7 +102,9 @@ class InfoPopup {
         scrim.setBackgroundColor(Color.argb(128, 0, 0, 0));
         scrim.setClickable(true);
         scrim.setOnClickListener(v -> dismiss(true));
-        host.addView(scrim, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        layer = ScreenLayer.of(host);
+        ScreenLayer.blockApp(host, true);
+        layer.addView(scrim, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         ScrollView card = new ScrollView(host.getContext());
         card.setBackground(ApolloUi.roundRect(colors.surfaceContainerHigh, dp(20)));
@@ -188,9 +193,9 @@ class InfoPopup {
         }
 
         // As wide as it reads well, centered, and scrolling when it is taller than the screen
-        int width = Math.min(dp(MAX_WIDTH_DP), host.getWidth() - dp(32));
+        int width = Math.min(dp(MAX_WIDTH_DP), layer.getWidth() - dp(32));
         column.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.UNSPECIFIED);
-        int height = Math.min(column.getMeasuredHeight(), host.getHeight() - dp(32));
+        int height = Math.min(column.getMeasuredHeight(), layer.getHeight() - dp(32));
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(width, height, Gravity.CENTER);
         scrim.addView(card, params);
 
@@ -269,6 +274,7 @@ class InfoPopup {
         FrameLayout closing = scrim;
         scrim = null;
         content.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
+        ScreenLayer.blockApp(host, false);
         unregisterBack();
         if (anchor != null && anchor.isAttachedToWindow()) {
             anchor.requestFocus();
@@ -278,9 +284,9 @@ class InfoPopup {
             closing.setClickable(false);
             closing.animate().alpha(0f).setDuration(ApolloMotion.SHORT)
                     .setInterpolator(ApolloMotion.EMPHASIZED_ACCELERATE)
-                    .withEndAction(() -> host.removeView(closing)).start();
+                    .withEndAction(() -> ScreenLayer.remove(closing)).start();
         } else {
-            host.removeView(closing);
+            ScreenLayer.remove(closing);
         }
         return true;
     }

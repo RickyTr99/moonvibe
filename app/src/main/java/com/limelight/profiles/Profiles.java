@@ -141,6 +141,11 @@ public final class Profiles {
         return context.getApplicationContext().getSharedPreferences(VALUES_FILE_PREFIX + id, Context.MODE_PRIVATE);
     }
 
+    /** Whether a value of a profile is the same as the general one, so the profile need not keep it. */
+    public static boolean sameValue(Object value, Object general) {
+        return value != null && general != null && value.toString().equals(general.toString());
+    }
+
     // --- Which one is used
 
     /** {@link #SELECTION_NONE} or the id of the profile picked in the menu. */

@@ -60,7 +60,8 @@ public class ActionSheet extends FrameLayout {
 
     // The sheet of the activity, added over its content the first time
     public static ActionSheet of(Activity activity) {
-        ViewGroup content = activity.findViewById(android.R.id.content);
+        // On the top of the window, so the veil covers the whole screen (ScreenLayer)
+        ViewGroup content = (ViewGroup) activity.getWindow().getDecorView();
         for (int i = 0; i < content.getChildCount(); i++) {
             if (content.getChildAt(i) instanceof ActionSheet) {
                 return (ActionSheet) content.getChildAt(i);
@@ -154,6 +155,14 @@ public class ActionSheet extends FrameLayout {
         showing = true;
         bringToFront();
         setVisibility(VISIBLE);
+        // The panel stays in the area of the content, out of the status and navigation bars
+        int[] insets = ScreenLayer.contentInsets(this);
+        LayoutParams panelParams = (LayoutParams) panel.getLayoutParams();
+        panelParams.topMargin = insets[0];
+        panelParams.rightMargin = insets[1];
+        panelParams.bottomMargin = insets[2];
+        panel.setLayoutParams(panelParams);
+        ScreenLayer.blockApp(this, true);
 
         panel.animate().cancel();
         scrim.animate().cancel();
@@ -187,6 +196,7 @@ public class ActionSheet extends FrameLayout {
         scrim.animate().alpha(0)
                 .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
 
+        ScreenLayer.blockApp(this, false);
         if (focusBeforeShow != null && focusBeforeShow.isAttachedToWindow()) {
             focusBeforeShow.requestFocus();
         }

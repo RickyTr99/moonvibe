@@ -1,6 +1,7 @@
 package com.limelight.ui.apollo.settings;
 
 import android.content.Context;
+import android.view.KeyEvent;
 
 import com.limelight.R;
 import com.limelight.preferences.ConfirmDeleteOscPreference;
@@ -123,14 +124,24 @@ final class SettingsLayout {
                 k("seekbar_deadzone"), k("checkbox_multi_controller"), k("checkbox_auto_connect_controllers"),
                 k("checkbox_flip_face_buttons"),
                 k("checkbox_gamepad_touchpad_as_mouse"), k("checkbox_gamepad_motion_sensors"),
-                k("checkbox_gamepad_motion_fallback"), k("analog_scrolling"),
+                k("checkbox_gamepad_motion_fallback"),
+                new Section(R.string.apollo_section_mouse_emulation, true,
+                        k("seekbar_mouse_emulation_speed"), k("analog_scrolling"), k("seekbar_mouse_scroll_speed"), k("checkbox_invert_scroll")),
                 new Section(R.string.apollo_section_vibration, false,
                         k("checkbox_vibrate_fallback"), k("seekbar_vibrate_fallback_strength")),
+                new Section(R.string.apollo_section_advanced, false,
+                        k("checkbox_usb_driver"), k("checkbox_usb_bind_all"))));
+        categories.add(new Category(R.string.apollo_settings_shortcuts, R.drawable.ic_apollo_cat_shortcuts,
+                new Section(R.string.apollo_section_hold, true,
+                        k("shortcut_hold_select"), k("shortcut_hold_start"), k("shortcut_hold_guide"),
+                        k("shortcut_hold_lb_rb"), k("overlay_hold_duration")),
+                new Section(R.string.apollo_section_combinations, true,
+                        k("shortcut_select_lb"), k("shortcut_select_rb")),
                 // Only on AYN handhelds, the settings are removed elsewhere
                 new Section(R.string.apollo_section_ayn_buttons, true,
                         k("list_ayn_back_button"), k("list_ayn_m1_button"), k("list_ayn_m2_button")),
-                new Section(R.string.apollo_section_advanced, false,
-                        k("checkbox_usb_driver"), k("checkbox_usb_bind_all"))));
+                new Section(R.string.apollo_settings_game_menu, true,
+                        k("overlay_custom_commands"))));
         categories.add(new Category(R.string.apollo_settings_touch, R.drawable.ic_apollo_cat_touch,
                 k("list_touch_mode"), k("checkbox_multi_touch_gestures"), k("list_gesture_3_finger"),
                 k("list_gesture_4_finger"), k("list_gesture_5_finger"), k("checkbox_mouse_nav_buttons"),
@@ -142,8 +153,6 @@ final class SettingsLayout {
                 new Section(R.string.apollo_section_full_keyboard, true,
                         k("checkbox_enable_sticky_modifier_key_virtual_keyboard"), k("checkbox_vibrate_keyboard"),
                         k("seekbar_keyboard_axi_opacity"))));
-        categories.add(new Category(R.string.apollo_settings_game_menu, R.drawable.ic_apollo_cat_menu,
-                k("overlay_trigger_button"), k("overlay_hold_duration"), k("overlay_custom_commands")));
         categories.add(new Category(R.string.apollo_settings_session, R.drawable.ic_apollo_desktop,
                 k("checkbox_auto_resume_stream"), k("list_leave_app"), k("checkbox_background_audio"),
                 k("checkbox_enable_sops")));
@@ -162,9 +171,31 @@ final class SettingsLayout {
         SHORT_TITLES.put("checkbox_gamepad_motion_sensors", R.string.apollo_label_motion_sensors);
         SHORT_TITLES.put("checkbox_gamepad_motion_fallback", R.string.apollo_label_motion_fallback);
         SHORT_TITLES.put("checkbox_enable_audiofx", R.string.apollo_label_audiofx);
+        SHORT_TITLES.put("shortcut_hold_select", R.string.apollo_label_select);
+        SHORT_TITLES.put("shortcut_hold_start", R.string.apollo_label_start);
+        SHORT_TITLES.put("shortcut_hold_guide", R.string.apollo_label_guide);
+        SHORT_TITLES.put("shortcut_hold_lb_rb", R.string.apollo_label_lb_rb);
+        SHORT_TITLES.put("overlay_hold_duration", R.string.apollo_label_hold_duration);
     }
 
     static final int SHORT_TITLE_RESET_OSC = R.string.apollo_label_reset_osc;
+
+    /** The controller buttons drawn before the name of a shortcut (key codes of ButtonGlyph). */
+    static final Map<String, int[]> ROW_GLYPHS = new HashMap<>();
+    // Not a button: the clock of the hold duration
+    static final int GLYPH_TIMER = -100;
+    static {
+        ROW_GLYPHS.put("shortcut_hold_select", new int[]{KeyEvent.KEYCODE_BUTTON_SELECT});
+        ROW_GLYPHS.put("shortcut_hold_start", new int[]{KeyEvent.KEYCODE_BUTTON_START});
+        ROW_GLYPHS.put("shortcut_hold_guide", new int[]{KeyEvent.KEYCODE_BUTTON_MODE});
+        ROW_GLYPHS.put("shortcut_hold_lb_rb", new int[]{KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_R1});
+        ROW_GLYPHS.put("overlay_hold_duration", new int[]{GLYPH_TIMER});
+        ROW_GLYPHS.put("shortcut_select_lb", new int[]{KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent.KEYCODE_BUTTON_L1});
+        ROW_GLYPHS.put("shortcut_select_rb", new int[]{KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent.KEYCODE_BUTTON_R1});
+        ROW_GLYPHS.put("list_ayn_back_button", new int[]{KeyEvent.KEYCODE_BACK});
+        ROW_GLYPHS.put("list_ayn_m1_button", new int[]{KeyEvent.KEYCODE_BUTTON_C});
+        ROW_GLYPHS.put("list_ayn_m2_button", new int[]{KeyEvent.KEYCODE_BUTTON_Z});
+    }
 
     /**
      * What a setting does, for the popup of its "i". A list setting can also explain its options:
@@ -232,7 +263,9 @@ final class SettingsLayout {
         INFO.put("checkbox_brightness_edge_slider", new Info(R.string.apollo_info_brightness_edge_slider));
         INFO.put("checkbox_only_show_L3R3", new Info(R.string.apollo_info_only_l3r3));
         INFO.put("checkbox_enable_sticky_modifier_key_virtual_keyboard", new Info(R.string.apollo_info_sticky_modifiers));
-        INFO.put("overlay_trigger_button", new Info(R.string.apollo_info_overlay_trigger));
+        INFO.put("overlay_hold_duration", new Info(R.string.apollo_info_hold_duration));
+        INFO.put("shortcut_select_lb", new Info(R.string.apollo_info_select_combo));
+        INFO.put("shortcut_select_rb", new Info(R.string.apollo_info_select_combo));
         INFO.put("overlay_custom_commands", new Info(R.string.apollo_info_overlay_commands));
         INFO.put("checkbox_auto_resume_stream", new Info(R.string.apollo_info_auto_resume));
         INFO.put("list_leave_app", new Info(R.string.apollo_info_leave_app, R.array.leave_app_values,

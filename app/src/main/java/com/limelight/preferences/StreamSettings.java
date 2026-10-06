@@ -37,6 +37,7 @@ import com.limelight.PcView;
 import com.limelight.R;
 import com.limelight.binding.input.ControllerHandler;
 import com.limelight.binding.video.MediaCodecHelper;
+import com.limelight.profiles.ActiveProfileSettings;
 import com.limelight.profiles.ProfileEditor;
 import com.limelight.profiles.Profiles;
 import com.limelight.ui.apollo.ApolloTopBar;
@@ -60,9 +61,31 @@ public class StreamSettings extends Activity {
     private PreferenceConfiguration previousPrefs;
     private int previousDisplayPixelCount;
     private ApolloTopBar topBar;
+    // Opened from Home with LB/RB: the categories take the gamepad focus once the window is active
+    private boolean focusForGamepad;
     private SettingsView settingsView;
     // Non-null while a profile is edited
     ProfileEditor profileEditor;
+    // Non-null on the general settings while a profile is in use: the screen shows its values
+    ActiveProfileSettings withProfile;
+    // Another profile picked while the screen is open: the screen is built again on its values
+    private final Runnable profilesListener = () -> {
+        Profiles.Profile active = Profiles.active(this);
+        boolean same = active == null ? withProfile == null
+                : withProfile != null && active.id.equals(withProfile.id()) && active.name.equals(withProfile.name());
+        if (!same && !isFinishing()) {
+            useActiveProfile();
+            reloadSettings();
+        }
+    };
+
+    private void useActiveProfile() {
+        if (withProfile != null) {
+            withProfile.close();
+        }
+        Profiles.Profile active = Profiles.active(this);
+        withProfile = active != null ? new ActiveProfileSettings(this, active) : null;
+    }
 
     // HACK for Android 9
     static DisplayCutout displayCutoutP;
@@ -90,6 +113,9 @@ public class StreamSettings extends Activity {
                 return;
             }
             profileEditor = new ProfileEditor(this, profileId);
+        } else {
+            useActiveProfile();
+            Profiles.addListener(profilesListener);
         }
 
         UiHelper.setLocale(this);
@@ -109,6 +135,7 @@ public class StreamSettings extends Activity {
     private void initializeApolloViews() {
         ApolloColors colors = ApolloColors.dark(this);
 
+        focusForGamepad = ApolloTopBar.takeSwitchedByGamepad();
         topBar = new ApolloTopBar(this, colors);
         topBar.setTabs(new String[] {getString(R.string.apollo_tab_home), getString(R.string.apollo_tab_settings)}, 1,
                 index -> goHome());
@@ -179,6 +206,33 @@ public class StreamSettings extends Activity {
     static final String KEY_PROFILE_DELETE = "profile_delete";
 
     void onPreferencesReady(PreferenceScreen screen) {
+        ActiveProfileSettings profile = withProfile;
+        if (profile != null) {
+            profile.setLoading(false);
+        }
+        if (profileEditor == null) {
+            settingsView.setActiveProfile(profile == null ? null : new SettingsView.ActiveProfile() {
+                @Override
+                public CharSequence name() {
+                    return profile.name();
+                }
+
+                @Override
+                public boolean isProfileSetting(String key) {
+                    return ActiveProfileSettings.isProfileSetting(key);
+                }
+
+                @Override
+                public boolean isOverridden(String key) {
+                    return profile.isOverridden(key);
+                }
+
+                @Override
+                public void useGeneral(String key) {
+                    profile.useGeneral(key);
+                }
+            });
+        }
         settingsView.setScreen(screen);
     }
 
@@ -187,6 +241,15 @@ public class StreamSettings extends Activity {
         super.onResume();
         if (topBar != null) {
             topBar.onResume();
+        }
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus && focusForGamepad) {
+            focusForGamepad = false;
+            settingsView.focusFromGamepad();
         }
     }
 
@@ -203,6 +266,10 @@ public class StreamSettings extends Activity {
         super.onDestroy();
         if (profileEditor != null) {
             profileEditor.close();
+        }
+        Profiles.removeListener(profilesListener);
+        if (withProfile != null) {
+            withProfile.close();
         }
     }
 
@@ -225,6 +292,11 @@ public class StreamSettings extends Activity {
                 return true;
             }
             if (ProfileMenu.of(this).isShowing()) {
+                // Start goes on to the quick settings, as Select goes from them to the profiles
+                if (keyCode == KeyEvent.KEYCODE_BUTTON_START) {
+                    QuickSettingsPanel.of(this).show();
+                    return true;
+                }
                 if (keyCode == KeyEvent.KEYCODE_BUTTON_B) {
                     ProfileMenu.of(this).dismiss();
                     return true;
@@ -541,6 +613,12 @@ public class StreamSettings extends Activity {
             ProfileEditor profileEditor = ((StreamSettings) getActivity()).profileEditor;
             if (profileEditor != null) {
                 getPreferenceManager().setSharedPreferencesName(ProfileEditor.WORK_FILE);
+            }
+            // With a profile in use, the general settings with its values over them (ActiveProfileSettings)
+            ActiveProfileSettings withProfile = ((StreamSettings) getActivity()).withProfile;
+            if (profileEditor == null && withProfile != null) {
+                getPreferenceManager().setSharedPreferencesName(ActiveProfileSettings.WORK_FILE);
+                withProfile.setLoading(true);
             }
 
             addPreferencesFromResource(R.xml.preferences);

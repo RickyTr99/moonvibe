@@ -26,12 +26,22 @@ import java.util.List;
  */
 public class HintRow extends LinearLayout implements InputMode.Listener {
     public static final class Hint {
-        final int key;
+        public final int key;
         final String label;
 
         public Hint(int key, String label) {
             this.key = key;
             this.label = label;
+        }
+    }
+
+    // The rows on screen, so a change of what a button does on the focused view can show at once
+    private static final java.util.Set<HintRow> ATTACHED = Collections.newSetFromMap(new java.util.WeakHashMap<>());
+
+    /** Rereads the hints of every row on screen: the focused view kept the focus but its buttons changed. */
+    public static void refreshAll() {
+        for (HintRow row : new ArrayList<>(ATTACHED)) {
+            row.refresh();
         }
     }
 
@@ -107,6 +117,7 @@ public class HintRow extends LinearLayout implements InputMode.Listener {
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
+        ATTACHED.add(this);
         InputMode.addListener(this);
         getViewTreeObserver().addOnGlobalFocusChangeListener(focusListener);
         getViewTreeObserver().addOnTouchModeChangeListener(touchModeListener);
@@ -120,6 +131,7 @@ public class HintRow extends LinearLayout implements InputMode.Listener {
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        ATTACHED.remove(this);
         InputMode.removeListener(this);
         ((InputManager) getContext().getSystemService(Context.INPUT_SERVICE)).unregisterInputDeviceListener(deviceListener);
         getViewTreeObserver().removeOnGlobalFocusChangeListener(focusListener);

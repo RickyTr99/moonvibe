@@ -193,6 +193,9 @@ public class GameMenuView extends FrameLayout {
         String[] options;
         Selection selection;
         Runnable longPressAction;
+        QuickSlider.Value sliderValue;
+        int sliderMin, sliderMax, sliderStep;
+        String sliderSuffix;
 
         private Item(int iconResId, String label, Runnable action, boolean header) {
             this.iconResId = iconResId;
@@ -222,6 +225,19 @@ public class GameMenuView extends FrameLayout {
             Item item = new Item(iconResId, label, null, false);
             item.options = options;
             item.selection = selection;
+            item.keepOpen = true;
+            return item;
+        }
+
+        // A slider in the row: touch drags it, left and right step it on a gamepad
+        public static Item slider(int iconResId, String label, int min, int max, int step, String suffix,
+                                  QuickSlider.Value value) {
+            Item item = new Item(iconResId, label, null, false);
+            item.sliderValue = value;
+            item.sliderMin = min;
+            item.sliderMax = max;
+            item.sliderStep = step;
+            item.sliderSuffix = suffix;
             item.keepOpen = true;
             return item;
         }
@@ -315,6 +331,7 @@ public class GameMenuView extends FrameLayout {
         final ImageView icon;
         ApolloWidgets.SwitchView toggle;
         TextView value;
+        SliderView slider;
         int backgroundColor = Color.TRANSPARENT;
         int labelColor;
         int iconColor;
@@ -1428,7 +1445,27 @@ public class GameMenuView extends FrameLayout {
         row.labelColor = item.accent ? colors.primary : colors.onSurface;
         row.iconColor = item.accent ? colors.primary : colors.onSurfaceVariant;
 
-        if (item.toggle != null) {
+        if (item.sliderValue != null) {
+            row.slider = new SliderView(getContext(), colors);
+            row.slider.setRange(item.sliderMin, item.sliderMax, item.sliderStep);
+            row.slider.setValue(item.sliderValue.get());
+            view.addView(row.slider, new LinearLayout.LayoutParams(dp(110), dp(36)));
+            row.value = text(item.sliderValue.get() + item.sliderSuffix, 13, colors.onSurface, true);
+            row.value.setGravity(Gravity.END);
+            row.value.setSingleLine(true);
+            view.addView(row.value, new LinearLayout.LayoutParams(dp(44), LinearLayout.LayoutParams.WRAP_CONTENT));
+            row.slider.setListener(new SliderView.Listener() {
+                @Override
+                public void onSliderMoved(int value) {
+                    setRowSlider(row, value);
+                }
+
+                @Override
+                public void onSliderReleased(int value) {
+                    setRowSlider(row, value);
+                }
+            });
+        } else if (item.toggle != null) {
             row.toggle = new ApolloWidgets.SwitchView(getContext());
             row.toggle.setColors(colors.primary, colors.onPrimary, colors.surfaceContainerHighest, colors.outline);
             row.toggle.setChecked(item.toggle.isOn(), false);
@@ -1646,8 +1683,20 @@ public class GameMenuView extends FrameLayout {
         runAndMaybeClose(action.action, action.keepOpen);
     }
 
+    private void setRowSlider(Row row, int value) {
+        Item item = row.item;
+        value = Math.max(item.sliderMin, Math.min(item.sliderMax, value));
+        item.sliderValue.set(value);
+        row.slider.setValue(value);
+        row.value.setText(value + item.sliderSuffix);
+    }
+
     private void activate(Row row) {
         Item item = row.item;
+        if (item.sliderValue != null) {
+            // Left and right move it
+            return;
+        }
         if (item.options != null) {
             showDropdown(row);
             return;
@@ -1981,11 +2030,17 @@ public class GameMenuView extends FrameLayout {
                 moveSelection(1);
                 break;
             case KeyEvent.KEYCODE_DPAD_LEFT:
-                switchTab(-1);
+            case KeyEvent.KEYCODE_DPAD_RIGHT: {
+                int direction = keyCode == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1;
+                Row selected = selectedRow < rows.size() ? rows.get(selectedRow) : null;
+                if (selected != null && selected.slider != null) {
+                    // On a slider, left and right move it instead of changing tab
+                    setRowSlider(selected, selected.item.sliderValue.get() + direction * selected.item.sliderStep);
+                } else {
+                    switchTab(direction);
+                }
                 break;
-            case KeyEvent.KEYCODE_DPAD_RIGHT:
-                switchTab(1);
-                break;
+            }
             default:
                 if (confirm && firstPress && selectedRow < rows.size()) {
                     Row row = rows.get(selectedRow);
@@ -2034,23 +2089,67 @@ public class GameMenuView extends FrameLayout {
 
         float x = event.getAxisValue(MotionEvent.AXIS_X);
         float y = event.getAxisValue(MotionEvent.AXIS_Y);
-        long now = System.currentTimeMillis();
-        if (now - lastAnalogNavTime < ANALOG_NAV_THROTTLE_MS) {
-            return true;
-        }
 
         // The dominant axis wins, so diagonals don't switch tab by accident
+        int key = 0;
+        float tilt = 0;
         if (Math.abs(x) >= Math.abs(y)) {
             if (Math.abs(x) > ANALOG_STICK_THRESHOLD && dropdownRow == null) {
-                handleButton(x < 0 ? KeyEvent.KEYCODE_DPAD_LEFT : KeyEvent.KEYCODE_DPAD_RIGHT, true);
-                lastAnalogNavTime = now;
+                key = x < 0 ? KeyEvent.KEYCODE_DPAD_LEFT : KeyEvent.KEYCODE_DPAD_RIGHT;
+                tilt = Math.abs(x);
             }
         } else if (Math.abs(y) > ANALOG_STICK_THRESHOLD) {
-            handleButton(y < 0 ? KeyEvent.KEYCODE_DPAD_UP : KeyEvent.KEYCODE_DPAD_DOWN, true);
-            lastAnalogNavTime = now;
+            key = y < 0 ? KeyEvent.KEYCODE_DPAD_UP : KeyEvent.KEYCODE_DPAD_DOWN;
+            tilt = Math.abs(y);
+        }
+        stickNavTilt = tilt;
+
+        // MoonVibe: the stick only sends events while it moves, so held still it stepped once and stopped.
+        // Held in a direction it now steps again and again, faster the further it is pushed.
+        if (key != stickNavKey) {
+            removeCallbacks(stickNavRepeat);
+            stickNavKey = key;
+            if (key != 0) {
+                long now = System.currentTimeMillis();
+                // A quick flick back and forth through the center still moves one step at a time
+                if (now - lastAnalogNavTime >= ANALOG_NAV_THROTTLE_MS / 2) {
+                    handleButton(key, true);
+                    lastAnalogNavTime = now;
+                }
+                postDelayed(stickNavRepeat, STICK_NAV_FIRST_REPEAT_MS);
+            }
         }
         return true;
     }
+
+    private static final long STICK_NAV_FIRST_REPEAT_MS = 320;
+    private static final long STICK_NAV_SLOW_MS = 150;
+    private static final long STICK_NAV_FAST_MS = 55;
+    private int stickNavKey;
+    private float stickNavTilt;
+
+    private final Runnable stickNavRepeat = new Runnable() {
+        @Override
+        public void run() {
+            if (getVisibility() != VISIBLE) {
+                stickNavKey = 0;
+                return;
+            }
+            if (stickNavKey == 0) {
+                return;
+            }
+            // Changing tab is once per push; moving in a list or a slider repeats
+            boolean horizontal = stickNavKey == KeyEvent.KEYCODE_DPAD_LEFT || stickNavKey == KeyEvent.KEYCODE_DPAD_RIGHT;
+            Row selected = selectedRow < rows.size() ? rows.get(selectedRow) : null;
+            if (horizontal && (selected == null || selected.slider == null)) {
+                return;
+            }
+            handleButton(stickNavKey, false);
+            lastAnalogNavTime = System.currentTimeMillis();
+            float push = Math.min(1f, (stickNavTilt - ANALOG_STICK_THRESHOLD) / (1f - ANALOG_STICK_THRESHOLD));
+            postDelayed(this, (long) (STICK_NAV_SLOW_MS - push * (STICK_NAV_SLOW_MS - STICK_NAV_FAST_MS)));
+        }
+    };
 
     @Override
     public WindowInsets onApplyWindowInsets(WindowInsets insets) {

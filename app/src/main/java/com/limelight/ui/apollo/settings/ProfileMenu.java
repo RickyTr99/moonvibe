@@ -23,6 +23,7 @@ import com.limelight.R;
 import com.limelight.preferences.ProfilesActivity;
 import com.limelight.profiles.Profiles;
 import com.limelight.ui.apollo.ApolloUi;
+import com.limelight.ui.apollo.ScreenLayer;
 import com.limelight.ui.apollo.hints.HintRow;
 import com.limelight.ui.theme.ApolloColors;
 import com.limelight.ui.theme.ApolloMotion;
@@ -73,7 +74,7 @@ public class ProfileMenu extends FrameLayout {
         panel = new LinearLayout(context);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setClickable(true);
-        panel.setBackground(ApolloUi.roundRect(colors.surfaceContainerHigh, dp(20)));
+        panel.setBackground(ApolloUi.roundRect(colors.surfaceContainerLow, dp(20)));
         panel.setPadding(dp(8), dp(6), dp(8), dp(4));
         addView(panel, new LayoutParams(dp(WIDTH_DP), LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START));
 
@@ -166,7 +167,7 @@ public class ProfileMenu extends FrameLayout {
         row.setPadding(dp(12), 0, dp(12), 0);
         row.setFocusable(true);
         row.setClickable(true);
-        row.setBackground(ApolloUi.stateLayer(colors.surfaceContainerHighest, Color.TRANSPARENT, dp(ApolloUi.ROW_RADIUS_DP)));
+        row.setBackground(ApolloUi.stateLayer(colors.surfaceContainerHigh, Color.TRANSPARENT, dp(ApolloUi.ROW_RADIUS_DP)));
 
         ImageView icon = new ImageView(getContext());
         if (iconRes != 0) {
@@ -241,6 +242,8 @@ public class ProfileMenu extends FrameLayout {
         Activity activity = (Activity) getContext();
         focusBeforeShow = activity.getCurrentFocus();
         showing = true;
+        // The D-pad stays in the panel and its menus, never reaching the screen behind
+        ScreenLayer.blockApp(this, true);
         bringToFront();
         placeUnderAnchor();
         setVisibility(VISIBLE);
@@ -325,6 +328,7 @@ public class ProfileMenu extends FrameLayout {
         scrim.animate().alpha(0)
                 .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
 
+        ScreenLayer.blockApp(this, false);
         if (focusBeforeShow != null && focusBeforeShow.isAttachedToWindow()) {
             focusBeforeShow.requestFocus();
         }

@@ -59,9 +59,12 @@ public final class ButtonGlyph {
             return bumper;
         }
 
-        if (key == KeyEvent.KEYCODE_BUTTON_SELECT || key == KeyEvent.KEYCODE_BUTTON_START) {
+        if (key == KeyEvent.KEYCODE_BUTTON_SELECT || key == KeyEvent.KEYCODE_BUTTON_START ||
+                key == KeyEvent.KEYCODE_BUTTON_MODE || key == KeyEvent.KEYCODE_BACK) {
             ImageView icon = new ImageView(context);
-            icon.setImageResource(key == KeyEvent.KEYCODE_BUTTON_SELECT ? R.drawable.ic_apollo_btn_view : R.drawable.ic_apollo_cat_menu);
+            icon.setImageResource(key == KeyEvent.KEYCODE_BUTTON_SELECT ? R.drawable.ic_apollo_btn_view :
+                    key == KeyEvent.KEYCODE_BUTTON_MODE ? R.drawable.ic_overlay_guide :
+                    key == KeyEvent.KEYCODE_BACK ? R.drawable.ic_apollo_arrow_left : R.drawable.ic_apollo_cat_menu);
             icon.setImageTintList(ColorStateList.valueOf(foreground));
             icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
             int pad = ApolloUi.dp(context, 2);
@@ -78,6 +81,9 @@ public final class ButtonGlyph {
             case KeyEvent.KEYCODE_DPAD_LEFT: arrows = "◀"; break;
             case KeyEvent.KEYCODE_DPAD_RIGHT: arrows = "▶"; break;
             case DPAD_UP_DOWN: arrows = "▲ ▼"; break;
+            // The extra buttons of AYN handhelds
+            case KeyEvent.KEYCODE_BUTTON_C: arrows = "M1"; break;
+            case KeyEvent.KEYCODE_BUTTON_Z: arrows = "M2"; break;
             default: arrows = "◀ ▶"; break;
         }
         TextView dpad = ApolloUi.text(context, arrows, 9, foreground, true);

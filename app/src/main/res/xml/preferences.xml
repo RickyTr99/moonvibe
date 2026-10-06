@@ -155,37 +155,76 @@
             android:title="@string/title_checkbox_auto_connect_controllers"
             android:summary="@string/summary_checkbox_auto_connect_controllers"
             android:defaultValue="true" />
-        <ListPreference
+        <com.limelight.preferences.SeekBarPreference
+            android:key="seekbar_mouse_emulation_speed"
+            android:defaultValue="100"
+            seekbar:min="10"
+            android:max="200"
+            seekbar:step="5"
+            seekbar:keyStep="5"
+            android:text="@string/suffix_seekbar_vibrate_fallback_strength"
+            android:title="@string/title_seekbar_mouse_emulation_speed"/>
+        <com.limelight.preferences.SeekBarPreference
+            android:key="seekbar_mouse_scroll_speed"
+            android:defaultValue="100"
+            seekbar:min="10"
+            android:max="200"
+            seekbar:step="5"
+            seekbar:keyStep="5"
+            android:text="@string/suffix_seekbar_vibrate_fallback_strength"
+            android:title="@string/title_seekbar_mouse_scroll_speed"/>
+        <CheckBoxPreference
+            android:key="checkbox_invert_scroll"
+            android:title="@string/title_checkbox_invert_scroll"
+            android:defaultValue="false" />
+        <com.limelight.preferences.ShortcutPreference
             android:key="list_ayn_back_button"
             android:title="@string/title_list_ayn_back_button"
             android:summary="%s"
-            android:entries="@array/ayn_back_button_names"
-            android:entryValues="@array/ayn_back_button_values"
             android:defaultValue="game_menu" />
-        <ListPreference
+        <com.limelight.preferences.ShortcutPreference
             android:key="list_ayn_m1_button"
             android:title="@string/title_list_ayn_m1_button"
             android:summary="%s"
-            android:entries="@array/ayn_extra_button_names"
-            android:entryValues="@array/ayn_extra_button_values"
             android:defaultValue="guide" />
-        <ListPreference
+        <com.limelight.preferences.ShortcutPreference
             android:key="list_ayn_m2_button"
             android:title="@string/title_list_ayn_m2_button"
             android:summary="%s"
-            android:entries="@array/ayn_extra_button_names"
-            android:entryValues="@array/ayn_extra_button_values"
             android:defaultValue="none" />
     </PreferenceCategory>
     <PreferenceCategory android:title="@string/category_overlay_menu"
         android:key="category_overlay_menu">
-        <ListPreference
-            android:key="overlay_trigger_button"
-            android:title="@string/title_overlay_trigger_button"
-            android:summary="@string/summary_overlay_trigger_button"
-            android:entries="@array/overlay_trigger_button_names"
-            android:entryValues="@array/overlay_trigger_button_values"
-            android:defaultValue="select" />
+        <com.limelight.preferences.ShortcutPreference
+            android:key="shortcut_hold_select"
+            android:title="@string/title_shortcut_hold_select"
+            android:summary="%s"
+            android:defaultValue="game_menu" />
+        <com.limelight.preferences.ShortcutPreference
+            android:key="shortcut_hold_start"
+            android:title="@string/title_shortcut_hold_start"
+            android:summary="%s"
+            android:defaultValue="mouse" />
+        <com.limelight.preferences.ShortcutPreference
+            android:key="shortcut_hold_guide"
+            android:title="@string/title_shortcut_hold_guide"
+            android:summary="%s"
+            android:defaultValue="none" />
+        <com.limelight.preferences.ShortcutPreference
+            android:key="shortcut_hold_lb_rb"
+            android:title="@string/title_shortcut_hold_lb_rb"
+            android:summary="%s"
+            android:defaultValue="none" />
+        <com.limelight.preferences.ShortcutPreference
+            android:key="shortcut_select_lb"
+            android:title="@string/title_shortcut_select_lb"
+            android:summary="%s"
+            android:defaultValue="none" />
+        <com.limelight.preferences.ShortcutPreference
+            android:key="shortcut_select_rb"
+            android:title="@string/title_shortcut_select_rb"
+            android:summary="%s"
+            android:defaultValue="none" />
         <ListPreference
             android:key="overlay_hold_duration"
             android:title="@string/title_overlay_hold_duration"

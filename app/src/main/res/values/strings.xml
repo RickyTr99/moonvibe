@@ -434,45 +434,45 @@
     <!-- Custom Commands Activity -->
     <string name="title_custom_commands">Custom Commands</string>
     <string name="custom_commands_empty">No custom commands configured.\n\nTap the + button to add a command.</string>
-    <string name="custom_commands_add">Add Command</string>
+    <string name="custom_commands_add">New command</string>
     <string name="custom_commands_edit">Edit Command</string>
     <string name="custom_commands_menu_title">Command Options</string>
     <string name="custom_commands_move_up">Move Up</string>
     <string name="custom_commands_move_down">Move Down</string>
-    <string name="custom_commands_delete">Delete Command</string>
+    <string name="custom_commands_delete">Delete command</string>
     <string name="custom_commands_delete_confirm">Are you sure you want to delete this command?</string>
     <string name="custom_commands_deleted">Command deleted</string>
 
     <!-- Custom Command Editor Dialog -->
-    <string name="editor_title_add">Add Custom Command</string>
-    <string name="editor_title_edit">Edit Custom Command</string>
-    <string name="editor_command_name">Command Name</string>
+    <string name="editor_title_add">New command</string>
+    <string name="editor_title_edit">Edit command</string>
+    <string name="editor_command_name">Name</string>
     <string name="editor_command_name_hint"></string>
     <string name="editor_icon">Icon</string>
-    <string name="editor_icon_select">Select Icon</string>
-    <string name="editor_key_combination">Key Combination</string>
+    <string name="editor_icon_select">Choose the icon</string>
+    <string name="editor_key_combination">Keys</string>
     <string name="editor_modifiers">Modifiers</string>
     <string name="editor_modifier_ctrl">Ctrl</string>
     <string name="editor_modifier_alt">Alt</string>
     <string name="editor_modifier_shift">Shift</string>
     <string name="editor_modifier_meta">Win/Cmd</string>
     <string name="editor_key_code">Key</string>
-    <string name="editor_key_code_hint">Select a key</string>
+    <string name="editor_key_code_hint">Choose the key</string>
     <string name="editor_save">Save</string>
     <string name="editor_cancel">Cancel</string>
     <string name="editor_error_name_empty">Please enter a command name</string>
-    <string name="editor_error_key_empty">Please select a key</string>
+    <string name="editor_error_key_empty">Choose a key</string>
     <string name="editor_command_saved">Command saved</string>
     <string name="editor_then">Then</string>
     <string name="editor_then_nothing">Nothing</string>
-    <string name="editor_then_close_menu">Close Menu</string>
+    <string name="editor_then_close_menu">Close the menu</string>
     <string name="editor_then_disconnect">Disconnect</string>
-    <string name="editor_then_quit">Quit Session</string>
+    <string name="editor_then_quit">Quit the session</string>
     <string name="editor_then_sleep">Sleep</string>
     <string name="sleep_admin_explanation">Required to lock the screen when the Sleep post-action is used in a custom command.</string>
 
     <!-- Overlay Menu Preferences -->
-    <string name="title_overlay_custom_commands">Overlay menu commands</string>
+    <string name="title_overlay_custom_commands">Custom commands</string>
     <string name="summary_overlay_custom_commands">Configure custom keyboard commands for the overlay menu</string>
     <string name="title_overlay_menu">Overlay menu</string>
     <string name="summary_overlay_menu">Configure custom commands for the in-game overlay menu</string>
@@ -548,6 +548,7 @@
     <string name="apollo_profile_name">Name</string>
     <string name="apollo_profile_follows_general">As in the general settings</string>
     <string name="apollo_profile_use_general">Use general</string>
+    <string name="apollo_profile_settings_note">Profile “%1$s” in use: changes to these settings go to the profile</string>
     <string name="apollo_profile_delete">Delete profile</string>
     <string name="apollo_profile_delete_confirm">Delete the profile \"%1$s\"? The general settings stay as they are.</string>
     <!-- PyroWave never falls back to another codec: the launch fails with one of these -->
@@ -700,7 +701,7 @@
     <string name="game_menu_toggle_keyboard">Android keyboard</string>
     <string name="game_menu_toggle_full_keyboard">Full PC keyboard</string>
     <string name="game_menu_tab_input">Input</string>
-    <string name="game_menu_tab_keys">Keys</string>
+    <string name="game_menu_tab_keys">Shortcuts</string>
     <string name="game_menu_tab_quick">Quick</string>
     <string name="game_menu_touch_mode">Mode</string>
     <string name="game_menu_hint_select">Select</string>
@@ -847,7 +848,7 @@
     <string name="apollo_info_touchpad_as_mouse">The controller\'s touchpad (like the DualSense one) moves the PC\'s mouse, even when the PC sees a controller with a touchpad.</string>
     <string name="apollo_info_motion_sensors">Lets the PC ask for gyroscope data when the controller has it. When off, it saves a little battery and network if the game doesn\'t use it.</string>
     <string name="apollo_info_motion_fallback">If the controller has no gyroscope, or your Android version doesn\'t support it, this device\'s own is used. Note: the PC may then see the controller as a PlayStation one.</string>
-    <string name="apollo_info_analog_scrolling">When the controller acts as a mouse (hold Start), the chosen stick scrolls pages.</string>
+    <string name="apollo_info_analog_scrolling">When the controller acts as a mouse, the chosen stick scrolls pages.</string>
     <string name="apollo_info_vibrate_fallback">If the controller can\'t vibrate, this device vibrates in its place.</string>
     <string name="apollo_info_usb_driver">Uses a built-in USB driver for Xbox controllers on devices that don\'t support them by themselves.</string>
     <string name="apollo_info_usb_bind_all">Uses the built-in USB driver for all supported controllers, even when Android already supports them. Try it if an Xbox controller doesn\'t work properly.</string>
@@ -890,4 +891,53 @@
     <string name="apollo_info_sops">Lets GeForce Experience change the game\'s settings to suit the stream.</string>
     <string name="apollo_info_fullscreen_ui">Hides the Android bars in the app. Swipe from the edge of the screen to bring them back.</string>
     <string name="apollo_info_small_icon_mode">Smaller covers in the games grid, so more of them fit on screen.</string>
+
+    <!-- MoonVibe: controller shortcuts -->
+    <string name="apollo_settings_shortcuts">Shortcuts</string>
+    <string name="apollo_section_hold">Hold</string>
+    <string name="apollo_section_combinations">Combinations</string>
+    <string name="title_shortcut_hold_select">Hold Select</string>
+    <string name="title_shortcut_hold_start">Hold Start</string>
+    <string name="title_shortcut_hold_guide">Hold Guide</string>
+    <string name="title_shortcut_hold_lb_rb">Hold LB + RB</string>
+    <string name="title_shortcut_select_lb">Select + LB</string>
+    <string name="title_shortcut_select_rb">Select + RB</string>
+    <string name="apollo_label_select">Select</string>
+    <string name="apollo_label_start">Start</string>
+    <string name="apollo_label_guide">Guide</string>
+    <string name="apollo_label_lb_rb">LB + RB</string>
+    <string name="apollo_label_hold_duration">Hold duration</string>
+    <string name="apollo_info_hold_duration">How long to hold the buttons above before their shortcut runs. A shorter press reaches the game as usual.</string>
+    <string name="apollo_info_select_combo">Hold Select and press the bumper. Neither button reaches the game.</string>
+    <string name="shortcut_group_app">MoonVibe</string>
+    <string name="shortcut_group_buttons">Controller button</string>
+    <string name="shortcut_group_windows">Windows</string>
+    <string name="shortcut_group_commands">Custom commands</string>
+    <string name="shortcut_action_none">None</string>
+    <string name="shortcut_action_game_menu">Game menu</string>
+    <string name="shortcut_action_mouse">Mouse emulation</string>
+    <string name="shortcut_action_keyboard">Keyboard</string>
+    <string name="shortcut_action_full_keyboard">Full PC keyboard</string>
+    <string name="shortcut_action_stats">Performance stats</string>
+    <string name="shortcut_action_virtual_controller">On-screen gamepad</string>
+    <string name="shortcut_action_touch_mode">Next touch mode</string>
+    <string name="shortcut_action_disconnect">Leave the stream</string>
+    <string name="shortcut_action_game_bar">Game Bar</string>
+    <string name="shortcut_action_desktop">Desktop</string>
+    <string name="shortcut_action_switch_window">Switch window</string>
+    <string name="shortcut_action_task_manager">Task Manager</string>
+    <string name="shortcut_action_screenshot">Screenshot</string>
+    <string name="shortcut_action_record">Start/stop recording</string>
+    <string name="mouse_pill_on">Mouse on</string>
+    <string name="mouse_pill_off">Mouse off</string>
+    <string name="mouse_pill_click">Click</string>
+    <string name="mouse_pill_right">Right</string>
+    <string name="mouse_pill_middle">Middle</string>
+    <string name="mouse_pill_back_forward">Back/Forward</string>
+    <string name="mouse_pill_turn_off">Turn off</string>
+    <string name="shortcut_action_task_view">Task View</string>
+    <string name="apollo_section_mouse_emulation">Mouse emulation</string>
+    <string name="title_seekbar_mouse_emulation_speed">Pointer speed</string>
+    <string name="title_seekbar_mouse_scroll_speed">Scroll speed</string>
+    <string name="title_checkbox_invert_scroll">Invert scroll direction</string>
 </resources>

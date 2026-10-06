@@ -86,6 +86,26 @@ final class SettingsRules {
                 case "checkbox_reduce_refresh_rate":
                     // The other pacing modes decide on their own (Game.mayReduceRefreshRate)
                     return needsValue(context, screen, "frame_pacing", "balanced", labels);
+                case "list_gesture_3_finger":
+                case "list_gesture_4_finger":
+                case "list_gesture_5_finger": {
+                    // The switch turns them off in multi-touch mode only (Game.handleMultiFingerTap)
+                    Preference gestures = screen.findPreference("checkbox_multi_touch_gestures");
+                    if ("multi_touch".equals(value(screen, "list_touch_mode")) &&
+                            gestures instanceof TwoStatePreference && !((TwoStatePreference) gestures).isChecked()) {
+                        CharSequence title = labels.title(gestures);
+                        return new Block(context.getString(R.string.apollo_rule_needs_on_hint, title),
+                                context.getString(R.string.apollo_rule_needs_on, title), false,
+                                gestures, Boolean.TRUE, context.getString(R.string.apollo_rule_turn_on));
+                    }
+                    break;
+                }
+                case "seekbar_mouse_scroll_speed":
+                case "checkbox_invert_scroll":
+                    if ("none".equals(value(screen, "analog_scrolling"))) {
+                        return needsValue(context, screen, "analog_scrolling", "right", labels);
+                    }
+                    break;
                 case "checkbox_background_audio":
                     return needsValue(context, screen, "list_leave_app", LEAVE_APP_KEEP, labels);
                 case "checkbox_auto_resume_stream": {

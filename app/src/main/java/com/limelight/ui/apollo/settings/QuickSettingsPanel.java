@@ -27,6 +27,7 @@ import com.limelight.R;
 import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.profiles.Profiles;
 import com.limelight.ui.apollo.ApolloUi;
+import com.limelight.ui.apollo.ScreenLayer;
 import com.limelight.ui.apollo.ApolloWidgets;
 import com.limelight.ui.apollo.hints.ButtonGlyph;
 import com.limelight.ui.apollo.hints.HintRow;
@@ -101,7 +102,7 @@ public class QuickSettingsPanel extends FrameLayout {
         panel = new LinearLayout(context);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setClickable(true);
-        panel.setBackground(ApolloUi.roundRect(colors.surfaceContainerHigh, dp(20)));
+        panel.setBackground(ApolloUi.roundRect(colors.surfaceContainerLow, dp(20)));
         panel.setPadding(dp(8), dp(8), dp(8), dp(4));
         addView(panel, new LayoutParams(dp(WIDTH_DP), LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END));
 
@@ -225,8 +226,8 @@ public class QuickSettingsPanel extends FrameLayout {
         row.setPadding(dp(14), 0, dp(14), 0);
         row.setFocusable(true);
         row.setClickable(true);
-        // The panel is surfaceContainerHigh: the focus tint is one step lighter
-        row.setBackground(ApolloUi.stateLayer(colors.surfaceContainerHighest, Color.TRANSPARENT, dp(ApolloUi.ROW_RADIUS_DP)));
+        // The panel is surfaceContainerLow like the settings, so its option menus (surfaceContainerHigh) stand out
+        row.setBackground(ApolloUi.stateLayer(colors.surfaceContainerHigh, Color.TRANSPARENT, dp(ApolloUi.ROW_RADIUS_DP)));
         list.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         rows.add(row);
         return row;
@@ -268,7 +269,7 @@ public class QuickSettingsPanel extends FrameLayout {
         chip.setMaxWidth(dp(170));
         chip.setMinHeight(dp(30));
         chip.setPadding(dp(12), 0, dp(6), 0);
-        chip.setBackground(ApolloUi.roundRect(colors.surfaceContainer, dp(8)));
+        chip.setBackground(ApolloUi.roundRect(colors.surfaceContainerHighest, dp(8)));
         chip.setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, R.drawable.ic_apollo_expand, 0);
         chip.setCompoundDrawableTintList(ColorStateList.valueOf(colors.onSurfaceVariant));
         chip.setCompoundDrawablePadding(dp(2));
@@ -490,6 +491,8 @@ public class QuickSettingsPanel extends FrameLayout {
         Activity activity = (Activity) getContext();
         focusBeforeShow = activity.getCurrentFocus();
         showing = true;
+        // The D-pad stays in the panel and its menus, never reaching the screen behind
+        ScreenLayer.blockApp(this, true);
         bringToFront();
         placeUnderAnchor();
         setVisibility(VISIBLE);
@@ -557,6 +560,7 @@ public class QuickSettingsPanel extends FrameLayout {
         scrim.animate().alpha(0)
                 .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
 
+        ScreenLayer.blockApp(this, false);
         if (focusBeforeShow != null && focusBeforeShow.isAttachedToWindow()) {
             focusBeforeShow.requestFocus();
         }

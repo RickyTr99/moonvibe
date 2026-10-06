@@ -842,6 +842,11 @@ public class AppView extends Activity {
                 return true;
             }
             if (ProfileMenu.of(this).isShowing()) {
+                // Start goes on to the quick settings, as Select goes from them to the profiles
+                if (keyCode == KeyEvent.KEYCODE_BUTTON_START) {
+                    QuickSettingsPanel.of(this).show();
+                    return true;
+                }
                 return super.onKeyDown(keyCode, event);
             }
             switch (keyCode) {

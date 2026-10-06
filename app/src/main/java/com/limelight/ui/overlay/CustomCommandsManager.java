@@ -37,10 +37,21 @@ public class CustomCommandsManager {
                 JSONArray jsonArray = new JSONArray(jsonString);
                 customCommands.clear();
 
+                // MoonVibe: the default commands of the game menu were added twice on installs from before
+                // their flag was renamed (apollox_ to moonvibe_); identical copies go away once
+                java.util.Set<String> seen = new java.util.HashSet<>();
+                boolean duplicates = false;
                 for (int i = 0; i < jsonArray.length(); i++) {
                     JSONObject jsonObject = jsonArray.getJSONObject(i);
                     CustomCommand command = CustomCommand.fromJson(jsonObject);
+                    if (!seen.add(command.getName() + "\n" + command.getKeyCombination().toDisplayString())) {
+                        duplicates = true;
+                        continue;
+                    }
                     customCommands.add(command);
+                }
+                if (duplicates) {
+                    saveCommands();
                 }
             } catch (JSONException e) {
                 e.printStackTrace();

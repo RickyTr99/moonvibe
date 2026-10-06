@@ -1,53 +1,86 @@
 package com.limelight.preferences;
 
-import android.app.AlertDialog;
 import android.app.Dialog;
 import android.app.DialogFragment;
-import android.content.DialogInterface;
+import android.content.Context;
+import android.content.res.ColorStateList;
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.os.Bundle;
+import android.text.InputType;
+import android.view.Gravity;
 import android.view.KeyEvent;
-import android.view.LayoutInflater;
 import android.view.View;
-import android.widget.Button;
-import android.widget.CheckBox;
-import android.widget.CompoundButton;
+import android.view.ViewGroup;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
-import android.widget.GridLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.Spinner;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import com.limelight.R;
+import com.limelight.ui.apollo.ApolloDialog;
+import com.limelight.ui.apollo.ApolloUi;
 import com.limelight.ui.overlay.CustomCommand;
 import com.limelight.ui.overlay.OverlayIcons;
+import com.limelight.ui.theme.ApolloColors;
 
 import java.util.UUID;
 
 /**
- * Dialog for adding or editing custom overlay menu commands.
- * Supports icon selection, key combination configuration, and validation.
+ * Adds or edits a custom command of the game menu: its name, icon, keys and what happens after.
+ * A popup in the look of the app, over the settings or over the stream.
  */
 public class CustomCommandEditorDialog extends DialogFragment {
     private static final String ARG_COMMAND = "command";
     private static final String ARG_IS_EDIT = "is_edit";
 
-    private EditText nameInput;
-    private ImageView selectedIconView;
-    private CheckBox ctrlCheckbox;
-    private CheckBox altCheckbox;
-    private CheckBox shiftCheckbox;
-    private CheckBox metaCheckbox;
-    private Button keyPickerButton;
-    private Spinner thenActionSpinner;
+    private static final String[] KEY_NAMES = {
+            "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+            "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+            "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+            "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
+            "Win", "Space", "Enter", "Tab", "Esc", "Backspace", "Delete",
+            "←", "→", "↑", "↓", "Insert", "Home", "End", "Page Up", "Page Down",
+            "Print Screen", "Pause"
+    };
+    private static final int[] KEY_CODES = {
+            KeyEvent.KEYCODE_A, KeyEvent.KEYCODE_B, KeyEvent.KEYCODE_C, KeyEvent.KEYCODE_D,
+            KeyEvent.KEYCODE_E, KeyEvent.KEYCODE_F, KeyEvent.KEYCODE_G, KeyEvent.KEYCODE_H,
+            KeyEvent.KEYCODE_I, KeyEvent.KEYCODE_J, KeyEvent.KEYCODE_K, KeyEvent.KEYCODE_L,
+            KeyEvent.KEYCODE_M, KeyEvent.KEYCODE_N, KeyEvent.KEYCODE_O, KeyEvent.KEYCODE_P,
+            KeyEvent.KEYCODE_Q, KeyEvent.KEYCODE_R, KeyEvent.KEYCODE_S, KeyEvent.KEYCODE_T,
+            KeyEvent.KEYCODE_U, KeyEvent.KEYCODE_V, KeyEvent.KEYCODE_W, KeyEvent.KEYCODE_X,
+            KeyEvent.KEYCODE_Y, KeyEvent.KEYCODE_Z,
+            KeyEvent.KEYCODE_0, KeyEvent.KEYCODE_1, KeyEvent.KEYCODE_2, KeyEvent.KEYCODE_3,
+            KeyEvent.KEYCODE_4, KeyEvent.KEYCODE_5, KeyEvent.KEYCODE_6, KeyEvent.KEYCODE_7,
+            KeyEvent.KEYCODE_8, KeyEvent.KEYCODE_9,
+            KeyEvent.KEYCODE_F1, KeyEvent.KEYCODE_F2, KeyEvent.KEYCODE_F3, KeyEvent.KEYCODE_F4,
+            KeyEvent.KEYCODE_F5, KeyEvent.KEYCODE_F6, KeyEvent.KEYCODE_F7, KeyEvent.KEYCODE_F8,
+            KeyEvent.KEYCODE_F9, KeyEvent.KEYCODE_F10, KeyEvent.KEYCODE_F11, KeyEvent.KEYCODE_F12,
+            KeyEvent.KEYCODE_META_LEFT, KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_TAB,
+            KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_DEL, KeyEvent.KEYCODE_FORWARD_DEL,
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_UP,
+            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_INSERT, KeyEvent.KEYCODE_MOVE_HOME,
+            KeyEvent.KEYCODE_MOVE_END, KeyEvent.KEYCODE_PAGE_UP, KeyEvent.KEYCODE_PAGE_DOWN,
+            KeyEvent.KEYCODE_SYSRQ, KeyEvent.KEYCODE_BREAK
+    };
 
     private CustomCommand editingCommand;
     private boolean isEditMode;
     private int selectedIconResId = R.drawable.ic_overlay_key_press;
     private int selectedKeyCode = 0;
-    private String selectedKeyName = "";
+    private int postAction = CustomCommand.POST_ACTION_NONE;
+    private final boolean[] modifiers = new boolean[4];
+
+    private ApolloDialog popup;
+    private EditText nameInput;
+    private ImageView iconView;
+    private TextView keyChip;
+    private TextView thenValue;
 
     private OnCommandSavedListener listener;
 
@@ -74,350 +107,293 @@ public class CustomCommandEditorDialog extends DialogFragment {
 
     @Override
     public Dialog onCreateDialog(Bundle savedInstanceState) {
-        // Check if we're editing an existing command
-        if (getArguments() != null) {
-            isEditMode = getArguments().getBoolean(ARG_IS_EDIT, false);
-            if (isEditMode) {
-                String json = getArguments().getString(ARG_COMMAND);
-                if (json != null) {
-                    try {
-                        editingCommand = CustomCommand.fromJson(new org.json.JSONObject(json));
-                        selectedIconResId = editingCommand.getIconResId();
-                        selectedKeyCode = editingCommand.getKeyCombination().getKeyCode();
-                    } catch (org.json.JSONException e) {
-                        e.printStackTrace();
-                    }
+        String name = "";
+        if (getArguments() != null && getArguments().getBoolean(ARG_IS_EDIT, false)) {
+            String json = getArguments().getString(ARG_COMMAND);
+            if (json != null) {
+                try {
+                    editingCommand = CustomCommand.fromJson(new org.json.JSONObject(json));
+                    isEditMode = true;
+                    selectedIconResId = editingCommand.getIconResId();
+                    CustomCommand.KeyCombination keys = editingCommand.getKeyCombination();
+                    selectedKeyCode = keys.getKeyCode();
+                    modifiers[0] = keys.isCtrl();
+                    modifiers[1] = keys.isAlt();
+                    modifiers[2] = keys.isShift();
+                    modifiers[3] = keys.isMeta();
+                    postAction = editingCommand.getPostAction();
+                    // A command without a name shows its keys, which are not a name to edit
+                    name = editingCommand.getName().equals(keys.toDisplayString()) ? "" : editingCommand.getName();
+                } catch (org.json.JSONException e) {
+                    e.printStackTrace();
                 }
             }
         }
 
-        AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
-        LayoutInflater inflater = getActivity().getLayoutInflater();
-        View view = inflater.inflate(R.layout.dialog_custom_command_editor, null);
+        Context context = getActivity();
+        popup = new ApolloDialog(context, getString(isEditMode ? R.string.editor_title_edit : R.string.editor_title_add), 560);
+        ApolloColors colors = popup.colors;
 
-        // Initialize views
-        nameInput = view.findViewById(R.id.command_name_input);
-        selectedIconView = view.findViewById(R.id.selected_icon);
-        View iconSelector = view.findViewById(R.id.icon_selector);
-        ctrlCheckbox = view.findViewById(R.id.modifier_ctrl);
-        altCheckbox = view.findViewById(R.id.modifier_alt);
-        shiftCheckbox = view.findViewById(R.id.modifier_shift);
-        metaCheckbox = view.findViewById(R.id.modifier_meta);
-        keyPickerButton = view.findViewById(R.id.key_picker_button);
-        thenActionSpinner = view.findViewById(R.id.then_action_spinner);
+        // Name: written in place; empty, the command shows its keys
+        nameInput = new EditText(context);
+        nameInput.setText(name);
+        nameInput.setSingleLine(true);
+        nameInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        nameInput.setImeOptions(EditorInfo.IME_ACTION_DONE);
+        nameInput.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        nameInput.setBackground(null);
+        nameInput.setPadding(popup.dp(12), 0, 0, 0);
+        nameInput.setTextColor(colors.onSurfaceVariant);
+        nameInput.setHintTextColor(colors.outline);
+        nameInput.setTextSize(14);
+        LinearLayout nameRow = popup.row(getString(R.string.editor_command_name), null, v -> editName());
+        nameRow.addView(nameInput, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.4f));
+        // The row has the focus; A or a tap writes in the field
+        nameInput.setFocusable(false);
+        nameInput.setOnClickListener(v -> editName());
+        nameInput.setOnEditorActionListener((v, actionId, event) -> {
+            finishName(nameRow);
+            return true;
+        });
+        nameInput.setOnFocusChangeListener((v, hasFocus) -> {
+            if (!hasFocus) {
+                finishName(null);
+            }
+        });
+        popup.body.addView(nameRow);
 
-        // Add listeners to modifier checkboxes to update hint
-        CompoundButton.OnCheckedChangeListener modifierChangeListener = new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+        iconView = new ImageView(context);
+        iconView.setImageResource(selectedIconResId);
+        iconView.setImageTintList(ColorStateList.valueOf(colors.onSurfaceVariant));
+        int pad = popup.dp(6);
+        iconView.setPadding(pad, pad, pad, pad);
+        iconView.setBackground(ApolloUi.roundRect(colors.surfaceContainerHighest, popup.dp(8)));
+        iconView.setLayoutParams(new LinearLayout.LayoutParams(popup.dp(32), popup.dp(32)));
+        popup.body.addView(popup.row(getString(R.string.editor_icon), iconView, v -> pickIcon()));
+
+        // Keys: the modifiers as chips to turn on, then the key
+        popup.body.addView(popup.sectionHeader(getString(R.string.editor_key_combination)));
+        LinearLayout keysRow = new LinearLayout(context);
+        keysRow.setOrientation(LinearLayout.HORIZONTAL);
+        keysRow.setBaselineAligned(false);
+        keysRow.setGravity(Gravity.CENTER_VERTICAL);
+        keysRow.setPadding(popup.dp(16), 0, popup.dp(16), popup.dp(4));
+        String[] modifierNames = {"Ctrl", "Alt", "Shift", "Win"};
+        for (int i = 0; i < modifierNames.length; i++) {
+            final int index = i;
+            TextView chip = chip(modifierNames[i], colors);
+            chip.setActivated(modifiers[i]);
+            styleChipText(chip, colors);
+            chip.setOnClickListener(v -> {
+                modifiers[index] = !modifiers[index];
+                v.setActivated(modifiers[index]);
+                styleChipText((TextView) v, colors);
                 updateNameHint();
-            }
-        };
-        ctrlCheckbox.setOnCheckedChangeListener(modifierChangeListener);
-        altCheckbox.setOnCheckedChangeListener(modifierChangeListener);
-        shiftCheckbox.setOnCheckedChangeListener(modifierChangeListener);
-        metaCheckbox.setOnCheckedChangeListener(modifierChangeListener);
-
-        // Setup icon selector click
-        iconSelector.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                showIconPicker();
-            }
-        });
-
-        // Setup key picker button
-        keyPickerButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                showKeyPicker();
-            }
-        });
-
-        // Populate fields if editing
-        if (isEditMode && editingCommand != null) {
-            nameInput.setText(editingCommand.getName());
-            selectedIconView.setImageResource(editingCommand.getIconResId());
-
-            CustomCommand.KeyCombination keyCombination = editingCommand.getKeyCombination();
-            ctrlCheckbox.setChecked(keyCombination.isCtrl());
-            altCheckbox.setChecked(keyCombination.isAlt());
-            shiftCheckbox.setChecked(keyCombination.isShift());
-            metaCheckbox.setChecked(keyCombination.isMeta());
-
-            selectedKeyCode = keyCombination.getKeyCode();
-            selectedKeyName = getKeyName(selectedKeyCode);
-            keyPickerButton.setText(selectedKeyName);
-
-            int postAction = editingCommand.getPostAction();
-            thenActionSpinner.setSelection(postAction);
-        } else {
-            selectedIconView.setImageResource(selectedIconResId);
-            keyPickerButton.setText(R.string.editor_key_code_hint);
-        }
-
-        // Update the name hint to show current key combination
-        updateNameHint();
-
-        builder.setView(view)
-            .setTitle(isEditMode ? R.string.editor_title_edit : R.string.editor_title_add)
-            .setPositiveButton(R.string.editor_save, null) // Set to null to override later
-            .setNegativeButton(R.string.editor_cancel, new DialogInterface.OnClickListener() {
-                @Override
-                public void onClick(DialogInterface dialog, int which) {
-                    dismiss();
-                }
             });
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, popup.dp(38));
+            params.setMarginEnd(popup.dp(8));
+            keysRow.addView(chip, params);
+        }
+        TextView plus = ApolloUi.text(context, "+", 18, colors.outline, false);
+        plus.setPadding(popup.dp(2), 0, popup.dp(10), 0);
+        keysRow.addView(plus);
+        keyChip = chip("", colors);
+        keyChip.setActivated(false);
+        keyChip.setOnClickListener(v -> pickKey());
+        keysRow.addView(keyChip, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, popup.dp(38)));
+        popup.body.addView(keysRow);
+        showKey();
 
-        return builder.create();
+        thenValue = ApolloUi.text(context, "", 14, colors.onSurfaceVariant, false);
+        showThen();
+        LinearLayout thenRow = popup.row(getString(R.string.editor_then), thenValue, v -> pickThen());
+        LinearLayout.LayoutParams thenParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        thenParams.topMargin = popup.dp(4);
+        popup.body.addView(thenRow, thenParams);
+
+        popup.buttons(getString(R.string.editor_cancel), getString(R.string.editor_save), () -> {
+            if (validateAndSave()) {
+                dismiss();
+            }
+        });
+
+        updateNameHint();
+        nameRow.post(nameRow::requestFocus);
+        return popup.dialog;
     }
 
     @Override
     public void onStart() {
         super.onStart();
-
-        // Override positive button to prevent auto-dismiss on validation failure
-        AlertDialog dialog = (AlertDialog) getDialog();
-        if (dialog != null) {
-            Button positiveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-            positiveButton.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    if (validateAndSave()) {
-                        dismiss();
-                    }
-                }
-            });
+        // ApolloDialog sets the width and the entry animation; a DialogFragment shows the dialog itself
+        if (popup != null && popup.card.getAlpha() == 1f) {
+            popup.card.setAlpha(0f);
+            popup.card.setScaleX(0.94f);
+            popup.card.setScaleY(0.94f);
+            popup.card.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(com.limelight.ui.theme.ApolloMotion.MEDIUM)
+                    .setInterpolator(com.limelight.ui.theme.ApolloMotion.EMPHASIZED_DECELERATE).start();
         }
     }
 
-    /**
-     * Validate inputs and save the command
-     */
+    // A chip of the keys: filled when on, outlined when off, a light veil with the focus
+    private TextView chip(String text, ApolloColors colors) {
+        TextView chip = ApolloUi.text(getActivity(), text, 14, colors.onSurfaceVariant, true);
+        chip.setGravity(Gravity.CENTER);
+        chip.setPadding(popup.dp(14), 0, popup.dp(14), 0);
+        chip.setMinWidth(popup.dp(44));
+        chip.setFocusable(true);
+        chip.setClickable(true);
+        int radius = popup.dp(10);
+        StateListDrawable states = new StateListDrawable();
+        states.addState(new int[]{android.R.attr.state_activated, android.R.attr.state_focused},
+                ApolloUi.roundRect(ApolloColors.blend(colors.secondaryContainer, Color.WHITE, 0.12f), radius));
+        states.addState(new int[]{android.R.attr.state_activated}, ApolloUi.roundRect(colors.secondaryContainer, radius));
+        states.addState(new int[]{android.R.attr.state_focused}, outlined(colors.surfaceContainerHighest, colors.outline, radius));
+        states.addState(new int[]{}, outlined(Color.TRANSPARENT, colors.outlineVariant, radius));
+        chip.setBackground(states);
+        return chip;
+    }
+
+    private GradientDrawable outlined(int fill, int stroke, int radius) {
+        GradientDrawable drawable = ApolloUi.roundRect(fill, radius);
+        drawable.setStroke(popup.dp(1), stroke);
+        return drawable;
+    }
+
+    private static void styleChipText(TextView chip, ApolloColors colors) {
+        chip.setTextColor(chip.isActivated() ? colors.onSecondaryContainer : colors.onSurfaceVariant);
+    }
+
+    private void editName() {
+        nameInput.setFocusable(true);
+        nameInput.setFocusableInTouchMode(true);
+        nameInput.requestFocus();
+        nameInput.setSelection(nameInput.getText().length());
+        InputMethodManager imm = (InputMethodManager) getActivity().getSystemService(Context.INPUT_METHOD_SERVICE);
+        imm.showSoftInput(nameInput, InputMethodManager.SHOW_IMPLICIT);
+    }
+
+    private void finishName(View focusAfter) {
+        InputMethodManager imm = (InputMethodManager) getActivity().getSystemService(Context.INPUT_METHOD_SERVICE);
+        imm.hideSoftInputFromWindow(nameInput.getWindowToken(), 0);
+        if (focusAfter != null) {
+            focusAfter.requestFocus();
+        }
+        nameInput.setFocusable(false);
+    }
+
+    private void showKey() {
+        String name = keyName(selectedKeyCode);
+        keyChip.setText(name != null ? name : getString(R.string.editor_key_code_hint));
+        keyChip.setTextColor(name != null ? popup.colors.onSurface : popup.colors.primary);
+    }
+
+    private void showThen() {
+        String[] actions = getResources().getStringArray(R.array.custom_command_post_actions);
+        thenValue.setText(postAction >= 0 && postAction < actions.length ? actions[postAction] : "");
+    }
+
+    private static String keyName(int keyCode) {
+        for (int i = 0; i < KEY_CODES.length; i++) {
+            if (KEY_CODES[i] == keyCode) {
+                return KEY_NAMES[i];
+            }
+        }
+        if (keyCode == 0) {
+            return null;
+        }
+        String name = KeyEvent.keyCodeToString(keyCode);
+        return name.startsWith("KEYCODE_") ? name.substring(8) : name;
+    }
+
+    private void pickIcon() {
+        Context context = getActivity();
+        View[] cells = new View[OverlayIcons.AVAILABLE_ICONS.length];
+        int selected = -1;
+        for (int i = 0; i < cells.length; i++) {
+            ImageView icon = new ImageView(context);
+            icon.setImageResource(OverlayIcons.AVAILABLE_ICONS[i].resourceId);
+            icon.setImageTintList(ColorStateList.valueOf(popup.colors.onSurface));
+            icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            int pad = popup.dp(12);
+            icon.setPadding(pad, pad, pad, pad);
+            cells[i] = icon;
+            if (OverlayIcons.AVAILABLE_ICONS[i].resourceId == selectedIconResId) {
+                selected = i;
+            }
+        }
+        ApolloDialog.grid(context, getString(R.string.editor_icon_select), cells, 8, selected, index -> {
+            selectedIconResId = OverlayIcons.AVAILABLE_ICONS[index].resourceId;
+            iconView.setImageResource(selectedIconResId);
+        });
+    }
+
+    private void pickKey() {
+        Context context = getActivity();
+        View[] cells = new View[KEY_NAMES.length];
+        int selected = -1;
+        for (int i = 0; i < cells.length; i++) {
+            TextView key = ApolloUi.text(context, KEY_NAMES[i], 13, popup.colors.onSurface, true);
+            key.setGravity(Gravity.CENTER);
+            key.setSingleLine(true);
+            cells[i] = key;
+            if (KEY_CODES[i] == selectedKeyCode) {
+                selected = i;
+            }
+        }
+        ApolloDialog.grid(context, getString(R.string.editor_key_code_hint), cells, 8, selected, index -> {
+            selectedKeyCode = KEY_CODES[index];
+            showKey();
+            updateNameHint();
+        });
+    }
+
+    private void pickThen() {
+        String[] actions = getResources().getStringArray(R.array.custom_command_post_actions);
+        ApolloDialog.choose(getActivity(), getString(R.string.editor_then), actions, postAction, index -> {
+            postAction = index;
+            showThen();
+        });
+    }
+
+    // With no name, the command is shown with its keys: they are the hint of the field
+    private void updateNameHint() {
+        nameInput.setHint(selectedKeyCode != 0 ? keys().toDisplayString() : "");
+    }
+
+    private CustomCommand.KeyCombination keys() {
+        return new CustomCommand.KeyCombination(modifiers[0], modifiers[1], modifiers[2], modifiers[3], selectedKeyCode);
+    }
+
     private boolean validateAndSave() {
-        String name = nameInput.getText().toString().trim();
-
-        // Name is optional - if empty, key combo will be shown instead
-
-        // Validate key selection
         if (selectedKeyCode == 0) {
-            Toast.makeText(getActivity(), R.string.editor_error_key_empty,
-                Toast.LENGTH_SHORT).show();
+            Toast.makeText(getActivity(), R.string.editor_error_key_empty, Toast.LENGTH_SHORT).show();
+            keyChip.requestFocus();
             return false;
         }
 
-        // Create key combination
-        CustomCommand.KeyCombination keyCombination = new CustomCommand.KeyCombination(
-            ctrlCheckbox.isChecked(),
-            altCheckbox.isChecked(),
-            shiftCheckbox.isChecked(),
-            metaCheckbox.isChecked(),
-            selectedKeyCode
-        );
-
-        int postAction = thenActionSpinner.getSelectedItemPosition();
-
-        // Create or update command
+        String name = nameInput.getText().toString().trim();
         String id = isEditMode ? editingCommand.getId() : UUID.randomUUID().toString();
-        CustomCommand command = new CustomCommand(id, name, selectedIconResId, keyCombination, postAction);
-
-        // Notify listener
+        CustomCommand command = new CustomCommand(id, name, selectedIconResId, keys(), postAction);
         if (listener != null) {
             listener.onCommandSaved(command);
         }
 
         if (postAction == CustomCommand.POST_ACTION_SLEEP) {
             android.app.admin.DevicePolicyManager dpm =
-                (android.app.admin.DevicePolicyManager) getActivity().getSystemService(
-                    android.content.Context.DEVICE_POLICY_SERVICE);
+                    (android.app.admin.DevicePolicyManager) getActivity().getSystemService(Context.DEVICE_POLICY_SERVICE);
             android.content.ComponentName adminComponent =
-                new android.content.ComponentName(getActivity(), com.limelight.SleepDeviceAdmin.class);
+                    new android.content.ComponentName(getActivity(), com.limelight.SleepDeviceAdmin.class);
             if (!dpm.isAdminActive(adminComponent)) {
                 android.content.Intent intent = new android.content.Intent(
-                    android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
+                        android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
                 intent.putExtra(android.app.admin.DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent);
                 intent.putExtra(android.app.admin.DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                    getString(R.string.sleep_admin_explanation));
+                        getString(R.string.sleep_admin_explanation));
                 getActivity().startActivity(intent);
             }
         }
-
         return true;
-    }
-
-    /**
-     * Show icon picker dialog
-     */
-    private void showIconPicker() {
-        AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
-        builder.setTitle(R.string.editor_icon_select);
-
-        // Create grid of icons
-        GridLayout gridLayout = new GridLayout(getActivity());
-        gridLayout.setColumnCount(8);
-        int padding = (int) (16 * getResources().getDisplayMetrics().density);
-        gridLayout.setPadding(padding, padding, padding, padding);
-
-        // Wrap grid in a ScrollView for Android TV compatibility
-        ScrollView scrollView = new ScrollView(getActivity());
-        scrollView.addView(gridLayout);
-
-        // Set max height to 60% of screen height to prevent overflow on TV
-        int maxHeight = (int) (getResources().getDisplayMetrics().heightPixels * 0.6);
-        scrollView.setLayoutParams(new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            Math.min(LinearLayout.LayoutParams.WRAP_CONTENT, maxHeight)
-        ));
-
-        for (final OverlayIcons.IconOption icon : OverlayIcons.AVAILABLE_ICONS) {
-            ImageView iconView = new ImageView(getActivity());
-            iconView.setImageResource(icon.resourceId);
-            iconView.setPadding(padding / 2, padding / 2, padding / 2, padding / 2);
-
-            // Enable focus for Android TV D-pad navigation
-            iconView.setFocusable(true);
-            iconView.setFocusableInTouchMode(true);
-            iconView.setBackgroundResource(R.drawable.icon_picker_selector);
-
-            GridLayout.LayoutParams params = new GridLayout.LayoutParams();
-            params.width = (int) (56 * getResources().getDisplayMetrics().density);
-            params.height = (int) (56 * getResources().getDisplayMetrics().density);
-            iconView.setLayoutParams(params);
-
-            iconView.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    selectedIconResId = icon.resourceId;
-                    selectedIconView.setImageResource(selectedIconResId);
-                    // Dismiss the icon picker dialog
-                    ((AlertDialog) v.getTag()).dismiss();
-                }
-            });
-
-            gridLayout.addView(iconView);
-        }
-
-        AlertDialog iconDialog = builder.setView(scrollView)
-            .setNegativeButton(R.string.editor_cancel, null)
-            .create();
-
-        // Store dialog reference in each icon view's tag
-        for (int i = 0; i < gridLayout.getChildCount(); i++) {
-            gridLayout.getChildAt(i).setTag(iconDialog);
-        }
-
-        iconDialog.show();
-    }
-
-    /**
-     * Show key picker dialog
-     */
-    private void showKeyPicker() {
-        AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
-        builder.setTitle("Select Key");
-
-        // Common keys
-        final String[] keyNames = {
-            "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
-            "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
-            "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
-            "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
-            "Win/Cmd", "Space", "Enter", "Tab", "Escape", "Backspace", "Delete",
-            "Left", "Right", "Up", "Down", "Insert", "Home", "End", "Page Up", "Page Down",
-            "Print Screen", "Pause/Break"
-        };
-
-        final int[] keyCodes = {
-            KeyEvent.KEYCODE_A, KeyEvent.KEYCODE_B, KeyEvent.KEYCODE_C, KeyEvent.KEYCODE_D,
-            KeyEvent.KEYCODE_E, KeyEvent.KEYCODE_F, KeyEvent.KEYCODE_G, KeyEvent.KEYCODE_H,
-            KeyEvent.KEYCODE_I, KeyEvent.KEYCODE_J, KeyEvent.KEYCODE_K, KeyEvent.KEYCODE_L,
-            KeyEvent.KEYCODE_M, KeyEvent.KEYCODE_N, KeyEvent.KEYCODE_O, KeyEvent.KEYCODE_P,
-            KeyEvent.KEYCODE_Q, KeyEvent.KEYCODE_R, KeyEvent.KEYCODE_S, KeyEvent.KEYCODE_T,
-            KeyEvent.KEYCODE_U, KeyEvent.KEYCODE_V, KeyEvent.KEYCODE_W, KeyEvent.KEYCODE_X,
-            KeyEvent.KEYCODE_Y, KeyEvent.KEYCODE_Z,
-            KeyEvent.KEYCODE_0, KeyEvent.KEYCODE_1, KeyEvent.KEYCODE_2, KeyEvent.KEYCODE_3,
-            KeyEvent.KEYCODE_4, KeyEvent.KEYCODE_5, KeyEvent.KEYCODE_6, KeyEvent.KEYCODE_7,
-            KeyEvent.KEYCODE_8, KeyEvent.KEYCODE_9,
-            KeyEvent.KEYCODE_F1, KeyEvent.KEYCODE_F2, KeyEvent.KEYCODE_F3, KeyEvent.KEYCODE_F4,
-            KeyEvent.KEYCODE_F5, KeyEvent.KEYCODE_F6, KeyEvent.KEYCODE_F7, KeyEvent.KEYCODE_F8,
-            KeyEvent.KEYCODE_F9, KeyEvent.KEYCODE_F10, KeyEvent.KEYCODE_F11, KeyEvent.KEYCODE_F12,
-            KeyEvent.KEYCODE_META_LEFT, KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_TAB,
-            KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_DEL, KeyEvent.KEYCODE_FORWARD_DEL,
-            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_UP,
-            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_INSERT, KeyEvent.KEYCODE_MOVE_HOME,
-            KeyEvent.KEYCODE_MOVE_END, KeyEvent.KEYCODE_PAGE_UP, KeyEvent.KEYCODE_PAGE_DOWN,
-            KeyEvent.KEYCODE_SYSRQ, KeyEvent.KEYCODE_BREAK
-        };
-
-        builder.setItems(keyNames, new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                selectedKeyCode = keyCodes[which];
-                selectedKeyName = keyNames[which];
-                keyPickerButton.setText(selectedKeyName);
-                updateNameHint();
-            }
-        });
-
-        builder.setNegativeButton(R.string.editor_cancel, null);
-        builder.show();
-    }
-
-    /**
-     * Get display name for a key code
-     */
-    private String getKeyName(int keyCode) {
-        // Map some common keys to friendly names
-        switch (keyCode) {
-            case KeyEvent.KEYCODE_META_LEFT: return "Win/Cmd";
-            case KeyEvent.KEYCODE_SPACE: return "Space";
-            case KeyEvent.KEYCODE_ENTER: return "Enter";
-            case KeyEvent.KEYCODE_TAB: return "Tab";
-            case KeyEvent.KEYCODE_ESCAPE: return "Escape";
-            case KeyEvent.KEYCODE_DEL: return "Backspace";
-            case KeyEvent.KEYCODE_FORWARD_DEL: return "Delete";
-            case KeyEvent.KEYCODE_DPAD_LEFT: return "Left";
-            case KeyEvent.KEYCODE_DPAD_RIGHT: return "Right";
-            case KeyEvent.KEYCODE_DPAD_UP: return "Up";
-            case KeyEvent.KEYCODE_DPAD_DOWN: return "Down";
-            case KeyEvent.KEYCODE_MOVE_HOME: return "Home";
-            case KeyEvent.KEYCODE_MOVE_END: return "End";
-            case KeyEvent.KEYCODE_PAGE_UP: return "Page Up";
-            case KeyEvent.KEYCODE_PAGE_DOWN: return "Page Down";
-            case KeyEvent.KEYCODE_INSERT: return "Insert";
-            case KeyEvent.KEYCODE_SYSRQ: return "Print Screen";
-            case KeyEvent.KEYCODE_BREAK: return "Pause/Break";
-            default:
-                // For letter/number keys, use KeyEvent.keyCodeToString
-                String keyName = KeyEvent.keyCodeToString(keyCode);
-                if (keyName.startsWith("KEYCODE_")) {
-                    return keyName.substring(8); // Remove "KEYCODE_" prefix
-                }
-                return keyName;
-        }
-    }
-
-    /**
-     * Update the name input hint to show the current key combination
-     */
-    private void updateNameHint() {
-        if (selectedKeyCode == 0) {
-            // No key selected, use default hint
-            nameInput.setHint(R.string.editor_command_name_hint);
-            return;
-        }
-
-        // Build the key combination display string
-        StringBuilder hintBuilder = new StringBuilder();
-
-        if (ctrlCheckbox.isChecked()) hintBuilder.append("Ctrl+");
-        if (altCheckbox.isChecked()) hintBuilder.append("Alt+");
-        if (shiftCheckbox.isChecked()) hintBuilder.append("Shift+");
-        if (metaCheckbox.isChecked()) hintBuilder.append("Win+");
-
-        // Add the key name
-        hintBuilder.append(selectedKeyName);
-
-        nameInput.setHint(hintBuilder.toString());
     }
 }

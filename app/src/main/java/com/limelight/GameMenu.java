@@ -213,6 +213,30 @@ public class GameMenu implements GameMenuView.Listener {
                 game::isVirtualControllerVisible, game::toggleVirtualController));
         items.add(Item.toggle(R.drawable.ic_overlay_mouse, getString(R.string.game_menu_mouse_emulation),
                 game::isMouseEmulationActive, game::toggleMouseEmulation));
+        items.add(Item.slider(R.drawable.ic_apollo_tune, getString(R.string.title_seekbar_mouse_emulation_speed),
+                10, 200, 5, "%", new GameMenuView.QuickSlider.Value() {
+                    @Override
+                    public int get() {
+                        return game.getMouseEmulationSpeed();
+                    }
+
+                    @Override
+                    public void set(int value) {
+                        game.setMouseEmulationSpeed(value);
+                    }
+                }));
+        items.add(Item.slider(R.drawable.ic_apollo_tune, getString(R.string.title_seekbar_mouse_scroll_speed),
+                10, 200, 5, "%", new GameMenuView.QuickSlider.Value() {
+                    @Override
+                    public int get() {
+                        return game.getMouseScrollSpeed();
+                    }
+
+                    @Override
+                    public void set(int value) {
+                        game.setMouseScrollSpeed(value);
+                    }
+                }));
 
         items.add(Item.header(getString(R.string.game_menu_section_touch)));
         String[] names = game.getResources().getStringArray(R.array.touch_mode_names);
@@ -230,10 +254,6 @@ public class GameMenu implements GameMenuView.Listener {
                     }
                 }));
 
-        items.add(Item.header(getString(R.string.game_menu_section_windows)));
-        items.add(Item.action(R.drawable.ic_apollo_tune, getString(R.string.game_menu_key_windows_quick_settings),
-                () -> sendKeys(WINDOWS_QUICK_SETTINGS)).keepOpen().trailingText(WINDOWS_QUICK_SETTINGS.toDisplayString()));
-
         return items;
     }
 
@@ -247,6 +267,10 @@ public class GameMenu implements GameMenuView.Listener {
 
     private List<Item> buildKeyItems() {
         List<Item> items = new ArrayList<>();
+
+        // The quick settings of Windows first, with the other keys for the PC
+        items.add(Item.action(R.drawable.ic_apollo_tune, getString(R.string.game_menu_key_windows_quick_settings),
+                () -> sendKeys(WINDOWS_QUICK_SETTINGS)).keepOpen().trailingText(WINDOWS_QUICK_SETTINGS.toDisplayString()));
 
         for (CustomCommand command : commandsManager.getCommands()) {
             if (isQuickActionShortcut(command.getKeyCombination())) {

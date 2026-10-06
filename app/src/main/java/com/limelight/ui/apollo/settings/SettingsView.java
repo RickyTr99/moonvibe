@@ -10,7 +10,9 @@ import android.database.DataSetObserver;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.preference.EditTextPreference;
 import android.preference.ListPreference;
 import android.preference.Preference;
@@ -34,6 +36,7 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -46,6 +49,8 @@ import com.limelight.preferences.ConfirmDeleteOscPreference;
 import com.limelight.preferences.LanguagePreference;
 import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.preferences.SeekBarPreference;
+import com.limelight.preferences.ShortcutPreference;
+import com.limelight.ui.apollo.ApolloTopBar;
 import com.limelight.ui.apollo.ApolloUi;
 import com.limelight.ui.apollo.ApolloWidgets;
 import com.limelight.ui.apollo.hints.ButtonGlyph;
@@ -79,10 +84,13 @@ public class SettingsView extends FrameLayout {
     private final LinearLayout rowList;
     private final ScrollView rowScroll;
     private final OptionsPopup popup;
+    private final ShortcutPopup shortcutPopup;
     private final InfoPopup infoPopup;
     private final ValuePopup valuePopup;
     // On top of the categories; null on a single page
     private final SearchField searchField;
+    // Came with LB/RB: the category takes the focus once the settings are built and the window is active
+    private boolean gamepadFocusWanted;
     // What is searched for, empty while a category shows
     private String query = "";
 
@@ -130,6 +138,9 @@ public class SettingsView extends FrameLayout {
         // Shown after the name while the setting differs from its default
         DotSpan dot;
         boolean modified;
+        // Green, in its place while the profile in use changes the setting
+        DotSpan profileDot;
+        boolean fromProfile;
         // What the setting does, behind the "i" after its name; null for the obvious ones
         SettingsLayout.Info info;
         InfoSpan infoSpan;
@@ -181,6 +192,55 @@ public class SettingsView extends FrameLayout {
     }
 
     private ProfileMode profileMode;
+
+    /**
+     * The profile in use, on the general settings: the settings it can hold show its values, and those
+     * it changes have a green dot, as the dot next to its name in the top bar.
+     */
+    public interface ActiveProfile {
+        CharSequence name();
+
+        boolean isProfileSetting(String key);
+
+        boolean isOverridden(String key);
+
+        void useGeneral(String key);
+    }
+
+    private ActiveProfile activeProfile;
+
+    /** Set before {@link #setScreen}; null when the general settings are in use. */
+    public void setActiveProfile(ActiveProfile profile) {
+        activeProfile = profile;
+    }
+
+    private boolean isActiveProfileSetting(Preference pref) {
+        return activeProfile != null && pref.getKey() != null && activeProfile.isProfileSetting(pref.getKey());
+    }
+
+    private boolean fromActiveProfile(Preference pref) {
+        return isActiveProfileSetting(pref) && activeProfile.isOverridden(pref.getKey());
+    }
+
+    private boolean categoryHasProfileSetting(SettingsLayout.Category category, boolean overriddenOnly) {
+        for (Object entry : category.entries) {
+            List<SettingsLayout.Item> items = entry instanceof SettingsLayout.Section
+                    ? ((SettingsLayout.Section) entry).items : java.util.Collections.singletonList((SettingsLayout.Item) entry);
+            for (SettingsLayout.Item item : items) {
+                Preference pref = find(item);
+                if (pref != null && (overriddenOnly ? fromActiveProfile(pref) : isActiveProfileSetting(pref))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // The setting goes back to the general value; the screen follows through its preferences file
+    private void useGeneralValue(Row row) {
+        activeProfile.useGeneral(row.pref.getKey());
+        bindRows(true);
+    }
 
     /**
      * The page of a profile: its name and rule, the settings it can change (Video, Codec, Audio)
@@ -313,6 +373,7 @@ public class SettingsView extends FrameLayout {
         content.addView(rowScroll, rowParams);
 
         popup = new OptionsPopup(this, content, colors);
+        shortcutPopup = new ShortcutPopup(this, content, colors);
         infoPopup = new InfoPopup(this, content, colors);
         valuePopup = new ValuePopup(this, content, colors);
     }
@@ -387,6 +448,28 @@ public class SettingsView extends FrameLayout {
         } else if (categoryFocused) {
             categoryViews.get(selectedCategory).requestFocus();
         }
+        placeGamepadFocus();
+    }
+
+    /**
+     * Came from Home with LB/RB: the category takes the focus as soon as the window is active. The new
+     * window may still be in touch mode, where a plain request does nothing and the first press of the
+     * D-pad would only bring the focus back.
+     */
+    public void focusFromGamepad() {
+        gamepadFocusWanted = true;
+        placeGamepadFocus();
+    }
+
+    // Also from setScreen, if the window was active before the settings were built
+    private void placeGamepadFocus() {
+        if (!gamepadFocusWanted || categoryViews.isEmpty() || !isAttachedToWindow()) {
+            return;
+        }
+        gamepadFocusWanted = false;
+        if (!categoryList.hasFocus() && !rowList.hasFocus()) {
+            categoryViews.get(Math.max(0, selectedCategory)).requestFocusFromTouch();
+        }
     }
 
     // The settings the screen's preferences live in: the general ones, or a profile being edited
@@ -407,15 +490,68 @@ public class SettingsView extends FrameLayout {
         }
     }
 
+    // --- The selected category: its full color while the focus is on the categories, a quieter gray
+    // while it is on the settings on the right (or a popup), so the side with the focus is clear
+
+    private final List<GradientDrawable> categoryFills = new ArrayList<>();
+    // Green, after a category holding settings the profile in use changes
+    private final List<View> categoryProfileDots = new ArrayList<>();
+    private int categoryFillColor;
+    private int categoryFillTarget;
+    private ValueAnimator categoryFillAnimator;
+    private final ViewTreeObserver.OnGlobalFocusChangeListener focusListener = (oldFocus, newFocus) -> updateCategoryFill();
+
+    private Drawable categoryBackground() {
+        if (categoryFillColor == 0) {
+            categoryFillColor = categoryFillTarget = colors.secondaryContainer;
+        }
+        int radius = dp(ApolloUi.ROW_RADIUS_DP);
+        GradientDrawable fill = ApolloUi.roundRect(categoryFillColor, radius);
+        categoryFills.add(fill);
+        StateListDrawable states = new StateListDrawable();
+        states.setEnterFadeDuration((int) ApolloMotion.SHORT);
+        states.setExitFadeDuration((int) ApolloMotion.MEDIUM);
+        states.addState(new int[]{android.R.attr.state_activated}, fill);
+        states.addState(new int[]{android.R.attr.state_pressed}, ApolloUi.roundRect(colors.surfaceContainerHighest, radius));
+        states.addState(new int[]{android.R.attr.state_focused}, ApolloUi.roundRect(colors.surfaceContainerHigh, radius));
+        states.addState(new int[]{}, ApolloUi.roundRect(Color.TRANSPARENT, radius));
+        return states;
+    }
+
+    private void updateCategoryFill() {
+        View focused = getRootView().findFocus();
+        boolean elsewhere = focused != null && !categoryList.hasFocus();
+        int target = elsewhere ? colors.surfaceContainerHighest : colors.secondaryContainer;
+        if (target == categoryFillTarget) {
+            return;
+        }
+        categoryFillTarget = target;
+        if (categoryFillAnimator != null) {
+            categoryFillAnimator.cancel();
+        }
+        categoryFillAnimator = ValueAnimator.ofObject(new ArgbEvaluator(), categoryFillColor, target);
+        categoryFillAnimator.setDuration(ApolloMotion.MEDIUM);
+        categoryFillAnimator.setInterpolator(ApolloMotion.STANDARD);
+        categoryFillAnimator.addUpdateListener(a -> {
+            categoryFillColor = (int) a.getAnimatedValue();
+            for (GradientDrawable fill : categoryFills) {
+                fill.setColor(categoryFillColor);
+            }
+        });
+        categoryFillAnimator.start();
+    }
+
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         listenTo(screenPrefs());
+        getViewTreeObserver().addOnGlobalFocusChangeListener(focusListener);
     }
 
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        getViewTreeObserver().removeOnGlobalFocusChangeListener(focusListener);
         listenTo(null);
         if (screenAdapter != null) {
             screenAdapter.unregisterDataSetObserver(screenObserver);
@@ -424,7 +560,7 @@ public class SettingsView extends FrameLayout {
 
     /** Back closes the value popup, the explanation, the options menu or the search first */
     public boolean onBackPressed() {
-        return valuePopup.back() || infoPopup.dismiss(true) || popup.dismiss(true) || closeSearch();
+        return valuePopup.back() || infoPopup.dismiss(true) || popup.dismiss(true) || shortcutPopup.dismiss(true) || closeSearch();
     }
 
     /**
@@ -432,7 +568,7 @@ public class SettingsView extends FrameLayout {
      * or goes from the settings back to their category
      */
     public boolean onButtonB() {
-        if (valuePopup.back() || infoPopup.dismiss(true) || popup.dismiss(true) || closeSearch()) {
+        if (valuePopup.back() || infoPopup.dismiss(true) || popup.dismiss(true) || shortcutPopup.dismiss(true) || closeSearch()) {
             return true;
         }
         // From the empty search box, back to the categories
@@ -725,6 +861,8 @@ public class SettingsView extends FrameLayout {
     private void buildCategories() {
         categoryList.removeAllViews();
         categoryViews.clear();
+        categoryFills.clear();
+        categoryProfileDots.clear();
         shownCategories.clear();
 
         for (SettingsLayout.Category category : categories) {
@@ -741,7 +879,7 @@ public class SettingsView extends FrameLayout {
             button.setPadding(dp(14), 0, dp(14), 0);
             button.setFocusable(true);
             button.setClickable(true);
-            button.setBackground(ApolloUi.stateLayer(colors.surfaceContainerHigh, colors.secondaryContainer, dp(ApolloUi.ROW_RADIUS_DP)));
+            button.setBackground(categoryBackground());
 
             ImageView icon = new ImageView(getContext());
             icon.setImageResource(category.iconRes);
@@ -751,6 +889,13 @@ public class SettingsView extends FrameLayout {
             label.setSingleLine(true);
             label.setEllipsize(TextUtils.TruncateAt.END);
             button.addView(label);
+            View profileDot = new View(getContext());
+            profileDot.setBackground(ApolloUi.roundRect(ApolloTopBar.PROFILE_DOT, dp(2.5f)));
+            profileDot.setVisibility(INVISIBLE);
+            LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(dp(5), dp(5));
+            dotParams.leftMargin = dp(8);
+            button.addView(profileDot, dotParams);
+            categoryProfileDots.add(profileDot);
 
             // A category also closes the search
             button.setOnClickListener(v -> {
@@ -776,9 +921,9 @@ public class SettingsView extends FrameLayout {
                     return false;
                 }
                 if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                    if (up) {
-                        ((ScrollView) categoryList.getParent()).smoothScrollTo(0, 0);
-                    }
+                    // Also from the last one: the next step down from the search box is the first category,
+                    // which would otherwise jump in from above
+                    ((ScrollView) categoryList.getParent()).smoothScrollTo(0, 0);
                     searchField.edit.requestFocus();
                 }
                 return true;
@@ -862,6 +1007,18 @@ public class SettingsView extends FrameLayout {
         rowList.addView(header);
         if (profileMode != null && profileMode.headerNote() != null) {
             TextView note = ApolloUi.text(getContext(), profileMode.headerNote(), 12.5f, colors.outline, false);
+            note.setLineSpacing(0, 1.25f);
+            note.setPadding(dp(14), 0, dp(14), dp(8));
+            rowList.addView(note);
+        }
+        if (activeProfile != null && categoryHasProfileSetting(category, false)) {
+            // Where the changes go: a green dot, as next to the name in the top bar, then the profile
+            SpannableStringBuilder text = new SpannableStringBuilder(" ");
+            DotSpan dot = new DotSpan(ApolloTopBar.PROFILE_DOT, dp(5), 0);
+            dot.setAlpha(255);
+            text.setSpan(dot, 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            text.append("  ").append(getContext().getString(R.string.apollo_profile_settings_note, activeProfile.name()));
+            TextView note = ApolloUi.text(getContext(), text, 12.5f, colors.outline, false);
             note.setLineSpacing(0, 1.25f);
             note.setPadding(dp(14), 0, dp(14), dp(8));
             rowList.addView(note);
@@ -1007,9 +1164,21 @@ public class SettingsView extends FrameLayout {
         if (defaults == null && profileMode == null) {
             return;
         }
+        // "Use general" comes and goes on the focused row while it keeps the focus
+        HintRow.refreshAll();
+        for (int i = 0; i < categoryProfileDots.size() && i < shownCategories.size(); i++) {
+            boolean shown = activeProfile != null && categoryHasProfileSetting(shownCategories.get(i), true);
+            categoryProfileDots.get(i).setVisibility(shown ? VISIBLE : INVISIBLE);
+        }
         for (Row row : rows) {
-            // On a profile's page the dot marks the settings the profile changes
-            boolean modified = profileMode != null ? isProfileOverride(row) : defaults.isModified(row.pref);
+            boolean fromProfile = row.profileDot != null && fromActiveProfile(row.pref);
+            if (fromProfile != row.fromProfile || !animate) {
+                row.fromProfile = fromProfile;
+                fadeDot(row, row.profileDot, fromProfile ? 255 : 0, animate);
+            }
+            // On a profile's page the dot marks the settings the profile changes; a value of the profile in use
+            // shows its green dot instead
+            boolean modified = profileMode != null ? isProfileOverride(row) : defaults.isModified(row.pref) && !fromProfile;
             if (row.dot == null || (modified == row.modified && animate)) {
                 continue;
             }
@@ -1040,6 +1209,25 @@ public class SettingsView extends FrameLayout {
                 restoreRow.setVisibility(GONE);
             }
         }
+    }
+
+    private static void fadeDot(Row row, DotSpan dot, int to, boolean animate) {
+        if (dot == null) {
+            return;
+        }
+        if (!animate) {
+            dot.setAlpha(to);
+            row.label.invalidate();
+            return;
+        }
+        ValueAnimator fade = ValueAnimator.ofInt(dot.getAlpha(), to);
+        fade.setDuration(ApolloMotion.MEDIUM);
+        fade.setInterpolator(ApolloMotion.STANDARD);
+        fade.addUpdateListener(a -> {
+            dot.setAlpha((int) a.getAnimatedValue());
+            row.label.invalidate();
+        });
+        fade.start();
     }
 
     private View sectionHeader(String label, boolean open, String sectionKey, List<View> sectionRows) {
@@ -1129,6 +1317,14 @@ public class SettingsView extends FrameLayout {
         view.setBackground(ApolloUi.stateLayer(colors.surfaceContainerHigh, Color.TRANSPARENT, dp(ApolloUi.ROW_RADIUS_DP)));
         row.view = view;
 
+        // The buttons of a controller shortcut, before its name
+        int[] glyphKeys = pref.getKey() != null ? SettingsLayout.ROW_GLYPHS.get(pref.getKey()) : null;
+        if (glyphKeys != null) {
+            // Centered, not on the baseline of the name
+            view.setBaselineAligned(false);
+            view.addView(glyphs(glyphKeys));
+        }
+
         row.label = ApolloUi.text(getContext(), title(pref), 14, colors.onSurface, true);
         row.label.setPadding(0, dp(6), dp(12), dp(6));
         row.label.setLineSpacing(0, 1.15f);
@@ -1156,6 +1352,12 @@ public class SettingsView extends FrameLayout {
                 row.dot = new DotSpan(colors.primary, dp(4), dp(5));
                 text.append(' ');
                 text.setSpan(row.dot, text.length() - 1, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+            if (isActiveProfileSetting(pref)) {
+                // Right over the other dot: the gap takes it back, only one of the two shows at a time
+                row.profileDot = new DotSpan(ApolloTopBar.PROFILE_DOT, dp(4), row.dot != null ? -dp(4) : dp(5));
+                text.append(' ');
+                text.setSpan(row.profileDot, text.length() - 1, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
             if (snippet != null) {
                 text.append('\n');
@@ -1292,6 +1494,15 @@ public class SettingsView extends FrameLayout {
                 useGeneral(row);
                 return true;
             });
+        } else if (isActiveProfileSetting(pref)) {
+            // The same for the profile in use; the explanation (Y) offers it too
+            view.setOnLongClickListener(v -> {
+                if (!fromActiveProfile(row.pref)) {
+                    return false;
+                }
+                useGeneralValue(row);
+                return true;
+            });
         }
 
         rows.add(row);
@@ -1306,6 +1517,21 @@ public class SettingsView extends FrameLayout {
         List<HintRow.Hint> hints = tag instanceof List ? new ArrayList<>((List<HintRow.Hint>) tag) : new ArrayList<>();
         hints.add(Math.max(0, hints.size() - 1), new HintRow.Hint(key, getContext().getString(labelRes)));
         HintRow.set(view, hints.toArray(new HintRow.Hint[0]));
+    }
+
+    // Like insertHint, in place of a hint for the same button (X searches, on a profile's setting it goes back to the general value)
+    private void replaceHint(View view, int key, int labelRes) {
+        Object tag = view.getTag(R.id.apollo_hints);
+        List<HintRow.Hint> hints = new ArrayList<>();
+        if (tag instanceof List) {
+            for (Object hint : (List<?>) tag) {
+                if (((HintRow.Hint) hint).key != key) {
+                    hints.add((HintRow.Hint) hint);
+                }
+            }
+        }
+        HintRow.set(view, hints.toArray(new HintRow.Hint[0]));
+        insertHint(view, key, labelRes);
     }
 
     private boolean isOnInfo(Row row, float x, float y) {
@@ -1414,7 +1640,7 @@ public class SettingsView extends FrameLayout {
         }
         // On a profile's page, X takes the focused setting back to the general value
         if (event.getKeyCode() == KeyEvent.KEYCODE_BUTTON_X && profileMode != null
-                && !infoPopup.isShowing() && !popup.isShowing()) {
+                && !infoPopup.isShowing() && !popup.isShowing() && !shortcutPopup.isShowing()) {
             for (Row row : rows) {
                 if (row.view.isFocused() && isProfileOverride(row)) {
                     if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
@@ -1424,8 +1650,20 @@ public class SettingsView extends FrameLayout {
                 }
             }
         }
+        // The same with a profile in use, on a setting it changes; elsewhere X still searches
+        if (event.getKeyCode() == KeyEvent.KEYCODE_BUTTON_X && activeProfile != null
+                && !infoPopup.isShowing() && !popup.isShowing() && !shortcutPopup.isShowing()) {
+            for (Row row : rows) {
+                if (row.view.isFocused() && fromActiveProfile(row.pref)) {
+                    if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                        useGeneralValue(row);
+                    }
+                    return true;
+                }
+            }
+        }
         if (event.getKeyCode() == KeyEvent.KEYCODE_BUTTON_X && searchField != null
-                && !infoPopup.isShowing() && !popup.isShowing()) {
+                && !infoPopup.isShowing() && !popup.isShowing() && !shortcutPopup.isShowing()) {
             if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
                 searchField.openKeyboard();
             }
@@ -1480,10 +1718,15 @@ public class SettingsView extends FrameLayout {
     }
 
     private void showOptions(Row row) {
+        if (row.pref instanceof ShortcutPreference) {
+            showShortcut(row);
+            return;
+        }
         ListPreference list = (ListPreference) row.pref;
         int count = list.getEntries().length;
-        // On a profile's page a setting the profile changes can go back to the general value from here too
-        boolean canUseGeneral = isProfileOverride(row);
+        // On a profile's page, or with a profile in use, a setting the profile changes can go back to the
+        // general value from here too
+        boolean canUseGeneral = isProfileOverride(row) || fromActiveProfile(row.pref);
         CharSequence[] options = new CharSequence[count + (canUseGeneral ? 1 : 0)];
         for (int i = 0; i < count; i++) {
             options[i] = optionLabel(list, i);
@@ -1494,7 +1737,11 @@ public class SettingsView extends FrameLayout {
         int rightEdge = getWidth() - content.getPaddingRight() - dp(14);
         popup.show(row.view, rightEdge, options, list.findIndexOfValue(list.getValue()), index -> {
             if (index >= count) {
-                useGeneral(row);
+                if (profileMode != null) {
+                    useGeneral(row);
+                } else {
+                    useGeneralValue(row);
+                }
                 return;
             }
             String value = list.getEntryValues()[index].toString();
@@ -1503,6 +1750,51 @@ public class SettingsView extends FrameLayout {
             }
             bindRows(true);
         });
+    }
+
+    // The actions of a controller shortcut, grouped in a popup
+    private void showShortcut(Row row) {
+        ShortcutPreference shortcut = (ShortcutPreference) row.pref;
+        // The custom commands may have changed since the settings opened
+        shortcut.reload();
+        int[] keys = SettingsLayout.ROW_GLYPHS.get(shortcut.getKey());
+        shortcutPopup.show(row.view, keys != null ? glyphs(keys) : null, shortcut.getTitle(), shortcut.groups(),
+                shortcut.isAynButton(), shortcut.getValue(), value -> {
+                    if (!value.equals(shortcut.getValue()) && callChangeListener(shortcut, value)) {
+                        shortcut.setValue(value);
+                    }
+                    bindRows(true);
+                });
+    }
+
+    // The buttons of a shortcut, before its name
+    private View glyphs(int[] keys) {
+        LinearLayout box = new LinearLayout(getContext());
+        box.setOrientation(LinearLayout.HORIZONTAL);
+        box.setBaselineAligned(false);
+        box.setGravity(Gravity.CENTER_VERTICAL);
+        box.setMinimumWidth(dp(52));
+        for (int i = 0; i < keys.length; i++) {
+            View glyph;
+            if (keys[i] == SettingsLayout.GLYPH_TIMER) {
+                ImageView timer = new ImageView(getContext());
+                timer.setImageResource(R.drawable.ic_apollo_timer);
+                timer.setImageTintList(ColorStateList.valueOf(colors.onSurfaceVariant));
+                timer.setLayoutParams(new FrameLayout.LayoutParams(dp(20), dp(20)));
+                glyph = timer;
+            } else {
+                glyph = ButtonGlyph.create(getContext(), colors, keys[i]);
+            }
+            FrameLayout slot = new FrameLayout(getContext());
+            slot.addView(glyph);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            if (i > 0) {
+                params.setMarginStart(dp(3));
+            }
+            box.addView(slot, params);
+        }
+        return box;
     }
 
     private void bindRows(boolean animate) {
@@ -1529,8 +1821,8 @@ public class SettingsView extends FrameLayout {
                 HintRow.set(row.view, hints);
             } else if (row.normalHints != null) {
                 row.view.setTag(R.id.apollo_hints, row.normalHints);
-                if (isProfileOverride(row)) {
-                    insertHint(row.view, KeyEvent.KEYCODE_BUTTON_X, R.string.apollo_profile_use_general);
+                if (isProfileOverride(row) || fromActiveProfile(pref)) {
+                    replaceHint(row.view, KeyEvent.KEYCODE_BUTTON_X, R.string.apollo_profile_use_general);
                 }
             }
             // Only a row turned off says why under its name: a note on a working setting stays in its explanation.
@@ -1565,6 +1857,10 @@ public class SettingsView extends FrameLayout {
             else if (pref instanceof ListPreference && !(pref instanceof LanguagePreference)) {
                 ListPreference list = (ListPreference) pref;
                 int index = list.findIndexOfValue(list.getValue());
+                if (index < 0 && pref instanceof ShortcutPreference) {
+                    // A custom command deleted since: the shortcut does nothing
+                    index = list.findIndexOfValue(com.limelight.binding.input.Shortcuts.NONE);
+                }
                 row.value.setText(index >= 0 ? optionLabel(list, index) : "");
             }
             else if (pref instanceof ListPreference) {

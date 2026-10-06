@@ -96,7 +96,12 @@ public final class ProfileEditor implements SharedPreferences.OnSharedPreference
             return;
         }
         if (Profiles.KEYS.contains(key)) {
-            overridden.add(key);
+            // Back to the general value, the profile stops changing the setting
+            if (Profiles.sameValue(work.getAll().get(key), general.getAll().get(key))) {
+                overridden.remove(key);
+            } else {
+                overridden.add(key);
+            }
             save();
         }
     }
