@@ -19,6 +19,7 @@ public class AndroidAudioRenderer implements AudioRenderer {
     private final boolean enableAudioFx;
 
     private AudioTrack track;
+    private volatile boolean muted;
 
     public AndroidAudioRenderer(Context context, boolean enableAudioFx) {
         this.context = context;
@@ -185,8 +186,17 @@ public class AndroidAudioRenderer implements AudioRenderer {
         return 0;
     }
 
+    /** While muted the stream's audio is dropped, for a stream kept going in the background. */
+    public void setMuted(boolean muted) {
+        this.muted = muted;
+    }
+
     @Override
     public void playDecodedAudio(short[] audioData) {
+        if (muted) {
+            return;
+        }
+
         // Only queue up to 40 ms of pending audio data in addition to what AudioTrack is buffering for us.
         if (MoonBridge.getPendingAudioDuration() < 40) {
             // This will block until the write is completed. That can cause a backlog

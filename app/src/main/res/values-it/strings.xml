@@ -98,6 +98,18 @@
     <string name="title_checkbox_stretch_video">Forza video a schermo intero</string>
     <string name="title_checkbox_disable_warnings">Disabilita messaggi di warning</string>
     <string name="summary_checkbox_disable_warnings">Disabilita i messaggi di warning sullo schermo durante lo streaming</string>
+    <string name="title_checkbox_auto_resume_stream">Riprendi lo stream dopo lo standby</string>
+    <string name="summary_checkbox_auto_resume_stream">Se lo stream è in corso quando metti il dispositivo in standby, riprende da solo al risveglio.</string>
+    <string name="title_leave_app">Quando esci dall\'app</string>
+    <string name="summary_leave_app">Cosa fa lo stream quando passi a un\'altra app</string>
+    <string name="leave_app_close">Chiudi lo stream</string>
+    <string name="leave_app_reconnect">Riconnetti al rientro</string>
+    <string name="leave_app_keep">Tieni lo stream attivo</string>
+    <string name="title_background_audio">Audio in background</string>
+    <string name="summary_background_audio">Continua a sentire lo stream mentre usi un\'altra app</string>
+    <string name="keep_alive_channel">Stream in background</string>
+    <string name="keep_alive_text">Stream da %1$s in background</string>
+    <string name="keep_alive_disconnect">Disconnetti</string>
     <string name="title_checkbox_enable_pip">Abilita modalità spettatore Picture-in-Picture</string>
     <string name="summary_checkbox_enable_pip">Permette di osservare (ma non di controllare) la stream in multitasking</string>
     <string name="category_audio_settings">Impostazioni audio</string>
@@ -344,7 +356,7 @@
     <string name="apollo_back">Indietro</string>
     <string name="apollo_library_hidden_shown">giochi nascosti visibili</string>
     <string name="apollo_settings_video">Video</string>
-    <string name="apollo_settings_latency">Latenza e fluidità</string>
+    <string name="apollo_settings_latency">Codec</string>
     <string name="apollo_settings_audio">Audio</string>
     <string name="apollo_settings_controller">Controller</string>
     <string name="apollo_settings_touch">Touch e mouse</string>
@@ -353,6 +365,73 @@
     <string name="apollo_settings_session">Sessione e PC</string>
     <string name="apollo_settings_app">App</string>
     <string name="apollo_section_advanced">Avanzate</string>
+    <string name="apollo_profiles">Profili</string>
+    <string name="apollo_profile_menu_title">Profilo</string>
+    <string name="apollo_profile_none">Nessuno</string>
+    <string name="apollo_profile_none_detail">impostazioni generali</string>
+    <string name="apollo_profile_manage">Gestisci profili</string>
+    <string name="apollo_profiles_explanation">Scegli il profilo da usare nel menu Profili, dalla barra in alto (Select con il controller). Trascina per cambiare l\'ordine del menu. Le impostazioni di un singolo gioco vincono sempre sul profilo.</string>
+    <string name="apollo_profile_in_use">IN USO</string>
+    <string name="apollo_profile_new">Nuovo profilo</string>
+    <string name="apollo_profile_default_name">Profilo %1$d</string>
+    <string name="apollo_profile_summary_empty">Ancora nessuna modifica: usa le impostazioni generali</string>
+    <plurals name="apollo_profile_summary_more">
+        <item quantity="one">un\'altra</item>
+        <item quantity="other">altre %1$d</item>
+    </plurals>
+    <string name="apollo_hint_edit">Modifica</string>
+    <string name="apollo_profile_editor_title">Modifica profilo</string>
+    <string name="apollo_profile_editor_note">Le voci con il puntino sono cambiate in questo profilo, le altre seguono le impostazioni generali. Tieni premuta una voce (X col controller) per farla tornare alle generali.</string>
+    <string name="apollo_profile_name">Nome</string>
+    <string name="apollo_profile_follows_general">Come nelle impostazioni generali</string>
+    <string name="apollo_profile_use_general">Usa le generali</string>
+    <string name="apollo_profile_delete">Elimina profilo</string>
+    <string name="apollo_profile_delete_confirm">Eliminare il profilo «%1$s»? Le impostazioni generali restano come sono.</string>
+    <string name="apollo_pyrowave_device_unsupported">Questo dispositivo non può decodificare PyroWave: servono Vulkan 1.3 e un processore ARM a 64 bit. Scegli un altro codec nelle Impostazioni.</string>
+    <string name="apollo_pyrowave_host_unsupported">Il PC non supporta PyroWave: serve una versione di Sunshine con PyroWave, come Vibepollo. Scegli un altro codec nelle Impostazioni.</string>
+    <string name="apollo_pyrowave_start_failed">Il PC non è riuscito ad avviare lo stream PyroWave. Cerca gli errori dell\'encoder PyroWave nel log dell\'host.</string>
+    <string name="apollo_section_decoding">Decodifica</string>
+    <string name="apollo_section_frame_pacing">Frame pacing</string>
+    <string name="apollo_section_stats">Statistiche</string>
+    <string name="apollo_rule_inactive">Non attiva.</string>
+    <string name="apollo_rule_needs_value_hint">Serve «%1$s»</string>
+    <string name="apollo_rule_needs_value">Funziona solo con «%1$s» su «%2$s». Ora è su «%3$s».</string>
+    <string name="apollo_rule_switch_to">Passa a %1$s</string>
+    <string name="apollo_rule_needs_on_hint">Serve «%1$s» attivo</string>
+    <string name="apollo_rule_needs_on">Funziona solo con «%1$s» attivo.</string>
+    <string name="apollo_rule_turn_on">Attiva</string>
+    <string name="apollo_rule_resume_covered_hint">Ci pensa già «%1$s»</string>
+    <string name="apollo_rule_resume_covered">Con «%1$s» su «%2$s» lo stream torna da solo anche dopo lo standby, quindi questa voce non serve.</string>
+    <string name="apollo_rule_needs_pyrowave_hint">Solo con il codec PyroWave</string>
+    <string name="apollo_rule_needs_pyrowave">Funziona solo con il codec PyroWave.</string>
+    <string name="apollo_rule_renderer_pyrowave_hint">Con PyroWave si usa sempre Vulkan</string>
+    <string name="apollo_rule_renderer_pyrowave">Con il codec PyroWave il video passa sempre dal renderer Vulkan. Questa scelta vale solo se l\'host non ha PyroWave e lo stream usa HEVC o H.264.</string>
+    <string name="apollo_rule_ull_pyrowave_hint">Non ha effetto con PyroWave</string>
+    <string name="apollo_rule_ull_pyrowave">Agisce sul decoder hardware, che PyroWave non usa. Vale solo se l\'host non ha PyroWave e lo stream usa HEVC o H.264.</string>
+    <!-- Voci video di MoreOrLess, tradotte da MoonVibe -->
+    <string name="title_video_renderer">Renderer video</string>
+    <string name="videorenderer_auto">Automatico (consigliato)</string>
+    <string name="videorenderer_direct">Superficie diretta (vecchio)</string>
+    <string name="videorenderer_vulkan">Vulkan (sperimentale)</string>
+    <string name="videoformat_pyrowave">PyroWave (sperimentale, rete locale da 200+ Mbps)</string>
+    <string name="title_spatial_dithering">Dithering spaziale</string>
+    <string name="dithering_off">Off</string>
+    <string name="dithering_low">Basso</string>
+    <string name="dithering_high">Alto</string>
+    <string name="pacing_host_timed">Sincronizza con il timing dell\'host (meglio con il renderer Vulkan)</string>
+    <string name="title_jitter_buffer">Jitter buffer</string>
+    <string name="jitter_buffer_lowest_latency">Latenza minima</string>
+    <string name="jitter_buffer_low_latency">Bassa latenza</string>
+    <string name="jitter_buffer_balanced">Bilanciato (consigliato)</string>
+    <string name="jitter_buffer_smooth">Fluido</string>
+    <string name="title_checkbox_ultra_low_latency">Latenza ultra bassa (sperimentale)</string>
+    <string name="title_actual_display_refresh_rate">Frequenza reale del display</string>
+    <string name="title_pyrowave_late_frames">PyroWave: frame in ritardo</string>
+    <string name="pyrowave_late_frames_off">Off (meno sfocatura)</string>
+    <string name="pyrowave_late_frames_sharp">Più nitido</string>
+    <string name="pyrowave_late_frames_balanced">Bilanciato (consigliato)</string>
+    <string name="pyrowave_late_frames_smooth">Più fluido</string>
+    <string name="pyrowave_late_frames_smoothest">Fluidissimo (più sfocatura)</string>
     <string name="apollo_section_vibration">Vibrazione</string>
     <string name="apollo_section_onscreen_gamepad">Gamepad a schermo</string>
     <string name="apollo_section_full_keyboard">Tastiera PC completa</string>
@@ -495,6 +574,7 @@
     <string name="game_menu_quit_confirm">Termina</string>
     <string name="game_menu_section_controller">Controller</string>
     <string name="game_menu_section_touch">Touchscreen</string>
+    <string name="game_menu_section_windows">Windows</string>
     <string name="game_menu_virtual_controller">Gamepad a schermo</string>
     <string name="game_menu_mouse_emulation">Emulazione mouse</string>
     <string name="game_menu_stats">Statistiche</string>
@@ -509,9 +589,11 @@
     <string name="game_menu_key_fullscreen">Schermo intero</string>
     <string name="game_menu_key_show_desktop">Mostra desktop</string>
     <string name="game_menu_key_game_bar">Xbox Game Bar</string>
+    <string name="game_menu_key_windows_quick_settings">Impostazioni rapide</string>
     <string name="game_menu_short_quit">Termina</string>
     <string name="game_menu_short_stats">Statistiche</string>
     <string name="game_menu_short_game_bar">Game Bar</string>
+    <string name="game_menu_short_start_menu">Windows</string>
     <string name="game_menu_short_keyboard">Tastiera</string>
     <string name="game_menu_short_pc_keyboard">Tastiera PC</string>
     <string name="game_menu_short_switch_window">Finestre</string>
@@ -530,6 +612,10 @@
     <string name="apollo_hint_search">Cerca</string>
     <string name="apollo_hint_close_search">Chiudi ricerca</string>
     <string name="apollo_hint_write">Scrivi</string>
+    <string name="apollo_hint_less">Meno</string>
+    <string name="apollo_hint_more">Più</string>
+    <string name="apollo_hint_shortcuts">Scorciatoie</string>
+    <string name="apollo_hint_set">Imposta</string>
     <string name="apollo_search_hint">Cerca</string>
     <string name="apollo_search_clear">Cancella</string>
     <string name="apollo_search_results">Risultati per «%1$s»</string>
@@ -553,7 +639,7 @@
     </string-array>
     <string name="apollo_info_hdr">Trasmette in HDR (o SDR a 10 bit) quando il gioco e la scheda video del PC lo supportano. Serve una GPU in grado di codificare HEVC Main 10.</string>
     <string name="apollo_info_stretch_video">Allarga l\'immagine fino a riempire tutto lo schermo, anche se le proporzioni non coincidono. Da spento, il resto dello schermo resta nero.</string>
-    <string name="apollo_info_pyrowave_late_frames">Solo con PyroWave e «Sincronizza con il timing dell\'host». Quando un frame arriva in ritardo o perde dei pacchetti, invece di saltarlo lo mostra con i dati arrivati, un po\' sfocato. Più si taglia, meno scatti sulla rete carica, ma più sfocatura.</string>
+    <string name="apollo_info_pyrowave_late_frames">Solo con PyroWave e «Sincronizza con il timing dell\'host». Quando un frame arriva in ritardo o perde dei pacchetti, invece di saltarlo lo mostra con i dati arrivati, un po\' sfocato. Più si taglia, meno scatti sulla rete carica, ma più sfocatura. Con Vibepollo e gli altri host basati su Vibeshine è sempre su Off: non possono mostrare un frame a cui mancano dei dati.</string>
     <string-array name="apollo_info_pyrowave_late_frames_names">
         <item>Off</item>
         <item>Sharper</item>
@@ -618,6 +704,9 @@
     <string name="apollo_info_host_audio">Riproduce l\'audio sia sul PC sia su questo dispositivo.</string>
     <string name="apollo_info_deadzone">Quanto deve muoversi la levetta prima che il movimento conti, così una levetta consumata non muove nulla da sola. Alcuni giochi usano comunque una zona morta più grande.</string>
     <string name="apollo_info_multi_controller">Ogni controller collegato è un giocatore diverso sul PC. Da spento, tutti i controller diventano uno solo e il PC ne vede sempre uno, anche se non ce n\'è nessuno collegato.</string>
+    <string name="apollo_info_auto_connect_controllers">All\'avvio dello stream i controller che hai collegato si collegano subito al PC. Altrimenti il PC collega ognuno solo alla prima pressione di un tasto.</string>
+    <string name="title_checkbox_auto_connect_controllers">Collega subito i controller</string>
+    <string name="summary_checkbox_auto_connect_controllers">Collega i controller al PC all\'avvio dello stream, senza premere un tasto</string>
     <string name="apollo_info_flip_face_buttons">Scambia A con B e X con Y, sui controller e sui controlli a schermo. Comodo con i controller in stile Nintendo.</string>
     <string name="apollo_info_touchpad_as_mouse">Il touchpad del controller (come quello del DualSense) muove il mouse del PC, anche quando il PC vede un controller con touchpad.</string>
     <string name="apollo_info_motion_sensors">Permette al PC di chiedere i dati del giroscopio quando il controller li ha. Da spento si risparmia un po\' di batteria e di rete, se il gioco non li usa.</string>
@@ -648,8 +737,21 @@
     <string name="apollo_info_overlay_trigger">Il tasto del controller da tenere premuto durante lo stream per aprire il menu di gioco.</string>
     <string name="apollo_info_overlay_commands">Scorciatoie da tastiera tue (come Alt+Tab o Win+D) da inviare al PC dal menu di gioco.</string>
     <string name="apollo_info_auto_resume">Se lo stream è in corso quando il dispositivo va in standby, riprende da solo al risveglio.</string>
+    <string name="apollo_info_leave_app">Cosa succede allo stream quando passi a un\'altra app o torni alla schermata Home. In ogni caso il gioco resta aperto sul PC.</string>
+    <string-array name="apollo_info_leave_app_names">
+        <item>Chiudi lo stream</item>
+        <item>Riconnetti al rientro</item>
+        <item>Tieni lo stream attivo</item>
+        <item>Picture-in-Picture</item>
+    </string-array>
+    <string-array name="apollo_info_leave_app_texts">
+        <item>La connessione si chiude: per tornare al gioco lo riavvii dall\'elenco</item>
+        <item>La connessione si chiude e riparte da sola quando torni, in pochi secondi. Nel frattempo non consuma nulla</item>
+        <item>La connessione resta aperta col video in pausa, così l\'immagine torna subito. Il PC continua a trasmettere, quindi consuma batteria e rete. Se nel frattempo la connessione cade, si riconnette quando torni</item>
+        <item>Lo stream resta visibile in una piccola finestra sopra le altre app. Puoi guardarlo ma non controllarlo, e chiudendo la finestra si chiude anche lo stream</item>
+    </string-array>
+    <string name="apollo_info_background_audio">Mentre lo stream è attivo in background continui a sentirlo: un gioco, la musica o una chiamata sul PC.</string>
     <string name="apollo_info_sops">Permette a GeForce Experience di cambiare le impostazioni del gioco per adattarle allo stream.</string>
-    <string name="apollo_info_pip">Quando passi a un\'altra app, lo stream resta visibile in una piccola finestra. Puoi guardarlo, ma non controllarlo.</string>
     <string name="apollo_info_fullscreen_ui">Nasconde le barre di Android nell\'app. Scorri dal bordo dello schermo per farle ricomparire.</string>
     <string name="apollo_info_small_icon_mode">Copertine più piccole nella griglia dei giochi, così ne vedi di più.</string>
 </resources>

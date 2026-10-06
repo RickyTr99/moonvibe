@@ -454,6 +454,12 @@ VulkanRenderer::VulkanRenderer(const NdkApi* ndk, const RendererConfig& config)
     if (__system_property_get("debug.moonlight.partial_lost_pct", value) > 0) {
         lostFrameMinPercent_ = std::clamp(atoi(value), 0, 100);
     }
+    // Record framing (Vibeshine-family hosts such as Vibepollo) can't decode a partial frame, so a
+    // frame cut short would be dropped rather than shown a refresh late: never cut with these hosts.
+    if (config.pyrowaveRecordFraming && partialEnabled_) {
+        partialEnabled_ = false;
+        ALOGI("Host sends PyroWave record framing: late frames are shown late, not cut short");
+    }
     ALOGI("PyroWave frames that lost packets shown with at least %d%% of their blocks", lostFrameMinPercent_);
     ALOGI("Late PyroWave frames cut short: %s", partialEnabled_ ? "on" : "off");
     if (partialEnabled_) {

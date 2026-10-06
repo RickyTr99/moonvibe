@@ -24,6 +24,12 @@ public class SliderView extends View {
 
     private static final float STICK_RADIUS_DP = 12;
 
+    // A value typed past the end of the slider (the bitrate over 500 Mbps): the track, its number, a chosen shortcut
+    public static final int OVER_RANGE_COLOR = 0xFFE5736A;
+    public static final int OVER_RANGE_TEXT = 0xFFF2A39C;
+    public static final int OVER_RANGE_FILL = 0xFF5A2E2B;
+    public static final int OVER_RANGE_ON_FILL = 0xFFFFDAD6;
+
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint stickPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rect = new RectF();
@@ -31,6 +37,7 @@ public class SliderView extends View {
     private int min, max, step, value;
     private Listener listener;
     private String stickLetter;
+    private boolean overRange;
 
     public SliderView(Context context, ApolloColors colors) {
         super(context);
@@ -41,6 +48,14 @@ public class SliderView extends View {
         this.min = min;
         this.max = Math.max(max, min + 1);
         this.step = Math.max(step, 1);
+    }
+
+    /** A value past the end: the slider stays full, in red. */
+    public void setOverRange(boolean overRange) {
+        if (this.overRange != overRange) {
+            this.overRange = overRange;
+            invalidate();
+        }
     }
 
     public void setValue(int value) {
@@ -93,7 +108,7 @@ public class SliderView extends View {
         if (rect.width() > 0) {
             canvas.drawRoundRect(rect, track / 2, track / 2, paint);
         }
-        paint.setColor(colors.primary);
+        paint.setColor(overRange ? OVER_RANGE_COLOR : colors.primary);
         rect.set(0, cy - track / 2, Math.max(x - gap, 0), cy + track / 2);
         if (rect.width() > 0) {
             canvas.drawRoundRect(rect, track / 2, track / 2, paint);

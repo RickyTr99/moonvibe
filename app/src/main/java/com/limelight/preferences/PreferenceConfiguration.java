@@ -8,6 +8,7 @@ import android.preference.PreferenceManager;
 import android.view.Display;
 
 import com.limelight.nvstream.jni.MoonBridge;
+import com.limelight.profiles.Profiles;
 
 public class PreferenceConfiguration {
     public enum FormatOption {
@@ -64,6 +65,7 @@ public class PreferenceConfiguration {
     private static final String SHOW_GUIDE_BUTTON_PREF_STRING = "checkbox_show_guide_button";
     private static final String LEGACY_DISABLE_FRAME_DROP_PREF_STRING = "checkbox_disable_frame_drop";
     private static final String ENABLE_HDR_PREF_STRING = "checkbox_enable_hdr";
+    // Before MoonVibe moved picture-in-picture into LEAVE_APP_PREF_STRING
     private static final String ENABLE_PIP_PREF_STRING = "checkbox_enable_pip";
     private static final String ENABLE_PERF_OVERLAY_STRING = "checkbox_enable_perf_overlay";
     private static final String BIND_ALL_USB_STRING = "checkbox_usb_bind_all";
@@ -95,9 +97,12 @@ public class PreferenceConfiguration {
     private static final String GAMEPAD_TOUCHPAD_AS_MOUSE_PREF_STRING = "checkbox_gamepad_touchpad_as_mouse";
     private static final String GAMEPAD_MOTION_SENSORS_PREF_STRING = "checkbox_gamepad_motion_sensors";
     private static final String GAMEPAD_MOTION_FALLBACK_PREF_STRING = "checkbox_gamepad_motion_fallback";
+    private static final String AUTO_CONNECT_CONTROLLERS_PREF_STRING = "checkbox_auto_connect_controllers";
     private static final String OVERLAY_TRIGGER_BUTTON_PREF_STRING = "overlay_trigger_button";
     private static final String OVERLAY_HOLD_DURATION_PREF_STRING = "overlay_hold_duration";
     private static final String AUTO_RESUME_STREAM_PREF_STRING = "checkbox_auto_resume_stream";
+    private static final String LEAVE_APP_PREF_STRING = "list_leave_app";
+    private static final String BACKGROUND_AUDIO_PREF_STRING = "checkbox_background_audio";
     private static final String VIDEO_RENDERER_PREF_STRING = "video_renderer";
     private static final String SPATIAL_DITHERING_PREF_STRING = "spatial_dithering";
     private static final String JITTER_BUFFER_PREF_STRING = "jitter_buffer";
@@ -125,7 +130,6 @@ public class PreferenceConfiguration {
     private static final boolean ONLY_L3_R3_DEFAULT = false;
     private static final boolean SHOW_GUIDE_BUTTON_DEFAULT = true;
     private static final boolean DEFAULT_ENABLE_HDR = false;
-    private static final boolean DEFAULT_ENABLE_PIP = false;
     private static final boolean DEFAULT_ENABLE_PERF_OVERLAY = false;
     private static final boolean DEFAULT_BIND_ALL_USB = false;
     private static final boolean DEFAULT_MOUSE_EMULATION = true;
@@ -168,9 +172,19 @@ public class PreferenceConfiguration {
     private static final boolean DEFAULT_GAMEPAD_TOUCHPAD_AS_MOUSE = false;
     private static final boolean DEFAULT_GAMEPAD_MOTION_SENSORS = true;
     private static final boolean DEFAULT_GAMEPAD_MOTION_FALLBACK = false;
+    private static final boolean DEFAULT_AUTO_CONNECT_CONTROLLERS = true;
     private static final String DEFAULT_OVERLAY_TRIGGER_BUTTON = "select";
     private static final String DEFAULT_OVERLAY_HOLD_DURATION = "1500";
     private static final boolean DEFAULT_AUTO_RESUME_STREAM = false;
+    private static final String DEFAULT_LEAVE_APP = "close";
+    private static final boolean DEFAULT_BACKGROUND_AUDIO = false;
+
+    // What a stream does when the user switches to another app
+    public static final int LEAVE_APP_CLOSE = 0;
+    public static final int LEAVE_APP_RECONNECT = 1;
+    public static final int LEAVE_APP_KEEP = 2;
+    public static final int LEAVE_APP_PIP = 3;
+    public static final String LEAVE_APP_PIP_VALUE = "pip";
 
     public static final int FRAME_PACING_MIN_LATENCY = 0;
     public static final int FRAME_PACING_BALANCED = 1;
@@ -254,9 +268,12 @@ public class PreferenceConfiguration {
     public boolean gamepadMotionSensors;
     public boolean gamepadTouchpadAsMouse;
     public boolean gamepadMotionSensorsFallbackToDevice;
+    public boolean autoConnectControllers;
     public String overlayTriggerButton;
     public int overlayHoldDurationMs;
     public boolean autoResumeStream;
+    public int leaveApp;
+    public boolean backgroundAudio;
 
     public static boolean isNativeResolution(int width, int height) {
         // It's not a native resolution if it matches an existing resolution option
@@ -442,14 +459,14 @@ public class PreferenceConfiguration {
     }
 
     public static int getDefaultBitrate(Context context) {
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        SharedPreferences prefs = Profiles.prefs(context);
         return getDefaultBitrate(
                 prefs.getString(RESOLUTION_PREF_STRING, DEFAULT_RESOLUTION),
                 prefs.getString(FPS_PREF_STRING, DEFAULT_FPS));
     }
 
     private static FormatOption getVideoFormatValue(Context context) {
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        SharedPreferences prefs = Profiles.prefs(context);
 
         String str = prefs.getString(VIDEO_FORMAT_PREF_STRING, DEFAULT_VIDEO_FORMAT);
         if (str.equals("auto")) {
@@ -474,7 +491,7 @@ public class PreferenceConfiguration {
     }
 
     private static VideoRendererOption getVideoRendererValue(Context context) {
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        SharedPreferences prefs = Profiles.prefs(context);
 
         String str = prefs.getString(VIDEO_RENDERER_PREF_STRING, DEFAULT_VIDEO_RENDERER);
         if (str.equals("direct")) {
@@ -489,7 +506,7 @@ public class PreferenceConfiguration {
     }
 
     private static SpatialDitheringOption getSpatialDitheringValue(Context context) {
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        SharedPreferences prefs = Profiles.prefs(context);
 
         String str = prefs.getString(SPATIAL_DITHERING_PREF_STRING, DEFAULT_SPATIAL_DITHERING);
         if (str.equals("low")) {
@@ -504,7 +521,7 @@ public class PreferenceConfiguration {
     }
 
     private static int getPyrowaveLateFramesValue(Context context) {
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        SharedPreferences prefs = Profiles.prefs(context);
 
         String str = prefs.getString(PYROWAVE_LATE_FRAMES_PREF_STRING, DEFAULT_PYROWAVE_LATE_FRAMES);
         if (str.equals("off")) {
@@ -525,7 +542,7 @@ public class PreferenceConfiguration {
     }
 
     private static int getJitterBufferValue(Context context) {
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        SharedPreferences prefs = Profiles.prefs(context);
 
         String str = prefs.getString(JITTER_BUFFER_PREF_STRING, DEFAULT_JITTER_BUFFER);
         if (str.equals("low-latency")) {
@@ -543,7 +560,7 @@ public class PreferenceConfiguration {
     }
 
     private static int getFramePacingValue(Context context) {
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        SharedPreferences prefs = Profiles.prefs(context);
 
         // Migrate legacy never drop frames option to the new location
         if (prefs.contains(LEGACY_DISABLE_FRAME_DROP_PREF_STRING)) {
@@ -577,7 +594,7 @@ public class PreferenceConfiguration {
     }
 
     private static AnalogStickForScrolling getAnalogStickForScrollingValue(Context context) {
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        SharedPreferences prefs = Profiles.prefs(context);
 
         String str = prefs.getString(ANALOG_SCROLLING_PREF_STRING, DEFAULT_ANALOG_STICK_FOR_SCROLLING);
         if (str.equals("right")) {
@@ -593,7 +610,7 @@ public class PreferenceConfiguration {
 
     public static void resetStreamingSettings(Context context) {
         // We consider resolution, FPS, bitrate, HDR, and video format as "streaming settings" here
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        SharedPreferences prefs = Profiles.prefs(context);
         prefs.edit()
                 .remove(BITRATE_PREF_STRING)
                 .remove(BITRATE_PREF_OLD_STRING)
@@ -609,7 +626,7 @@ public class PreferenceConfiguration {
 
     public static void completeLanguagePreferenceMigration(Context context) {
         // Put our language option back to default which tells us that we've already migrated it
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        SharedPreferences prefs = Profiles.prefs(context);
         prefs.edit().putString(LANGUAGE_PREF_STRING, DEFAULT_LANGUAGE).apply();
     }
 
@@ -631,7 +648,7 @@ public class PreferenceConfiguration {
     }
 
     public static PreferenceConfiguration readPreferences(Context context) {
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        SharedPreferences prefs = Profiles.prefs(context);
         PreferenceConfiguration config = new PreferenceConfiguration();
 
         // Migrate legacy preferences to the new locations
@@ -642,6 +659,15 @@ public class PreferenceConfiguration {
                         .putString(AUDIO_CONFIG_PREF_STRING, "51")
                         .apply();
             }
+        }
+
+        // MoonVibe: picture-in-picture became an option of "When you leave the app"
+        if (prefs.contains(ENABLE_PIP_PREF_STRING)) {
+            SharedPreferences.Editor editor = prefs.edit().remove(ENABLE_PIP_PREF_STRING);
+            if (prefs.getBoolean(ENABLE_PIP_PREF_STRING, false) && !prefs.contains(LEAVE_APP_PREF_STRING)) {
+                editor.putString(LEAVE_APP_PREF_STRING, LEAVE_APP_PIP_VALUE);
+            }
+            editor.apply();
         }
 
         String str = prefs.getString(LEGACY_RES_FPS_PREF_STRING, null);
@@ -788,7 +814,6 @@ public class PreferenceConfiguration {
         config.onlyL3R3 = prefs.getBoolean(ONLY_L3_R3_PREF_STRING, ONLY_L3_R3_DEFAULT);
         config.showGuideButton = prefs.getBoolean(SHOW_GUIDE_BUTTON_PREF_STRING, SHOW_GUIDE_BUTTON_DEFAULT);
         config.enableHdr = prefs.getBoolean(ENABLE_HDR_PREF_STRING, DEFAULT_ENABLE_HDR) && !isShieldAtvFirmwareWithBrokenHdr();
-        config.enablePip = prefs.getBoolean(ENABLE_PIP_PREF_STRING, DEFAULT_ENABLE_PIP);
         config.enablePerfOverlay = prefs.getBoolean(ENABLE_PERF_OVERLAY_STRING, DEFAULT_ENABLE_PERF_OVERLAY);
         config.bindAllUsb = prefs.getBoolean(BIND_ALL_USB_STRING, DEFAULT_BIND_ALL_USB);
         config.mouseEmulation = prefs.getBoolean(MOUSE_EMULATION_STRING, DEFAULT_MOUSE_EMULATION);
@@ -817,9 +842,26 @@ public class PreferenceConfiguration {
         config.gamepadTouchpadAsMouse = prefs.getBoolean(GAMEPAD_TOUCHPAD_AS_MOUSE_PREF_STRING, DEFAULT_GAMEPAD_TOUCHPAD_AS_MOUSE);
         config.gamepadMotionSensors = prefs.getBoolean(GAMEPAD_MOTION_SENSORS_PREF_STRING, DEFAULT_GAMEPAD_MOTION_SENSORS);
         config.gamepadMotionSensorsFallbackToDevice = prefs.getBoolean(GAMEPAD_MOTION_FALLBACK_PREF_STRING, DEFAULT_GAMEPAD_MOTION_FALLBACK);
+        config.autoConnectControllers = prefs.getBoolean(AUTO_CONNECT_CONTROLLERS_PREF_STRING, DEFAULT_AUTO_CONNECT_CONTROLLERS);
         config.overlayTriggerButton = prefs.getString(OVERLAY_TRIGGER_BUTTON_PREF_STRING, DEFAULT_OVERLAY_TRIGGER_BUTTON);
         config.overlayHoldDurationMs = Integer.parseInt(prefs.getString(OVERLAY_HOLD_DURATION_PREF_STRING, DEFAULT_OVERLAY_HOLD_DURATION));
         config.autoResumeStream = prefs.getBoolean(AUTO_RESUME_STREAM_PREF_STRING, DEFAULT_AUTO_RESUME_STREAM);
+        switch (prefs.getString(LEAVE_APP_PREF_STRING, DEFAULT_LEAVE_APP)) {
+            case "reconnect":
+                config.leaveApp = LEAVE_APP_RECONNECT;
+                break;
+            case "keep":
+                config.leaveApp = LEAVE_APP_KEEP;
+                break;
+            case LEAVE_APP_PIP_VALUE:
+                config.leaveApp = LEAVE_APP_PIP;
+                break;
+            default:
+                config.leaveApp = LEAVE_APP_CLOSE;
+                break;
+        }
+        config.enablePip = config.leaveApp == LEAVE_APP_PIP;
+        config.backgroundAudio = prefs.getBoolean(BACKGROUND_AUDIO_PREF_STRING, DEFAULT_BACKGROUND_AUDIO);
 
         return config;
     }

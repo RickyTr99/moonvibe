@@ -25,6 +25,7 @@ import android.window.OnBackInvokedDispatcher;
 
 import com.limelight.R;
 import com.limelight.preferences.PreferenceConfiguration;
+import com.limelight.profiles.Profiles;
 import com.limelight.ui.apollo.ApolloUi;
 import com.limelight.ui.apollo.ApolloWidgets;
 import com.limelight.ui.apollo.hints.ButtonGlyph;
@@ -87,7 +88,8 @@ public class QuickSettingsPanel extends FrameLayout {
     private QuickSettingsPanel(Context context) {
         super(context);
         colors = ApolloColors.dark(context);
-        prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        // The settings of the profile in use, whichever it is at each read and write
+        prefs = Profiles.live(context);
         setVisibility(GONE);
 
         // The whole screen dims evenly, a tap outside closes it
@@ -155,6 +157,8 @@ public class QuickSettingsPanel extends FrameLayout {
             @Override
             public void onSliderMoved(int value) {
                 bitrateValue.setText(bitrateText(value));
+                bitrateValue.setTextColor(colors.onSurface);
+                bitrateSlider.setOverRange(false);
             }
 
             @Override
@@ -167,7 +171,9 @@ public class QuickSettingsPanel extends FrameLayout {
             if (keyCode != KeyEvent.KEYCODE_DPAD_LEFT && keyCode != KeyEvent.KEYCODE_DPAD_RIGHT) {
                 return false;
             }
-            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            // A value typed past the end in the settings stays until the slider is moved down
+            boolean pastEnd = keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && bitrate() >= BITRATE_MAX_KBPS;
+            if (event.getAction() == KeyEvent.ACTION_DOWN && !pastEnd) {
                 int step = BITRATE_STEP_KBPS * SettingsView.sliderSpeed(event)
                         * (keyCode == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1);
                 setBitrate(Math.max(BITRATE_MIN_KBPS, Math.min(BITRATE_MAX_KBPS, bitrate() + step)));
@@ -293,6 +299,8 @@ public class QuickSettingsPanel extends FrameLayout {
         int bitrate = bitrate();
         bitrateSlider.setValue(bitrate);
         bitrateValue.setText(bitrateText(bitrate));
+        bitrateValue.setTextColor(bitrate > BITRATE_MAX_KBPS ? SliderView.OVER_RANGE_TEXT : colors.onSurface);
+        bitrateSlider.setOverRange(bitrate > BITRATE_MAX_KBPS);
 
         String[] values = getResources().getStringArray(R.array.video_format_values);
         String[] names = getResources().getStringArray(R.array.video_format_names);
@@ -477,6 +485,7 @@ public class QuickSettingsPanel extends FrameLayout {
         if (showing) {
             return;
         }
+        ProfileMenu.of((Activity) getContext()).dismiss();
         bind(false);
         Activity activity = (Activity) getContext();
         focusBeforeShow = activity.getCurrentFocus();

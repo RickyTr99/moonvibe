@@ -8,6 +8,7 @@ import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.database.DataSetObserver;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.LayerDrawable;
 import android.preference.EditTextPreference;
@@ -26,6 +27,8 @@ import android.text.style.AbsoluteSizeSpan;
 import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
 import android.text.style.ForegroundColorSpan;
+import android.text.style.StyleSpan;
+import android.text.style.TypefaceSpan;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -41,6 +44,7 @@ import android.widget.TextView;
 import com.limelight.R;
 import com.limelight.preferences.ConfirmDeleteOscPreference;
 import com.limelight.preferences.LanguagePreference;
+import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.preferences.SeekBarPreference;
 import com.limelight.ui.apollo.ApolloUi;
 import com.limelight.ui.apollo.ApolloWidgets;
@@ -76,6 +80,7 @@ public class SettingsView extends FrameLayout {
     private final ScrollView rowScroll;
     private final OptionsPopup popup;
     private final InfoPopup infoPopup;
+    private final ValuePopup valuePopup;
     // On top of the categories; null on a single page
     private final SearchField searchField;
     // What is searched for, empty while a category shows
@@ -128,11 +133,78 @@ public class SettingsView extends FrameLayout {
         // What the setting does, behind the "i" after its name; null for the obvious ones
         SettingsLayout.Info info;
         InfoSpan infoSpan;
+        // Why the setting does nothing now, or a note on it (SettingsRules); null when it just works
+        SettingsRules.Block block;
+        // The name as built, and the reason shown under it
+        CharSequence baseText;
+        CharSequence shownHint;
+        // The gamepad hints of the row; a row turned off by a rule shows "A Info" instead
+        Object normalHints;
     }
+
+    // A row that a rule turns off: A and taps open its explanation instead of changing it
+    private static boolean blocked(Row row) {
+        return row.block != null && !row.block.soft;
+    }
+
+    private final SettingsRules.Labels labels = new SettingsRules.Labels() {
+        @Override
+        public CharSequence title(Preference pref) {
+            return SettingsView.this.title(pref);
+        }
+
+        @Override
+        public CharSequence option(ListPreference pref, int index) {
+            return optionLabel(pref, index);
+        }
+    };
 
     // Defaults of the settings, to mark the changed ones and restore a category; null on a single page
     private final SettingsDefaults defaults;
     private View restoreRow;
+    private SharedPreferences listenedPrefs;
+
+    /** A profile being edited: which settings it changes, and how one goes back to the general value. */
+    public interface ProfileMode {
+        // A setting a profile can hold (the others on the page, like its name, are just shown)
+        boolean isProfileSetting(String key);
+
+        boolean isOverridden(String key);
+
+        void useGeneral(String key);
+
+        // A line under the name, or null
+        CharSequence note(Preference pref);
+
+        // Under the page title
+        CharSequence headerNote();
+    }
+
+    private ProfileMode profileMode;
+
+    /**
+     * The page of a profile: its name and rule, the settings it can change (Video, Codec, Audio)
+     * and a last row to delete it.
+     */
+    public static SettingsView profilePage(Activity activity, ApolloColors colors, CharSequence title, ProfileMode mode,
+                                           String nameKey, String deleteKey) {
+        List<SettingsLayout.Category> page = new ArrayList<>();
+        page.add(new SettingsLayout.Category(title, SettingsLayout.profileEntries(nameKey, deleteKey)));
+        SettingsView view = new SettingsView(activity, colors, page, true);
+        view.profileMode = mode;
+        return view;
+    }
+
+    private boolean isProfileOverride(Row row) {
+        return profileMode != null && row.pref.getKey() != null && profileMode.isProfileSetting(row.pref.getKey())
+                && profileMode.isOverridden(row.pref.getKey());
+    }
+
+    // X or a long press: the setting follows the general settings again
+    private void useGeneral(Row row) {
+        profileMode.useGeneral(row.pref.getKey());
+        bindRows(true);
+    }
 
     public SettingsView(Activity activity, ApolloColors colors) {
         this(activity, colors, SettingsLayout.categories(), false);
@@ -242,6 +314,7 @@ public class SettingsView extends FrameLayout {
 
         popup = new OptionsPopup(this, content, colors);
         infoPopup = new InfoPopup(this, content, colors);
+        valuePopup = new ValuePopup(this, content, colors);
     }
 
     private int dp(float value) {
@@ -275,6 +348,9 @@ public class SettingsView extends FrameLayout {
         this.screen = screen;
         this.screenAdapter = screen.getRootAdapter();
         screenAdapter.registerDataSetObserver(screenObserver);
+        if (isAttachedToWindow()) {
+            listenTo(screenPrefs());
+        }
 
         // A setting that upstream adds later still shows up, at the end of the App category
         if (!singlePage) {
@@ -313,24 +389,42 @@ public class SettingsView extends FrameLayout {
         }
     }
 
+    // The settings the screen's preferences live in: the general ones, or a profile being edited
+    private SharedPreferences screenPrefs() {
+        return screen != null ? screen.getSharedPreferences() : PreferenceManager.getDefaultSharedPreferences(getContext());
+    }
+
+    private void listenTo(SharedPreferences prefs) {
+        if (listenedPrefs == prefs) {
+            return;
+        }
+        if (listenedPrefs != null) {
+            listenedPrefs.unregisterOnSharedPreferenceChangeListener(prefsListener);
+        }
+        listenedPrefs = prefs;
+        if (prefs != null) {
+            prefs.registerOnSharedPreferenceChangeListener(prefsListener);
+        }
+    }
+
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        PreferenceManager.getDefaultSharedPreferences(getContext()).registerOnSharedPreferenceChangeListener(prefsListener);
+        listenTo(screenPrefs());
     }
 
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
-        PreferenceManager.getDefaultSharedPreferences(getContext()).unregisterOnSharedPreferenceChangeListener(prefsListener);
+        listenTo(null);
         if (screenAdapter != null) {
             screenAdapter.unregisterDataSetObserver(screenObserver);
         }
     }
 
-    /** Back closes the explanation, the options menu or the search first */
+    /** Back closes the value popup, the explanation, the options menu or the search first */
     public boolean onBackPressed() {
-        return infoPopup.dismiss(true) || popup.dismiss(true) || closeSearch();
+        return valuePopup.back() || infoPopup.dismiss(true) || popup.dismiss(true) || closeSearch();
     }
 
     /**
@@ -338,7 +432,7 @@ public class SettingsView extends FrameLayout {
      * or goes from the settings back to their category
      */
     public boolean onButtonB() {
-        if (infoPopup.dismiss(true) || popup.dismiss(true) || closeSearch()) {
+        if (valuePopup.back() || infoPopup.dismiss(true) || popup.dismiss(true) || closeSearch()) {
             return true;
         }
         // From the empty search box, back to the categories
@@ -672,6 +766,23 @@ public class SettingsView extends FrameLayout {
                     }
                 }
             });
+            // Up from the first category and down from the last one go to the search box. It's outside the
+            // scroll view of the categories, which would first scroll to its end, a step that looks like
+            // an empty category
+            button.setOnKeyListener((v, keyCode, event) -> {
+                boolean up = keyCode == KeyEvent.KEYCODE_DPAD_UP && index == 0;
+                boolean down = keyCode == KeyEvent.KEYCODE_DPAD_DOWN && index == categoryViews.size() - 1;
+                if (searchField == null || (!up && !down)) {
+                    return false;
+                }
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    if (up) {
+                        ((ScrollView) categoryList.getParent()).smoothScrollTo(0, 0);
+                    }
+                    searchField.edit.requestFocus();
+                }
+                return true;
+            });
             HintRow.set(button, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_open, KeyEvent.KEYCODE_BUTTON_X, R.string.apollo_hint_search,
                     KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_home, KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings);
             // The D-pad selects a category just by moving on it, like tabs
@@ -749,6 +860,12 @@ public class SettingsView extends FrameLayout {
         TextView header = ApolloUi.text(getContext(), category.title(getContext()), 18, colors.onSurface, true);
         header.setPadding(dp(14), dp(14), dp(14), dp(6));
         rowList.addView(header);
+        if (profileMode != null && profileMode.headerNote() != null) {
+            TextView note = ApolloUi.text(getContext(), profileMode.headerNote(), 12.5f, colors.outline, false);
+            note.setLineSpacing(0, 1.25f);
+            note.setPadding(dp(14), 0, dp(14), dp(8));
+            rowList.addView(note);
+        }
 
         for (Object entry : category.entries) {
             if (entry instanceof SettingsLayout.Item) {
@@ -887,11 +1004,12 @@ public class SettingsView extends FrameLayout {
 
     // Marks the changed settings and their categories, and shows the restore row when there is something to restore
     private void bindModified(boolean animate) {
-        if (defaults == null) {
+        if (defaults == null && profileMode == null) {
             return;
         }
         for (Row row : rows) {
-            boolean modified = defaults.isModified(row.pref);
+            // On a profile's page the dot marks the settings the profile changes
+            boolean modified = profileMode != null ? isProfileOverride(row) : defaults.isModified(row.pref);
             if (row.dot == null || (modified == row.modified && animate)) {
                 continue;
             }
@@ -1014,7 +1132,7 @@ public class SettingsView extends FrameLayout {
         row.label = ApolloUi.text(getContext(), title(pref), 14, colors.onSurface, true);
         row.label.setPadding(0, dp(6), dp(12), dp(6));
         row.label.setLineSpacing(0, 1.15f);
-        if (defaults != null || row.info != null || path != null) {
+        if (defaults != null || profileMode != null || row.info != null || path != null) {
             SpannableStringBuilder text = new SpannableStringBuilder();
             if (path != null) {
                 text.append(path);
@@ -1034,7 +1152,7 @@ public class SettingsView extends FrameLayout {
                 text.append(' ');
                 text.setSpan(row.infoSpan, text.length() - 1, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
-            if (defaults != null) {
+            if (defaults != null || (profileMode != null && profileMode.isProfileSetting(pref.getKey()))) {
                 row.dot = new DotSpan(colors.primary, dp(4), dp(5));
                 text.append(' ');
                 text.setSpan(row.dot, text.length() - 1, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
@@ -1047,13 +1165,20 @@ public class SettingsView extends FrameLayout {
             }
             row.label.setText(text);
         }
+        row.baseText = row.label.getText();
         view.addView(row.label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
         if (pref instanceof TwoStatePreference) {
             row.toggle = new ApolloWidgets.SwitchView(getContext());
             row.toggle.setColors(colors.primary, colors.onPrimary, colors.surfaceContainerHighest, colors.outline);
             view.addView(row.toggle);
-            view.setOnClickListener(v -> performClick(pref));
+            view.setOnClickListener(v -> {
+                if (blocked(row)) {
+                    showInfo(row);
+                } else {
+                    performClick(pref);
+                }
+            });
             HintRow.set(view, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_change, KeyEvent.KEYCODE_BUTTON_B, backHint());
         }
         else if (pref instanceof SeekBarPreference) {
@@ -1068,7 +1193,7 @@ public class SettingsView extends FrameLayout {
             row.slider.setListener(new SliderView.Listener() {
                 @Override
                 public void onSliderMoved(int value) {
-                    row.value.setText(seekBar.formatValue(value));
+                    showSliderValue(row, seekBar, value);
                 }
 
                 @Override
@@ -1077,32 +1202,57 @@ public class SettingsView extends FrameLayout {
                     seekBar.applyValue(value);
                 }
             });
+            boolean custom = seekBar.isCustomAllowed();
             // Left and right move the slider while its row has the focus
             view.setOnKeyListener((v, keyCode, event) -> {
                 if (keyCode != KeyEvent.KEYCODE_DPAD_LEFT && keyCode != KeyEvent.KEYCODE_DPAD_RIGHT) {
                     return false;
                 }
-                if (event.getAction() == KeyEvent.ACTION_DOWN && pref.isEnabled()) {
+                // A value typed past the end stays until the slider is moved down into its range
+                boolean pastEnd = keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && row.sliderValue >= seekBar.getMaxValue();
+                if (event.getAction() == KeyEvent.ACTION_DOWN && pref.isEnabled() && !blocked(row) && !pastEnd) {
                     // Holding the D-pad speeds up, so the 500 steps of the bitrate stay quick to cross
                     int step = seekBar.getKeyStepSize() * sliderSpeed(event) * (keyCode == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1);
                     int value = Math.max(seekBar.getMinValue(), Math.min(seekBar.getMaxValue(), row.sliderValue + step));
                     if (value != row.sliderValue) {
                         row.sliderValue = value;
                         row.slider.setValue(value);
-                        row.value.setText(seekBar.formatValue(value));
+                        showSliderValue(row, seekBar, value);
                         seekBar.applyValue(value);
                     }
                 }
                 return true;
             });
-            // The slider is set right in the row, so the original dialog is not needed any more
-            view.setClickable(false);
-            HintRow.set(view, ButtonGlyph.DPAD_LEFT_RIGHT, R.string.apollo_hint_adjust, KeyEvent.KEYCODE_BUTTON_B, backHint());
+            // The slider is set right in the row, so the original dialog is not needed any more.
+            // A tap or A types a value by hand where the setting allows it; a slider turned off by
+            // a rule takes A for its explanation instead (see bindRows)
+            view.setOnClickListener(v -> {
+                if (custom && !blocked(row) && pref.isEnabled()) {
+                    showValuePopup(row, seekBar);
+                } else {
+                    showInfo(row);
+                }
+            });
+            view.setClickable(custom);
+            if (custom) {
+                HintRow.set(view, new HintRow.Hint[]{
+                        HintRow.hint(getContext(), ButtonGlyph.DPAD_LEFT_RIGHT, R.string.apollo_hint_adjust),
+                        HintRow.hint(getContext(), KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_write),
+                        HintRow.hint(getContext(), KeyEvent.KEYCODE_BUTTON_B, backHint())});
+            } else {
+                HintRow.set(view, ButtonGlyph.DPAD_LEFT_RIGHT, R.string.apollo_hint_adjust, KeyEvent.KEYCODE_BUTTON_B, backHint());
+            }
         }
         else if (pref instanceof ListPreference && !(pref instanceof LanguagePreference)) {
             row.value = valueChip();
             view.addView(row.value);
-            view.setOnClickListener(v -> showOptions(row));
+            view.setOnClickListener(v -> {
+                if (blocked(row)) {
+                    showInfo(row);
+                } else {
+                    showOptions(row);
+                }
+            });
             HintRow.set(view, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_change, KeyEvent.KEYCODE_BUTTON_B, backHint());
         }
         else {
@@ -1116,7 +1266,13 @@ public class SettingsView extends FrameLayout {
             chevron.setImageResource(R.drawable.ic_apollo_chevron_right);
             chevron.setImageTintList(ColorStateList.valueOf(colors.onSurfaceVariant));
             view.addView(chevron, new LinearLayout.LayoutParams(dp(18), dp(18)));
-            view.setOnClickListener(v -> performClick(pref));
+            view.setOnClickListener(v -> {
+                if (blocked(row)) {
+                    showInfo(row);
+                } else {
+                    performClick(pref);
+                }
+            });
             HintRow.set(view, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_open, KeyEvent.KEYCODE_BUTTON_B, backHint());
         }
 
@@ -1125,6 +1281,17 @@ public class SettingsView extends FrameLayout {
         }
         if (searchField != null) {
             insertHint(view, KeyEvent.KEYCODE_BUTTON_X, R.string.apollo_hint_search);
+        }
+        row.normalHints = view.getTag(R.id.apollo_hints);
+        if (profileMode != null && profileMode.isProfileSetting(pref.getKey())) {
+            // A long press takes a setting the profile changes back to the general value
+            view.setOnLongClickListener(v -> {
+                if (!isProfileOverride(row)) {
+                    return false;
+                }
+                useGeneral(row);
+                return true;
+            });
         }
 
         rows.add(row);
@@ -1154,14 +1321,45 @@ public class SettingsView extends FrameLayout {
         return Math.abs(x - cx) <= half && Math.abs(y - cy) <= half;
     }
 
+    // The number after the slider; past the slider's end both turn red
+    private void showSliderValue(Row row, SeekBarPreference seekBar, int value) {
+        boolean over = value > seekBar.getMaxValue();
+        row.value.setText(seekBar.formatValue(value));
+        row.value.setTextColor(over ? SliderView.OVER_RANGE_TEXT : colors.onSurface);
+        row.slider.setOverRange(over);
+    }
+
+    // The bitrate shortcuts, in Mbps
+    private static final int[] BITRATE_SHORTCUTS_MBPS = {50, 100, 150, 300, 500, 800};
+
+    private void showValuePopup(Row row, SeekBarPreference seekBar) {
+        popup.dismiss(false);
+        infoPopup.dismiss(false);
+        int unit = Math.max(seekBar.getDivisor(), seekBar.getKeyStepSize());
+        int[] shortcuts = null;
+        if (PreferenceConfiguration.BITRATE_PREF_STRING.equals(seekBar.getKey())) {
+            shortcuts = new int[BITRATE_SHORTCUTS_MBPS.length];
+            for (int i = 0; i < shortcuts.length; i++) {
+                shortcuts[i] = BITRATE_SHORTCUTS_MBPS[i] * seekBar.getDivisor();
+            }
+        }
+        valuePopup.show(row.view, title(row.pref), seekBar.getSuffix(), row.sliderValue, seekBar.getMinValue(),
+                seekBar.getMaxValue(), unit, shortcuts, value -> {
+                    row.sliderValue = value;
+                    row.slider.setValue(value);
+                    showSliderValue(row, seekBar, value);
+                    seekBar.applyValue(value);
+                });
+    }
+
     private void showInfo(Row row) {
-        if (row.info == null) {
+        if (row.info == null && row.block == null) {
             return;
         }
         popup.dismiss(false);
         List<InfoPopup.Option> options = null;
         SettingsLayout.Info info = row.info;
-        if (info.optionValues != 0 && row.pref instanceof ListPreference) {
+        if (info != null && info.optionValues != 0 && row.pref instanceof ListPreference) {
             ListPreference list = (ListPreference) row.pref;
             String[] values = getResources().getStringArray(info.optionValues);
             String[] names = getResources().getStringArray(info.optionNames);
@@ -1174,12 +1372,58 @@ public class SettingsView extends FrameLayout {
                 }
             }
         }
-        infoPopup.show(row.view, title(row.pref), getContext().getString(info.text), options);
+        infoPopup.show(row.view, title(row.pref), info != null ? getContext().getString(info.text) : null, options, notice(row.block));
+    }
+
+    // "Not active." in bold before the reason, with the change that fixes it
+    private InfoPopup.Notice notice(SettingsRules.Block block) {
+        if (block == null) {
+            return null;
+        }
+        SpannableStringBuilder text = new SpannableStringBuilder();
+        if (!block.soft) {
+            text.append(getContext().getString(R.string.apollo_rule_inactive));
+            text.setSpan(new StyleSpan(Typeface.BOLD), 0, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            text.setSpan(new ForegroundColorSpan(colors.onSurface), 0, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            text.append(' ');
+        }
+        text.append(block.notice);
+        Runnable action = block.actionPref == null ? null : () -> {
+            Preference pref = block.actionPref;
+            if (pref instanceof ListPreference) {
+                String value = (String) block.actionValue;
+                if (callChangeListener(pref, value)) {
+                    ((ListPreference) pref).setValue(value);
+                }
+            } else if (pref instanceof TwoStatePreference) {
+                if (callChangeListener(pref, block.actionValue)) {
+                    ((TwoStatePreference) pref).setChecked((Boolean) block.actionValue);
+                }
+            }
+            bindRows(true);
+        };
+        return new InfoPopup.Notice(text, block.actionLabel, action);
     }
 
     // Y on a setting with an "i" opens its explanation, and closes it again; X goes to the search from anywhere
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        // The value popup takes its keys itself; Y means nothing there
+        if (valuePopup.isShowing()) {
+            return event.getKeyCode() == KeyEvent.KEYCODE_BUTTON_Y || super.dispatchKeyEvent(event);
+        }
+        // On a profile's page, X takes the focused setting back to the general value
+        if (event.getKeyCode() == KeyEvent.KEYCODE_BUTTON_X && profileMode != null
+                && !infoPopup.isShowing() && !popup.isShowing()) {
+            for (Row row : rows) {
+                if (row.view.isFocused() && isProfileOverride(row)) {
+                    if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                        useGeneral(row);
+                    }
+                    return true;
+                }
+            }
+        }
         if (event.getKeyCode() == KeyEvent.KEYCODE_BUTTON_X && searchField != null
                 && !infoPopup.isShowing() && !popup.isShowing()) {
             if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
@@ -1195,7 +1439,7 @@ public class SettingsView extends FrameLayout {
                 return true;
             }
             for (Row row : rows) {
-                if (row.info != null && row.view.isFocused()) {
+                if ((row.info != null || row.block != null) && row.view.isFocused()) {
                     if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
                         showInfo(row);
                     }
@@ -1237,12 +1481,22 @@ public class SettingsView extends FrameLayout {
 
     private void showOptions(Row row) {
         ListPreference list = (ListPreference) row.pref;
-        CharSequence[] options = new CharSequence[list.getEntries().length];
-        for (int i = 0; i < options.length; i++) {
+        int count = list.getEntries().length;
+        // On a profile's page a setting the profile changes can go back to the general value from here too
+        boolean canUseGeneral = isProfileOverride(row);
+        CharSequence[] options = new CharSequence[count + (canUseGeneral ? 1 : 0)];
+        for (int i = 0; i < count; i++) {
             options[i] = optionLabel(list, i);
+        }
+        if (canUseGeneral) {
+            options[count] = getContext().getString(R.string.apollo_profile_use_general);
         }
         int rightEdge = getWidth() - content.getPaddingRight() - dp(14);
         popup.show(row.view, rightEdge, options, list.findIndexOfValue(list.getValue()), index -> {
+            if (index >= count) {
+                useGeneral(row);
+                return;
+            }
             String value = list.getEntryValues()[index].toString();
             if (!value.equals(list.getValue()) && callChangeListener(list, value)) {
                 list.setValue(value);
@@ -1255,13 +1509,47 @@ public class SettingsView extends FrameLayout {
         if (screen == null) {
             return;
         }
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getContext());
+        SharedPreferences prefs = screenPrefs();
         for (Row row : rows) {
             Preference pref = row.pref;
-            boolean enabled = pref.isEnabled();
-            row.view.setAlpha(enabled ? 1f : 0.38f);
-            row.view.setEnabled(enabled);
-            row.view.setFocusable(enabled);
+            row.block = SettingsRules.check(getContext(), screen, pref, labels);
+            boolean enabled = pref.isEnabled() && !blocked(row);
+            // A setting turned off for a known reason stays reachable, so A can tell why
+            boolean explained = !enabled && row.block != null;
+            row.view.setAlpha(enabled ? 1f : explained ? 0.5f : 0.38f);
+            row.view.setEnabled(enabled || explained);
+            row.view.setFocusable(enabled || explained);
+            if (row.slider != null) {
+                row.view.setClickable(explained || (enabled && ((SeekBarPreference) pref).isCustomAllowed()));
+            }
+            HintRow.Hint[] hints = explained ? new HintRow.Hint[]{
+                    HintRow.hint(getContext(), KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_info),
+                    HintRow.hint(getContext(), KeyEvent.KEYCODE_BUTTON_B, backHint())} : null;
+            if (hints != null) {
+                HintRow.set(row.view, hints);
+            } else if (row.normalHints != null) {
+                row.view.setTag(R.id.apollo_hints, row.normalHints);
+                if (isProfileOverride(row)) {
+                    insertHint(row.view, KeyEvent.KEYCODE_BUTTON_X, R.string.apollo_profile_use_general);
+                }
+            }
+            // Only a row turned off says why under its name: a note on a working setting stays in its explanation.
+            // On a profile's page the settings it doesn't change say they follow the general ones
+            CharSequence hint = explained ? row.block.hint : profileMode != null ? profileMode.note(pref) : null;
+            if (!TextUtils.equals(hint, row.shownHint)) {
+                row.shownHint = hint;
+                if (hint == null) {
+                    row.label.setText(row.baseText);
+                } else {
+                    SpannableStringBuilder text = new SpannableStringBuilder(row.baseText).append('\n');
+                    int start = text.length();
+                    text.append(hint);
+                    text.setSpan(new AbsoluteSizeSpan(11, true), start, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    text.setSpan(new ForegroundColorSpan(colors.outline), start, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    text.setSpan(new TypefaceSpan("sans-serif"), start, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    row.label.setText(text);
+                }
+            }
 
             if (row.toggle != null) {
                 row.toggle.setChecked(((TwoStatePreference) pref).isChecked(), animate);
@@ -1272,7 +1560,7 @@ public class SettingsView extends FrameLayout {
                 row.sliderValue = prefs.getInt(pref.getKey(), seekBar.getDefaultValue());
                 row.slider.setEnabled(enabled);
                 row.slider.setValue(row.sliderValue);
-                row.value.setText(seekBar.formatValue(row.sliderValue));
+                showSliderValue(row, seekBar, row.sliderValue);
             }
             else if (pref instanceof ListPreference && !(pref instanceof LanguagePreference)) {
                 ListPreference list = (ListPreference) pref;
@@ -1282,6 +1570,11 @@ public class SettingsView extends FrameLayout {
             else if (pref instanceof ListPreference) {
                 CharSequence entry = ((ListPreference) pref).getEntry();
                 row.value.setText(entry != null ? entry : "");
+            }
+            else if (profileMode != null && pref instanceof EditTextPreference) {
+                // A profile's name
+                String text = ((EditTextPreference) pref).getText();
+                row.value.setText(text != null ? text : "");
             }
             else if (singlePage && row.value != null) {
                 // A game page shows what each setting is set to, as its summary tells
@@ -1344,11 +1637,13 @@ public class SettingsView extends FrameLayout {
             view.setNextFocusDownId(categoryViews.get((i + 1) % count).getId());
         }
 
-        // The search box sits over the first category; down from it goes to the results while there are some
+        // The search box sits over the first category and joins the loop: up from it goes to the last category,
+        // down from that one comes back to it. Down from it goes to the results while there are some
         if (searchField != null) {
             View edit = searchField.edit;
             categoryViews.get(0).setNextFocusUpId(edit.getId());
-            edit.setNextFocusUpId(edit.getId());
+            categoryViews.get(count - 1).setNextFocusDownId(edit.getId());
+            edit.setNextFocusUpId(categoryViews.get(count - 1).getId());
             edit.setNextFocusLeftId(edit.getId());
             edit.setNextFocusRightId(first != null ? first.getId() : edit.getId());
             edit.setNextFocusDownId(searching() && first != null ? first.getId() : categoryViews.get(0).getId());

@@ -4,4 +4,5 @@
     <item name="apollo_hints" type="id" />
     <!-- The status pill of the top bar, which opens the quick settings under itself -->
     <item name="apollo_quick_settings_anchor" type="id" />
+    <item name="apollo_profile_anchor" type="id" />
 </resources>

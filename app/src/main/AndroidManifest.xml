@@ -6,6 +6,11 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- MoonVibe: a stream kept running in the background, with its notification -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- MoonVibe: only to show the Wi-Fi name when the home network for the profiles is picked (asked then) -->
     <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA"/>
     <uses-permission android:name="com.android.providers.tv.permission.WRITE_EPG_DATA"/>
 
@@ -162,6 +167,12 @@
             <meta-data android:name="WindowManagerPreference:FreeformWindowOrientation" android:value="landscape" />
         </activity>
         <activity
+            android:name=".preferences.ProfilesActivity"
+            android:resizeableActivity="true"
+            android:enableOnBackInvokedCallback="true"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="mcc|mnc|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection" />
+        <activity
             android:name=".NetworkTestActivity"
             android:resizeableActivity="true"
             android:enableOnBackInvokedCallback="true"
@@ -192,7 +203,6 @@
             android:name=".Game"
             android:screenOrientation="userLandscape"
             android:configChanges="mcc|mnc|density|colorMode|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection"
-            android:noHistory="true"
             android:supportsPictureInPicture="true"
             android:resizeableActivity="true"
             android:enableOnBackInvokedCallback="false"
@@ -223,6 +233,10 @@
         <service
             android:name=".binding.input.driver.UsbDriverService"
             android:label="Usb Driver Service" />
+        <service
+            android:name=".StreamKeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <!-- Broadcast receiver for quitting the stream from external apps -->
         <receiver

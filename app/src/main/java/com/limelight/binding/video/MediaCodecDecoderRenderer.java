@@ -153,6 +153,11 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
     // Direct renderer in the host frame timing pacing mode
     private HostFrameTimeline hostFrameTimeline;
 
+    // A stream kept going in the background: no surface, so no decoder, until the app comes back
+    private final Object backgroundLock = new Object();
+    private boolean backgrounded;
+    private boolean needsIdrAfterBackground;
+
     private MediaCodecInfo findAvcDecoder() {
         MediaCodecInfo decoder = MediaCodecHelper.findProbableSafeDecoder("video/avc", MediaCodecInfo.CodecProfileLevel.AVCProfileHigh);
         if (decoder == null) {
@@ -1483,11 +1488,83 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
         }
     }
 
+    /**
+     * The surface is going away but the stream goes on in the background: the decoder and the
+     * Vulkan renderer are let go, and the frames that arrive are dropped until resumeFromBackground().
+     */
+    public void pauseForBackground() {
+        if (backgrounded) {
+            return;
+        }
+
+        // Unblocks a frame being submitted, so the lock below comes free
+        stop();
+
+        synchronized (backgroundLock) {
+            backgrounded = true;
+            if (videoDecoder != null) {
+                videoDecoder.release();
+                videoDecoder = null;
+            }
+            if (vulkanRenderer != null) {
+                vulkanRenderer.destroy();
+                vulkanRenderer = null;
+            }
+            rendererThread = null;
+            choreographerHandlerThread = null;
+            choreographerHandler = null;
+            nextInputBufferIndex = -1;
+            nextInputBuffer = null;
+            outputBufferQueue.clear();
+        }
+        LimeLog.info("Video paused for the background");
+    }
+
+    /** Decodes again into the new surface, from the next full frame. False if the decoder won't start. */
+    public boolean resumeFromBackground(SurfaceHolder holder) {
+        synchronized (backgroundLock) {
+            if (!backgrounded) {
+                return true;
+            }
+
+            renderTarget = holder;
+            stopping = false;
+            codecRecoveryType.set(CR_RECOVERY_TYPE_NONE);
+            codecRecoveryThreadQuiescedFlags = 0;
+            if (hostFrameTimeline != null) {
+                // Its timing belongs to the frames before the break
+                hostFrameTimeline = new HostFrameTimeline(getDisplayRefreshRate(), prefs.jitterBuffer);
+            }
+
+            int err = pyrowave ? setupPyrowave() : initializeDecoder(false);
+            if (err != 0) {
+                LimeLog.severe("The decoder didn't restart after the background: " + err);
+                return false;
+            }
+            start();
+
+            backgrounded = false;
+            // PyroWave frames stand on their own
+            needsIdrAfterBackground = !pyrowave;
+        }
+        LimeLog.info("Video resumed from the background");
+        return true;
+    }
+
+    public boolean isPausedForBackground() {
+        synchronized (backgroundLock) {
+            return backgrounded;
+        }
+    }
+
     @Override
     public void setHdrMode(boolean enabled, byte[] hdrMetadata) {
-        // The Vulkan renderer switches its output between SDR and HDR10 itself
-        if (vulkanRenderer != null) {
-            vulkanRenderer.setHdrMode(enabled, hdrMetadata);
+        // The Vulkan renderer switches its output between SDR and HDR10 itself. It can be let go
+        // for the background meanwhile.
+        synchronized (backgroundLock) {
+            if (vulkanRenderer != null) {
+                vulkanRenderer.setHdrMode(enabled, hdrMetadata);
+            }
         }
 
         // There's no MediaCodec to restart for PyroWave
@@ -1587,12 +1664,31 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
         }
     }
 
-    @SuppressWarnings("deprecation")
     @Override
     public int submitDecodeUnit(byte[] decodeUnitData, int decodeUnitLength, int decodeUnitType,
                                 int frameNumber, int frameType, char frameHostProcessingLatency,
                                 long receiveTimeUs, long enqueueTimeUs, long presentationTimeUs,
                                 int[] missingRanges, int partialKind) {
+        // The decoder may be torn down or rebuilt for the background while a frame comes in
+        synchronized (backgroundLock) {
+            if (backgrounded) {
+                return MoonBridge.DR_OK;
+            }
+            if (needsIdrAfterBackground) {
+                // The frames that came while it was away are gone, so start again from a full one
+                needsIdrAfterBackground = false;
+                return MoonBridge.DR_NEED_IDR;
+            }
+            return submitDecodeUnitNow(decodeUnitData, decodeUnitLength, decodeUnitType, frameNumber, frameType,
+                    frameHostProcessingLatency, receiveTimeUs, enqueueTimeUs, presentationTimeUs, missingRanges, partialKind);
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private int submitDecodeUnitNow(byte[] decodeUnitData, int decodeUnitLength, int decodeUnitType,
+                                    int frameNumber, int frameType, char frameHostProcessingLatency,
+                                    long receiveTimeUs, long enqueueTimeUs, long presentationTimeUs,
+                                    int[] missingRanges, int partialKind) {
         if (stopping) {
             // Don't bother if we're stopping
             return MoonBridge.DR_OK;

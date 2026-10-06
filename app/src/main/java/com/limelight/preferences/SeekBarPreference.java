@@ -212,6 +212,19 @@ public class SeekBarPreference extends DialogPreference
         return defaultValue;
     }
 
+    // A value can be typed by hand, also past the slider's max
+    public boolean isCustomAllowed() {
+        return allowCustom;
+    }
+
+    public int getDivisor() {
+        return divisor;
+    }
+
+    public String getSuffix() {
+        return suffix;
+    }
+
     public int getStoredValue() {
         return shouldPersist() ? getPersistedInt(defaultValue) : currentValue;
     }

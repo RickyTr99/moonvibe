@@ -81,21 +81,47 @@ final class SettingsLayout {
         return new Item(key);
     }
 
+    /**
+     * A profile's page: name and rule, the settings a profile can change grouped as in the Video,
+     * Codec and Audio categories, and the row that deletes it. Profiles.KEYS lists the same settings.
+     */
+    static Object[] profileEntries(String nameKey, String deleteKey) {
+        return new Object[] {
+                k(nameKey),
+                new Section(R.string.apollo_settings_video, true,
+                        k("list_resolution"), k("list_fps"), k("seekbar_bitrate_kbps"), k("checkbox_enable_hdr"),
+                        k("checkbox_stretch_video"), k("checkbox_full_range"), k("spatial_dithering"), k("checkbox_unlock_fps")),
+                new Section(R.string.apollo_settings_latency, true,
+                        k("video_format"), k("video_renderer"), k("pyrowave_late_frames"), k("checkbox_ultra_low_latency"),
+                        k("frame_pacing"), k("jitter_buffer"), k("checkbox_reduce_refresh_rate"),
+                        k("text_actual_display_refresh_rate"), k("checkbox_enable_perf_overlay"),
+                        k("checkbox_enable_post_stream_toast"), k("checkbox_disable_warnings")),
+                new Section(R.string.apollo_settings_audio, true,
+                        k("list_audio_config"), k("checkbox_enable_audiofx"), k("checkbox_host_audio")),
+                k(deleteKey)};
+    }
+
     static List<Category> categories() {
         List<Category> categories = new ArrayList<>();
+        // Video is what the picture looks like, Codec how it gets to the screen: the settings tuned together
+        // (codec, renderer, pacing and the stats that show their effect) sit on one page
         categories.add(new Category(R.string.apollo_settings_video, R.drawable.ic_apollo_cat_video,
-                k("list_resolution"), k("list_fps"), k("seekbar_bitrate_kbps"), k("video_format"),
+                k("list_resolution"), k("list_fps"), k("seekbar_bitrate_kbps"),
                 k("checkbox_enable_hdr"), k("checkbox_stretch_video"),
                 new Section(R.string.apollo_section_advanced, false,
-                        k("pyrowave_late_frames"), k("video_renderer"), k("spatial_dithering"), k("checkbox_full_range"),
-                        k("checkbox_unlock_fps"), k("checkbox_reduce_refresh_rate"), k("text_actual_display_refresh_rate"))));
+                        k("checkbox_full_range"), k("spatial_dithering"), k("checkbox_unlock_fps"))));
         categories.add(new Category(R.string.apollo_settings_latency, R.drawable.ic_apollo_cat_speed,
-                k("frame_pacing"), k("jitter_buffer"), k("checkbox_ultra_low_latency"),
-                k("checkbox_enable_perf_overlay"), k("checkbox_enable_post_stream_toast"), k("checkbox_disable_warnings")));
+                new Section(R.string.apollo_section_decoding, true,
+                        k("video_format"), k("video_renderer"), k("pyrowave_late_frames"), k("checkbox_ultra_low_latency")),
+                new Section(R.string.apollo_section_frame_pacing, true,
+                        k("frame_pacing"), k("jitter_buffer"), k("checkbox_reduce_refresh_rate"), k("text_actual_display_refresh_rate")),
+                new Section(R.string.apollo_section_stats, true,
+                        k("checkbox_enable_perf_overlay"), k("checkbox_enable_post_stream_toast"), k("checkbox_disable_warnings"))));
         categories.add(new Category(R.string.apollo_settings_audio, R.drawable.ic_apollo_cat_audio,
                 k("list_audio_config"), k("checkbox_enable_audiofx"), k("checkbox_host_audio")));
         categories.add(new Category(R.string.apollo_settings_controller, R.drawable.ic_apollo_cat_gamepad,
-                k("seekbar_deadzone"), k("checkbox_multi_controller"), k("checkbox_flip_face_buttons"),
+                k("seekbar_deadzone"), k("checkbox_multi_controller"), k("checkbox_auto_connect_controllers"),
+                k("checkbox_flip_face_buttons"),
                 k("checkbox_gamepad_touchpad_as_mouse"), k("checkbox_gamepad_motion_sensors"),
                 k("checkbox_gamepad_motion_fallback"), k("analog_scrolling"),
                 new Section(R.string.apollo_section_vibration, false,
@@ -119,7 +145,8 @@ final class SettingsLayout {
         categories.add(new Category(R.string.apollo_settings_game_menu, R.drawable.ic_apollo_cat_menu,
                 k("overlay_trigger_button"), k("overlay_hold_duration"), k("overlay_custom_commands")));
         categories.add(new Category(R.string.apollo_settings_session, R.drawable.ic_apollo_desktop,
-                k("checkbox_auto_resume_stream"), k("checkbox_enable_sops"), k("checkbox_enable_pip")));
+                k("checkbox_auto_resume_stream"), k("list_leave_app"), k("checkbox_background_audio"),
+                k("checkbox_enable_sops")));
         categories.add(new Category(R.string.apollo_settings_app, R.drawable.ic_apollo_info,
                 k("checkbox_fullscreen_ui"), k("list_languages"), k("checkbox_small_icon_mode"),
                 new Item(WebLauncherPreference.class)));
@@ -188,6 +215,7 @@ final class SettingsLayout {
         INFO.put("checkbox_host_audio", new Info(R.string.apollo_info_host_audio));
         INFO.put("seekbar_deadzone", new Info(R.string.apollo_info_deadzone));
         INFO.put("checkbox_multi_controller", new Info(R.string.apollo_info_multi_controller));
+        INFO.put("checkbox_auto_connect_controllers", new Info(R.string.apollo_info_auto_connect_controllers));
         INFO.put("checkbox_flip_face_buttons", new Info(R.string.apollo_info_flip_face_buttons));
         INFO.put("checkbox_gamepad_touchpad_as_mouse", new Info(R.string.apollo_info_touchpad_as_mouse));
         INFO.put("checkbox_gamepad_motion_sensors", new Info(R.string.apollo_info_motion_sensors));
@@ -207,8 +235,10 @@ final class SettingsLayout {
         INFO.put("overlay_trigger_button", new Info(R.string.apollo_info_overlay_trigger));
         INFO.put("overlay_custom_commands", new Info(R.string.apollo_info_overlay_commands));
         INFO.put("checkbox_auto_resume_stream", new Info(R.string.apollo_info_auto_resume));
+        INFO.put("list_leave_app", new Info(R.string.apollo_info_leave_app, R.array.leave_app_values,
+                R.array.apollo_info_leave_app_names, R.array.apollo_info_leave_app_texts));
+        INFO.put("checkbox_background_audio", new Info(R.string.apollo_info_background_audio));
         INFO.put("checkbox_enable_sops", new Info(R.string.apollo_info_sops));
-        INFO.put("checkbox_enable_pip", new Info(R.string.apollo_info_pip));
         INFO.put("checkbox_fullscreen_ui", new Info(R.string.apollo_info_fullscreen_ui));
         INFO.put("checkbox_small_icon_mode", new Info(R.string.apollo_info_small_icon_mode));
     }

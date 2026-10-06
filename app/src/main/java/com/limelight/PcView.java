@@ -22,6 +22,7 @@ import com.limelight.preferences.AddComputerManually;
 import com.limelight.preferences.GlPreferences;
 import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.preferences.StreamSettings;
+import com.limelight.ui.apollo.settings.ProfileMenu;
 import com.limelight.ui.apollo.settings.QuickSettingsPanel;
 import com.limelight.ui.QuickLaunchView;
 import com.limelight.ui.apollo.ActionSheet;
@@ -158,6 +159,7 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
                     overridePendingTransition(R.anim.apollo_fade_in, R.anim.apollo_fade_out);
                 });
         topBar.setOnQuickSettingsClickListener(v -> toggleQuickSettings());
+        topBar.setOnProfileClickListener(v -> ProfileMenu.of(this).toggle());
         ((FrameLayout) findViewById(R.id.topBarContainer)).addView(topBar);
         topBar.onResume();
 
@@ -200,6 +202,7 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
         // Gamepad hints at the bottom, from the focused card
         hintRow = ScreenHints.attach(this, findViewById(R.id.homeColumn));
         hintRow.setFallback(HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_X, R.string.apollo_hint_add_pc),
+                HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_profiles),
                 HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings));
 
         noPcFoundLayout = findViewById(R.id.no_pc_found_layout);
@@ -849,7 +852,7 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
 
         // Notify the view that the data has changed
         pcGridAdapter.notifyDataSetChanged();
-        
+
         // Update Quick Launch running status
         if (quickLaunchView != null) {
             quickLaunchView.updateRunningStatus(details.runningGameId, details.uuid);
@@ -909,6 +912,14 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (topBar != null && event.getRepeatCount() == 0) {
+            // Select opens and closes the profiles; while they are open the other buttons are theirs
+            if (keyCode == KeyEvent.KEYCODE_BUTTON_SELECT) {
+                ProfileMenu.of(this).toggle();
+                return true;
+            }
+            if (ProfileMenu.of(this).isShowing()) {
+                return super.onKeyDown(keyCode, event);
+            }
             switch (keyCode) {
                 case KeyEvent.KEYCODE_BUTTON_Y: {
                     // The options of the focused card, like a long press
@@ -950,7 +961,7 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
 
     @Override
     public void onBackPressed() {
-        if (ActionSheet.of(this).dismiss() || QuickSettingsPanel.of(this).dismiss()
+        if (ActionSheet.of(this).dismiss() || ProfileMenu.of(this).dismiss() || QuickSettingsPanel.of(this).dismiss()
                 || (quickLaunchView != null && quickLaunchView.finishMove(false))) {
             return;
         }

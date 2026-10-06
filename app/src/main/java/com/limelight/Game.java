@@ -155,6 +155,12 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     private boolean manualRefreshRateX100;
     private DisplayRefreshMeter refreshMeter;
 
+    // Leaving the app (PreferenceConfiguration.leaveApp): a stream going on in the background, or
+    // one to start again when the user comes back
+    private boolean keptInBackground;
+    private boolean reconnectOnReturn;
+    private AndroidAudioRenderer audioRenderer;
+
     private InputCaptureProvider inputCaptureProvider;
     private int modifierFlags = 0;
     private boolean grabbedInput = true;
@@ -216,6 +222,10 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                 // Finish the activity
                 finish();
             }
+            else if (ACTION_DISCONNECT.equals(intent.getAction())) {
+                // From the notification of a stream kept in the background
+                disconnectFromMenu();
+            }
         }
     };
 
@@ -232,6 +242,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     public static final String EXTRA_QUICK_LAUNCH_APP_KEY = "QuickLaunchAppKey";
     public static final String EXTRA_APPLY_PREFERENCE_OVERRIDES = "ApplyPreferenceOverrides";
     public static final String ACTION_QUIT_APP = "com.limelight.QUIT_STREAMING_APP";
+    public static final String ACTION_DISCONNECT = "app.moonvibe.DISCONNECT_STREAM";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -304,6 +315,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         String appKey = computerId + ":" + appId;
         String quickLaunchAppKey = Game.this.getIntent().getStringExtra(EXTRA_QUICK_LAUNCH_APP_KEY);
         boolean applyPreferenceOverrides = Game.this.getIntent().getBooleanExtra(EXTRA_APPLY_PREFERENCE_OVERRIDES, true);
+        // MoonVibe: the profile in use (Profiles) is laid over the general settings by PreferenceConfiguration
         prefConfig = AppPreferences.getEffectivePreferences(this, appKey, quickLaunchAppKey, applyPreferenceOverrides);
         tombstonePrefs = Game.this.getSharedPreferences("DecoderTombstone", 0);
 
@@ -311,6 +323,13 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         launchOverlay = findViewById(R.id.launchOverlay);
         launchOverlay.show(getIntent().getStringExtra(EXTRA_APP_NAME), getIntent().getStringExtra(EXTRA_PC_NAME),
                 computerId, appId, prefConfig, this::finish);
+
+        // The notification of a stream kept in the background, to come back or disconnect.
+        // Without it the stream still runs; Android stops asking after the user declines twice.
+        if (prefConfig.leaveApp == PreferenceConfiguration.LEAVE_APP_KEEP && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 0);
+        }
 
         // Enter landscape unless we're on a square screen
         setPreferredOrientationForCurrentDisplay();
@@ -647,14 +666,11 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         }
 
         if (prefConfig.videoFormat == PreferenceConfiguration.FormatOption.FORCE_PYROWAVE && !usePyrowave) {
-            if (spinner != null) {
-                spinner.dismiss();
-                spinner = null;
-            }
+            launchOverlay.fail();
 
             // PyroWave never falls back to another codec
             Dialog.displayDialog(this, getResources().getString(R.string.conn_error_title),
-                    "This device can't decode PyroWave. It needs Vulkan 1.3 on a 64-bit ARM device.", true);
+                    getString(R.string.apollo_pyrowave_device_unsupported), true);
             return;
         }
 
@@ -669,6 +685,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
         // Register broadcast receiver to allow external control
         android.content.IntentFilter filter = new android.content.IntentFilter(ACTION_QUIT_APP);
+        filter.addAction(ACTION_DISCONNECT);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(quitAppReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
         } else {
@@ -1226,12 +1243,54 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
         // Destroy the capture provider
         inputCaptureProvider.destroy();
+
+        StreamKeepAliveService.stop(this);
+    }
+
+    @Override
+    protected void onRestart() {
+        super.onRestart();
+
+        if (reconnectOnReturn) {
+            // A fresh start of the same stream: the game is still open on the host
+            LimeLog.info("Back in the app: reconnecting");
+            reconnectOnReturn = false;
+            keptInBackground = false;
+            recreate();
+            return;
+        }
+
+        if (keptInBackground) {
+            // The video comes back with the surface (surfaceChanged)
+            LimeLog.info("Back in the app: the stream was kept running");
+            keptInBackground = false;
+            if (audioRenderer != null) {
+                audioRenderer.setMuted(false);
+            }
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+
+        // Only needed while the stream is out of sight
+        StreamKeepAliveService.stop(this);
     }
 
     @Override
     protected void onPause() {
+        // Still in the foreground, where Android allows the service to start
+        if (prefConfig != null && prefConfig.leaveApp == PreferenceConfiguration.LEAVE_APP_KEEP && connected &&
+                !isFinishing() && !userInitiatedDisconnect) {
+            StreamKeepAliveService.start(this, pcName, appName);
+        }
+
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-        if (!pm.isInteractive() && connected && !userInitiatedDisconnect) {
+        // Leaving the app handles sleep too, from Game itself
+        boolean leaveHandlesSleep = prefConfig != null && (prefConfig.leaveApp == PreferenceConfiguration.LEAVE_APP_RECONNECT ||
+                prefConfig.leaveApp == PreferenceConfiguration.LEAVE_APP_KEEP);
+        if (!pm.isInteractive() && connected && !userInitiatedDisconnect && !leaveHandlesSleep) {
             if (PreferenceConfiguration.readPreferences(this).autoResumeStream) {
                 android.util.Log.d("SessionResume", "onPause: screen going off, saving session");
                 SessionResumeManager.save(this, getIntent());
@@ -1265,6 +1324,31 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
         if (gameMenu != null) {
             gameMenu.hide();
+        }
+
+        // The user left the app without ending the stream
+        if (!isFinishing() && !userInitiatedDisconnect && !displayedFailureDialog && !launchFailureShown &&
+                prefConfig != null && decoderRenderer != null) {
+            if (prefConfig.leaveApp == PreferenceConfiguration.LEAVE_APP_KEEP &&
+                    (connected || decoderRenderer.isPausedForBackground())) {
+                // The video stops with the surface (surfaceDestroyed)
+                LimeLog.info("Left the app: keeping the stream running");
+                keptInBackground = true;
+                if (!prefConfig.backgroundAudio && audioRenderer != null) {
+                    audioRenderer.setMuted(true);
+                }
+                return;
+            }
+            // Also a kept stream that was still connecting
+            // (the surface only comes once the launch got that far)
+            if ((prefConfig.leaveApp == PreferenceConfiguration.LEAVE_APP_RECONNECT ||
+                    prefConfig.leaveApp == PreferenceConfiguration.LEAVE_APP_KEEP) && surfaceCreated) {
+                LimeLog.info("Left the app: reconnecting on return");
+                reconnectOnReturn = true;
+                displayedFailureDialog = true;
+                stopConnection();
+                return;
+            }
         }
 
         if (virtualController != null) {
@@ -2663,6 +2747,9 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             connecting = connected = false;
             updatePipAutoEnter();
 
+            // Nothing left to keep running in the background
+            StreamKeepAliveService.stop(this);
+
             controllerHandler.stop();
 
             // Update GameManager state to indicate we're no longer in game
@@ -2768,6 +2855,16 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                 // Ungrab input
                 setInputGrabState(false);
 
+                // Lost while kept in the background: it starts again when the user is back.
+                // A game closed on the host still ends it.
+                if (keptInBackground && !displayedFailureDialog && errorCode != MoonBridge.ML_ERROR_GRACEFUL_TERMINATION) {
+                    LimeLog.warning("Stream lost in the background (" + errorCode + "): reconnecting on return");
+                    displayedFailureDialog = true;
+                    reconnectOnReturn = true;
+                    stopConnection();
+                    return;
+                }
+
                 // A stream that ends before it starts leaves the launch screen showing the failure
                 launchOverlay.fail();
 
@@ -2852,6 +2949,11 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                 connecting = false;
                 updatePipAutoEnter();
 
+                // The PC connects the gamepads now rather than at their first button press
+                if (prefConfig.autoConnectControllers) {
+                    controllerHandler.announceAttachedControllers();
+                }
+
                 // Hide the mouse cursor now after a short delay.
                 // Doing it before dismissing the spinner seems to be undone
                 // when the spinner gets displayed. On Android Q, even now
@@ -2901,16 +3003,16 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     }
 
     @Override
-    public void launchFailed(final String message) {
+    public void launchFailed(final String reason) {
+        // MoonBridge can't reach the app's strings: its message comes as a key
+        final String message = MoonBridge.PYROWAVE_START_FAILED.equals(reason)
+                ? getString(R.string.apollo_pyrowave_start_failed) : reason;
         launchFailureShown = true;
 
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                if (spinner != null) {
-                    spinner.dismiss();
-                    spinner = null;
-                }
+                launchOverlay.fail();
 
                 if (!displayedFailureDialog) {
                     displayedFailureDialog = true;
@@ -2969,6 +3071,17 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             throw new IllegalStateException("Surface changed before creation!");
         }
 
+        if (decoderRenderer.isPausedForBackground()) {
+            // Back from the background with the stream still running
+            if (!decoderRenderer.resumeFromBackground(holder)) {
+                // The decoder won't start again: connect anew instead
+                displayedFailureDialog = true;
+                stopConnection();
+                streamView.post(this::recreate);
+            }
+            return;
+        }
+
         if (!attemptedConnection) {
             attemptedConnection = true;
 
@@ -3016,8 +3129,8 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         LimeLog.info(configMessage);
 
         decoderRenderer.setRenderTarget(streamView.getHolder());
-        conn.start(new AndroidAudioRenderer(Game.this, prefConfig.enableAudioFx),
-                decoderRenderer, Game.this);
+        audioRenderer = new AndroidAudioRenderer(Game.this, prefConfig.enableAudioFx);
+        conn.start(audioRenderer, decoderRenderer, Game.this);
     }
 
     @Override
@@ -3067,6 +3180,13 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             refreshMeter.cancel();
             refreshMeter = null;
             attemptedConnection = false;
+        }
+
+        if (attemptedConnection && connected && !isFinishing() && !userInitiatedDisconnect &&
+                prefConfig.leaveApp == PreferenceConfiguration.LEAVE_APP_KEEP) {
+            // The stream goes on without a picture until the app is back
+            decoderRenderer.pauseForBackground();
+            return;
         }
 
         if (attemptedConnection) {

@@ -383,6 +383,32 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         return defaultContext.mouseEmulationActive;
     }
 
+    /**
+     * MoonVibe: tells the host about every gamepad attached now, with an idle state, so it connects
+     * them on the PC right away instead of at their first button press.
+     */
+    public void announceAttachedControllers() {
+        if (stopped) {
+            return;
+        }
+        for (int id : inputManager.getInputDeviceIds()) {
+            InputDevice dev = inputManager.getInputDevice(id);
+            // The same gamepads as getAttachedControllerMask()
+            if (dev == null || !hasJoystickAxes(dev)) {
+                continue;
+            }
+            InputDeviceContext context = inputDeviceContexts.get(id);
+            if (context == null) {
+                context = createInputDeviceContextForDevice(dev);
+                inputDeviceContexts.put(id, context);
+            }
+            if (!context.assignedControllerNumber) {
+                LimeLog.info("Announcing " + context.name + " to the host at stream start");
+                sendControllerInputPacket(context);
+            }
+        }
+    }
+
     public void stop() {
         if (stopped) {
             return;

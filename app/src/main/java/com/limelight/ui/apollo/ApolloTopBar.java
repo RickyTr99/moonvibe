@@ -12,12 +12,14 @@ import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.limelight.R;
+import com.limelight.profiles.Profiles;
 import com.limelight.ui.apollo.hints.InputMode;
 import com.limelight.ui.theme.ApolloColors;
 import com.limelight.ui.theme.ApolloMotion;
@@ -54,6 +56,19 @@ public class ApolloTopBar extends FrameLayout {
     // How long a screen waits before its heavy work while the mark slides in (idle wait + slide)
     public static final long SLIDE_SETTLE_MS = 350;
     private final StatusRowView status;
+    // The name and the profile icon open the profiles. A profile in use shows in a veil shaped like
+    // the status one, with its name and a green dot (the same green as a PC online)
+    private static final int PROFILE_DOT = 0xFF6DD58C;
+    private final LinearLayout profileButton;
+    private final LinearLayout profileChip;
+    private final GradientDrawable profileChipBackground;
+    private final ImageView profileIcon;
+    private final FrameLayout profileNameFrame;
+    private final TextView profileName;
+    private final TextView appNameView;
+    private final LinearLayout center;
+    private boolean profileActive;
+    private final Runnable profilesListener = () -> showProfile(true);
     private final TextView leftBumper;
     private final TextView rightBumper;
     // A gamepad connected or disconnected shows or hides LB and RB
@@ -92,9 +107,50 @@ public class ApolloTopBar extends FrameLayout {
             styledName.setSpan(new ForegroundColorSpan(colors.onSurface), 0, split, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         TextView name = ApolloUi.text(context, styledName, 18, colors.primary, true);
-        addView(name, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.START | Gravity.CENTER_VERTICAL));
+        appNameView = name;
 
-        LinearLayout center = new LinearLayout(context);
+        // The name and the profile icon after it are the profiles button (Select on a gamepad)
+        profileButton = new LinearLayout(context);
+        profileButton.setId(R.id.apollo_profile_anchor);
+        profileButton.setOrientation(LinearLayout.HORIZONTAL);
+        profileButton.setGravity(Gravity.CENTER_VERTICAL);
+        profileButton.setFocusable(false);
+        profileButton.setClickable(true);
+        profileButton.setContentDescription(context.getString(R.string.apollo_profiles));
+        profileButton.addView(name);
+
+        // The profile in use: icon and name on a veil as tall and round as the status one
+        profileChip = new LinearLayout(context);
+        profileChip.setOrientation(LinearLayout.HORIZONTAL);
+        profileChip.setGravity(Gravity.CENTER_VERTICAL);
+        profileChipBackground = ApolloUi.roundRect(Color.TRANSPARENT, dp(ApolloUi.ROW_RADIUS_DP));
+        profileChip.setBackground(profileChipBackground);
+        LinearLayout.LayoutParams chipParams = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, dp(40));
+        chipParams.leftMargin = dp(8);
+        profileButton.addView(profileChip, chipParams);
+        profileIcon = new ImageView(context);
+        profileIcon.setImageResource(R.drawable.ic_apollo_profile);
+        profileChip.addView(profileIcon, new LinearLayout.LayoutParams(dp(18), dp(18)));
+
+        // The name with a small green dot at its top right
+        profileNameFrame = new FrameLayout(context);
+        profileName = ApolloUi.text(context, "", 13.5f, colors.onSurface, true);
+        profileName.setSingleLine(true);
+        profileName.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        profileName.setPadding(0, dp(2), dp(6), 0);
+        profileNameFrame.addView(profileName, new FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL));
+        View dot = new View(context);
+        dot.setBackground(ApolloUi.roundRect(PROFILE_DOT, dp(2.5f)));
+        profileNameFrame.addView(dot, new FrameLayout.LayoutParams(dp(5), dp(5), Gravity.TOP | Gravity.END));
+        LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        nameParams.leftMargin = dp(8);
+        profileChip.addView(profileNameFrame, nameParams);
+
+        addView(profileButton, new LayoutParams(LayoutParams.WRAP_CONTENT, dp(40), Gravity.START | Gravity.CENTER_VERTICAL));
+        ApolloUi.pressFeedback(profileButton);
+        showProfile(false);
+
+        center = new LinearLayout(context);
         center.setOrientation(LinearLayout.HORIZONTAL);
         center.setGravity(Gravity.CENTER_VERTICAL);
         // The whole height of the bar, so the mark sits under the tab names and not over them
@@ -163,6 +219,25 @@ public class ApolloTopBar extends FrameLayout {
         return ApolloUi.dp(getContext(), value);
     }
 
+    // A long profile name stops short of the tabs in the middle and ends with "…"
+    @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        int width = MeasureSpec.getSize(widthMeasureSpec);
+        if (width > 0) {
+            int unspecified = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
+            center.measure(unspecified, MeasureSpec.makeMeasureSpec(dp(52), MeasureSpec.EXACTLY));
+            appNameView.measure(unspecified, unspecified);
+            int free = (width - center.getMeasuredWidth()) / 2 - getPaddingLeft() - dp(12);
+            // Name margin, veil paddings, icon and the margin before the profile name
+            int taken = appNameView.getMeasuredWidth() + dp(8) + dp(10) + dp(18) + dp(8) + dp(12);
+            int maxWidth = Math.max(dp(40), free - taken);
+            if (profileName.getMaxWidth() != maxWidth) {
+                profileName.setMaxWidth(maxWidth);
+            }
+        }
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+    }
+
     // LB and RB mean something only with a gamepad, like the hints at the bottom
     private void updateBumpers() {
         int visibility = InputMode.isGamepadConnected() ? VISIBLE : GONE;
@@ -175,12 +250,72 @@ public class ApolloTopBar extends FrameLayout {
         super.onAttachedToWindow();
         ((InputManager) getContext().getSystemService(Context.INPUT_SERVICE)).registerInputDeviceListener(deviceListener, null);
         updateBumpers();
+        Profiles.addListener(profilesListener);
+        showProfile(false);
     }
 
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         ((InputManager) getContext().getSystemService(Context.INPUT_SERVICE)).unregisterInputDeviceListener(deviceListener);
+        Profiles.removeListener(profilesListener);
+    }
+
+    public void setOnProfileClickListener(OnClickListener listener) {
+        profileButton.setOnClickListener(listener);
+    }
+
+    // With a profile in use the veil, its name and the dot fade in; without one only a grey icon stays
+    private void showProfile(boolean animate) {
+        Profiles.Profile profile = Profiles.active(getContext());
+        boolean active = profile != null;
+        boolean changed = active != profileActive;
+        profileActive = active;
+        int fromWidth = profileChip.getWidth();
+        if (active) {
+            profileName.setText(profile.name);
+        }
+        profileNameFrame.setVisibility(active ? VISIBLE : GONE);
+        profileChip.setPadding(active ? dp(10) : dp(2), 0, active ? dp(12) : dp(2), 0);
+        profileIcon.setImageTintList(ColorStateList.valueOf(active ? colors.onSurfaceVariant : colors.outline));
+        int to = active ? veil(VEIL_ALPHA) : Color.TRANSPARENT;
+        if (animate && changed && fromWidth > 0) {
+            // The veil widens or narrows to its new content instead of jumping
+            profileChip.measure(MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
+                    MeasureSpec.makeMeasureSpec(dp(40), MeasureSpec.EXACTLY));
+            int toWidth = profileChip.getMeasuredWidth();
+            ViewGroup.LayoutParams params = profileChip.getLayoutParams();
+            ValueAnimator resize = ValueAnimator.ofInt(fromWidth, toWidth);
+            resize.setDuration(ApolloMotion.MEDIUM);
+            resize.setInterpolator(ApolloMotion.EMPHASIZED_DECELERATE);
+            resize.addUpdateListener(a -> {
+                params.width = (int) a.getAnimatedValue();
+                profileChip.setLayoutParams(params);
+            });
+            resize.addListener(new android.animation.AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(android.animation.Animator animation) {
+                    params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+                    profileChip.setLayoutParams(params);
+                }
+            });
+            params.width = fromWidth;
+            profileChip.setLayoutParams(params);
+            resize.start();
+        }
+        if (animate && changed) {
+            ValueAnimator fade = ValueAnimator.ofArgb(active ? Color.TRANSPARENT : veil(VEIL_ALPHA), to);
+            fade.setDuration(ApolloMotion.MEDIUM);
+            fade.setInterpolator(ApolloMotion.STANDARD);
+            fade.addUpdateListener(a -> profileChipBackground.setColor((int) a.getAnimatedValue()));
+            fade.start();
+            if (active) {
+                profileNameFrame.setAlpha(0f);
+                profileNameFrame.animate().alpha(1f).setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
+            }
+        } else {
+            profileChipBackground.setColor(to);
+        }
     }
 
     private TextView shoulderChip(String label, int direction) {
@@ -341,6 +476,8 @@ public class ApolloTopBar extends FrameLayout {
      * heavy work for {@link #SLIDE_SETTLE_MS}, or the slide stutters on fast screens.
      */
     public boolean onResume() {
+        // A profile may have been changed or its rule met while this screen was away
+        showProfile(false);
         // Coming from another tab, the mark slides from that tab to this screen's one
         switching = false;
         boolean sliding = false;

@@ -36,6 +36,10 @@ public class GameMenu implements GameMenuView.Listener {
     private static final KeyCombination SHOW_DESKTOP = new KeyCombination(false, false, false, true, KeyEvent.KEYCODE_D);
     // Same as the Guide button (Start quick action), which opens the Game Bar on the host
     private static final KeyCombination GAME_BAR = new KeyCombination(false, false, false, true, KeyEvent.KEYCODE_G);
+    // Win+A: the quick settings of Windows (Wi-Fi, Bluetooth, volume...) at the bottom right
+    private static final KeyCombination WINDOWS_QUICK_SETTINGS = new KeyCombination(false, false, false, true, KeyEvent.KEYCODE_A);
+    // The Windows key alone: the Start menu
+    private static final KeyCombination START_MENU = new KeyCombination(KeyEvent.KEYCODE_META_LEFT);
 
     private final Game game;
     private final GameMenuView view;
@@ -95,6 +99,8 @@ public class GameMenu implements GameMenuView.Listener {
                         .shortLabel(getString(R.string.game_menu_short_stats)),
                 new QuickAction(KeyEvent.KEYCODE_BUTTON_START, getString(R.string.game_menu_key_game_bar),
                         this::openGameBar).shortLabel(getString(R.string.game_menu_short_game_bar)),
+                new QuickAction(KeyEvent.KEYCODE_BUTTON_SELECT, getString(R.string.game_menu_key_start_menu),
+                        () -> sendKeys(START_MENU)).shortLabel(getString(R.string.game_menu_short_start_menu)),
                 new QuickAction(KeyEvent.KEYCODE_DPAD_UP, getString(R.string.game_menu_toggle_keyboard),
                         game::toggleKeyboard).shortLabel(getString(R.string.game_menu_short_keyboard)),
                 new QuickAction(KeyEvent.KEYCODE_DPAD_DOWN, getString(R.string.game_menu_toggle_full_keyboard),
@@ -224,6 +230,10 @@ public class GameMenu implements GameMenuView.Listener {
                     }
                 }));
 
+        items.add(Item.header(getString(R.string.game_menu_section_windows)));
+        items.add(Item.action(R.drawable.ic_apollo_tune, getString(R.string.game_menu_key_windows_quick_settings),
+                () -> sendKeys(WINDOWS_QUICK_SETTINGS)).keepOpen().trailingText(WINDOWS_QUICK_SETTINGS.toDisplayString()));
+
         return items;
     }
 
@@ -231,7 +241,8 @@ public class GameMenu implements GameMenuView.Listener {
     private static boolean isQuickActionShortcut(KeyCombination combination) {
         String display = combination.toDisplayString();
         return display.equals(SWITCH_WINDOW.toDisplayString()) || display.equals(SHOW_DESKTOP.toDisplayString()) ||
-                display.equals(GAME_BAR.toDisplayString());
+                display.equals(GAME_BAR.toDisplayString()) || display.equals(START_MENU.toDisplayString()) ||
+                display.equals(WINDOWS_QUICK_SETTINGS.toDisplayString());
     }
 
     private List<Item> buildKeyItems() {

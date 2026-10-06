@@ -170,6 +170,17 @@
     <string name="title_native_fps_dialog">Native FPS Warning</string>
     <string name="title_checkbox_auto_resume_stream">Auto-resume stream after sleep</string>
     <string name="summary_checkbox_auto_resume_stream">If a stream is running when you put your device to sleep, resume it automatically upon wakeup.</string>
+    <string name="title_leave_app">When you leave the app</string>
+    <string name="summary_leave_app">What the stream does when you switch to another app</string>
+    <string name="leave_app_close">Close the stream</string>
+    <string name="leave_app_reconnect">Reconnect on return</string>
+    <string name="leave_app_keep">Keep the stream running</string>
+    <string name="leave_app_pip">Picture-in-Picture</string>
+    <string name="title_background_audio">Audio in the background</string>
+    <string name="summary_background_audio">Keep hearing the stream while you use another app</string>
+    <string name="keep_alive_channel">Stream in the background</string>
+    <string name="keep_alive_text">Streaming from %1$s in the background</string>
+    <string name="keep_alive_disconnect">Disconnect</string>
 
     <string name="category_audio_settings">Audio Settings</string>
     <string name="title_audio_config_list">Surround sound configuration</string>
@@ -288,7 +299,7 @@
     <string name="summary_disable_frame_drop">May reduce micro-stuttering on some devices, but can increase latency</string>
     <string name="title_video_format">Change codec settings</string>
     <string name="title_pyrowave_late_frames">PyroWave late frames</string>
-    <string name="summary_pyrowave_late_frames">Only used with the PyroWave codec and host frame timing pacing: configure how much blurriness you want to accept for a smoother stream</string>
+    <string name="summary_pyrowave_late_frames">Only used with the PyroWave codec and host frame timing pacing: configure how much blurriness you want to accept for a smoother stream. Always off with Vibepollo and other Vibeshine-based hosts, which can\'t show a frame that\'s missing data.</string>
     <string name="pyrowave_late_frames_off">Off (least blur)</string>
     <string name="pyrowave_late_frames_sharp">Sharper</string>
     <string name="pyrowave_late_frames_balanced">Balanced (Recommended)</string>
@@ -507,7 +518,7 @@
     <string name="apollo_back">Back</string>
     <string name="apollo_library_hidden_shown">hidden games shown</string>
     <string name="apollo_settings_video">Video</string>
-    <string name="apollo_settings_latency">Latency &amp; smoothness</string>
+    <string name="apollo_settings_latency">Codec</string>
     <string name="apollo_settings_audio">Audio</string>
     <string name="apollo_settings_controller">Controller</string>
     <string name="apollo_settings_touch">Touch &amp; mouse</string>
@@ -516,6 +527,52 @@
     <string name="apollo_settings_session">Session &amp; PC</string>
     <string name="apollo_settings_app">App</string>
     <string name="apollo_section_advanced">Advanced</string>
+    <!-- Stream profiles -->
+    <string name="apollo_profiles">Profiles</string>
+    <string name="apollo_profile_menu_title">Profile</string>
+    <string name="apollo_profile_none">None</string>
+    <string name="apollo_profile_none_detail">general settings</string>
+    <string name="apollo_profile_manage">Manage profiles</string>
+    <string name="apollo_profiles_explanation">Pick the profile to use in the Profiles menu, from the top bar (Select on a gamepad). Drag to change the order of the menu. The settings of a single game always win over the profile.</string>
+    <string name="apollo_profile_in_use">IN USE</string>
+    <string name="apollo_profile_new">New profile</string>
+    <string name="apollo_profile_default_name">Profile %1$d</string>
+    <string name="apollo_profile_summary_empty">No changes yet: it uses the general settings</string>
+    <plurals name="apollo_profile_summary_more">
+        <item quantity="one">%1$d more</item>
+        <item quantity="other">%1$d more</item>
+    </plurals>
+    <string name="apollo_hint_edit">Edit</string>
+    <string name="apollo_profile_editor_title">Edit profile</string>
+    <string name="apollo_profile_editor_note">Settings with the dot are changed in this profile; the others follow the general settings. Hold one (X on a gamepad) to make it follow the general settings again.</string>
+    <string name="apollo_profile_name">Name</string>
+    <string name="apollo_profile_follows_general">As in the general settings</string>
+    <string name="apollo_profile_use_general">Use general</string>
+    <string name="apollo_profile_delete">Delete profile</string>
+    <string name="apollo_profile_delete_confirm">Delete the profile \"%1$s\"? The general settings stay as they are.</string>
+    <!-- PyroWave never falls back to another codec: the launch fails with one of these -->
+    <string name="apollo_pyrowave_device_unsupported">This device can\'t decode PyroWave: it needs Vulkan 1.3 on a 64-bit ARM device. Pick another codec in Settings.</string>
+    <string name="apollo_pyrowave_host_unsupported">The host PC doesn\'t support PyroWave: it needs a Sunshine build with PyroWave, like Vibepollo. Pick another codec in Settings.</string>
+    <string name="apollo_pyrowave_start_failed">The host PC couldn\'t start a PyroWave stream. Look for PyroWave encoder errors in the host\'s log.</string>
+    <string name="apollo_section_decoding">Decoding</string>
+    <string name="apollo_section_frame_pacing">Frame pacing</string>
+    <string name="apollo_section_stats">Statistics</string>
+    <!-- Why a setting does nothing now (SettingsRules): under its name, in its explanation, and its button -->
+    <string name="apollo_rule_inactive">Not active.</string>
+    <string name="apollo_rule_needs_value_hint">Needs \"%1$s\"</string>
+    <string name="apollo_rule_needs_value">It only works with %1$s set to \"%2$s\". It\'s now \"%3$s\".</string>
+    <string name="apollo_rule_switch_to">Switch to %1$s</string>
+    <string name="apollo_rule_needs_on_hint">Needs \"%1$s\" on</string>
+    <string name="apollo_rule_needs_on">It only works with \"%1$s\" on.</string>
+    <string name="apollo_rule_turn_on">Turn on</string>
+    <string name="apollo_rule_resume_covered_hint">Already covered by \"%1$s\"</string>
+    <string name="apollo_rule_resume_covered">With \"%1$s\" set to \"%2$s\", the stream also comes back by itself after the device goes to sleep, so this setting isn\'t needed.</string>
+    <string name="apollo_rule_needs_pyrowave_hint">Only with the PyroWave codec</string>
+    <string name="apollo_rule_needs_pyrowave">It only works with the PyroWave codec.</string>
+    <string name="apollo_rule_renderer_pyrowave_hint">PyroWave always uses Vulkan</string>
+    <string name="apollo_rule_renderer_pyrowave">With the PyroWave codec the video always goes through the Vulkan renderer. This choice only applies when the host has no PyroWave and the stream uses HEVC or H.264.</string>
+    <string name="apollo_rule_ull_pyrowave_hint">No effect with PyroWave</string>
+    <string name="apollo_rule_ull_pyrowave">It works on the hardware decoder, which PyroWave doesn\'t use. It only applies when the host has no PyroWave and the stream uses HEVC or H.264.</string>
     <string name="apollo_section_vibration">Vibration</string>
     <string name="apollo_section_onscreen_gamepad">On-screen gamepad</string>
     <string name="apollo_section_full_keyboard">Full PC keyboard</string>
@@ -653,6 +710,7 @@
     <string name="game_menu_quit_confirm">Quit</string>
     <string name="game_menu_section_controller">Controller</string>
     <string name="game_menu_section_touch">Touchscreen</string>
+    <string name="game_menu_section_windows">Windows</string>
     <string name="game_menu_virtual_controller">On-screen gamepad</string>
     <string name="game_menu_mouse_emulation">Mouse emulation</string>
     <string name="game_menu_stats">Performance stats</string>
@@ -667,9 +725,11 @@
     <string name="game_menu_key_fullscreen">Fullscreen</string>
     <string name="game_menu_key_show_desktop">Show desktop</string>
     <string name="game_menu_key_game_bar">Xbox Game Bar</string>
+    <string name="game_menu_key_windows_quick_settings">Quick settings</string>
     <string name="game_menu_short_quit">Quit</string>
     <string name="game_menu_short_stats">Stats</string>
     <string name="game_menu_short_game_bar">Game Bar</string>
+    <string name="game_menu_short_start_menu">Windows</string>
     <string name="game_menu_short_keyboard">Keyboard</string>
     <string name="game_menu_short_pc_keyboard">PC keyboard</string>
     <string name="game_menu_short_switch_window">Switch</string>
@@ -688,6 +748,10 @@
     <string name="apollo_hint_search">Search</string>
     <string name="apollo_hint_close_search">Close search</string>
     <string name="apollo_hint_write">Type</string>
+    <string name="apollo_hint_less">Less</string>
+    <string name="apollo_hint_more">More</string>
+    <string name="apollo_hint_shortcuts">Presets</string>
+    <string name="apollo_hint_set">Set</string>
     <string name="apollo_search_hint">Search</string>
     <string name="apollo_search_clear">Clear</string>
     <string name="apollo_search_results">Results for “%1$s”</string>
@@ -711,7 +775,7 @@
     </string-array>
     <string name="apollo_info_hdr">Streams in HDR (or 10-bit SDR) when the game and the PC\'s graphics card support it. Needs a GPU that can encode HEVC Main 10.</string>
     <string name="apollo_info_stretch_video">Stretches the picture to fill the whole screen, even when the aspect ratios don\'t match. When off, black bars fill the rest.</string>
-    <string name="apollo_info_pyrowave_late_frames">Only with PyroWave and \"Sync to host frame timing\". When a frame arrives late or loses packets, it\'s shown with what has arrived, a little blurred, instead of being skipped. Cutting more means fewer stutters on a busy network, but more blur.</string>
+    <string name="apollo_info_pyrowave_late_frames">Only with PyroWave and \"Sync to host frame timing\". When a frame arrives late or loses packets, it\'s shown with what has arrived, a little blurred, instead of being skipped. Cutting more means fewer stutters on a busy network, but more blur. With Vibepollo and other Vibeshine-based hosts it\'s always Off: they can\'t show a frame that\'s missing data.</string>
     <string-array name="apollo_info_pyrowave_late_frames_names">
         <item>Off</item>
         <item>Sharper</item>
@@ -776,6 +840,9 @@
     <string name="apollo_info_host_audio">Plays the audio both on the PC and on this device.</string>
     <string name="apollo_info_deadzone">How far a stick has to move before the movement counts, so a worn stick doesn\'t move things by itself. Some games use a larger deadzone anyway.</string>
     <string name="apollo_info_multi_controller">Each connected controller is a different player on the PC. When off, all controllers act as one, and the PC always sees a controller, even with none connected.</string>
+    <string name="apollo_info_auto_connect_controllers">When the stream starts, the controllers you have connected join the PC right away. Otherwise the PC only connects each one at its first button press.</string>
+    <string name="title_checkbox_auto_connect_controllers">Connect controllers right away</string>
+    <string name="summary_checkbox_auto_connect_controllers">Connect the controllers to the PC when the stream starts, without pressing a button</string>
     <string name="apollo_info_flip_face_buttons">Swaps A with B and X with Y, on controllers and on the on-screen controls. Handy with Nintendo-style controllers.</string>
     <string name="apollo_info_touchpad_as_mouse">The controller\'s touchpad (like the DualSense one) moves the PC\'s mouse, even when the PC sees a controller with a touchpad.</string>
     <string name="apollo_info_motion_sensors">Lets the PC ask for gyroscope data when the controller has it. When off, it saves a little battery and network if the game doesn\'t use it.</string>
@@ -806,8 +873,21 @@
     <string name="apollo_info_overlay_trigger">The controller button to hold during the stream to open the game menu.</string>
     <string name="apollo_info_overlay_commands">Keyboard shortcuts of your own (like Alt+Tab or Win+D) to send to the PC from the game menu.</string>
     <string name="apollo_info_auto_resume">If a stream is running when the device goes to sleep, it resumes by itself when it wakes up.</string>
+    <string name="apollo_info_leave_app">What happens to the stream when you switch to another app or go to the home screen. The game stays open on the PC in every case.</string>
+    <string-array name="apollo_info_leave_app_names">
+        <item>Close the stream</item>
+        <item>Reconnect on return</item>
+        <item>Keep the stream running</item>
+        <item>Picture-in-Picture</item>
+    </string-array>
+    <string-array name="apollo_info_leave_app_texts">
+        <item>The connection ends: to go back, start the game again from the list</item>
+        <item>The connection ends and starts again by itself when you come back, in a few seconds. Nothing is used in the meantime</item>
+        <item>The connection stays open with the video paused, so the picture is back right away. The PC keeps streaming, which uses battery and network. If the connection drops meanwhile, it reconnects when you come back</item>
+        <item>The stream stays visible in a small window over the other apps. You can watch it but not control it, and closing the window closes the stream</item>
+    </string-array>
+    <string name="apollo_info_background_audio">While the stream runs in the background, you keep hearing it: a game, music or a call on the PC.</string>
     <string name="apollo_info_sops">Lets GeForce Experience change the game\'s settings to suit the stream.</string>
-    <string name="apollo_info_pip">When you switch to another app, the stream stays visible in a small window. You can watch it, not control it.</string>
     <string name="apollo_info_fullscreen_ui">Hides the Android bars in the app. Swipe from the edge of the screen to bring them back.</string>
     <string name="apollo_info_small_icon_mode">Smaller covers in the games grid, so more of them fit on screen.</string>
 </resources>

@@ -208,14 +208,16 @@ public class MoonBridge {
         }
     }
 
+    // Passed to launchFailed() when the host couldn't start a PyroWave stream; the app shows its own text for it
+    public static final String PYROWAVE_START_FAILED = "pyrowave_start_failed";
+
     public static int bridgeDrSetup(int videoFormat, int width, int height, int redrawRate) {
         // moonlight-common-c picks H.264 if the host doesn't offer PyroWave when the stream
         // starts, even when it was the only codec asked for. PyroWave never falls back.
         if ((supportedVideoFormats & VIDEO_FORMAT_MASK_PYROWAVE) != 0 &&
                 (videoFormat & VIDEO_FORMAT_MASK_PYROWAVE) == 0) {
             if (connectionListener != null) {
-                connectionListener.launchFailed("Your host PC couldn't start a PyroWave stream. " +
-                        "Check the host's Sunshine log for PyroWave encoder errors.");
+                connectionListener.launchFailed(PYROWAVE_START_FAILED);
             }
             return -1;
         }

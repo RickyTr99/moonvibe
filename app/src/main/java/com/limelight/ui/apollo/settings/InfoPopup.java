@@ -1,13 +1,16 @@
 package com.limelight.ui.apollo.settings;
 
 import android.app.Activity;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.os.Build;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.text.TextUtils;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -41,6 +44,19 @@ class InfoPopup {
         }
     }
 
+    /** Why the setting does nothing now, or a note on when it applies, with a button that fixes it when there is one. */
+    static final class Notice {
+        final CharSequence text;
+        final CharSequence actionLabel;
+        final Runnable action;
+
+        Notice(CharSequence text, CharSequence actionLabel, Runnable action) {
+            this.text = text;
+            this.actionLabel = actionLabel;
+            this.action = action;
+        }
+    }
+
     private static final int MAX_WIDTH_DP = 420;
     // The names of the options line up in a column as wide as the longest one, up to this
     private static final int MAX_NAME_WIDTH_DP = 140;
@@ -68,7 +84,11 @@ class InfoPopup {
         return scrim != null;
     }
 
-    void show(View anchor, CharSequence title, CharSequence text, List<Option> options) {
+    /**
+     * @param text what the setting does, or null for a setting with no "i"
+     * @param notice why it does nothing now, or null
+     */
+    void show(View anchor, CharSequence title, CharSequence text, List<Option> options, Notice notice) {
         dismiss(false);
         this.anchor = anchor;
         content.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
@@ -93,13 +113,23 @@ class InfoPopup {
         }
         // Taps on the card itself keep it open
         card.setClickable(true);
-        HintRow.set(card, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_close);
+        boolean hasAction = notice != null && notice.action != null;
+        if (hasAction) {
+            HintRow.set(card, new HintRow.Hint(KeyEvent.KEYCODE_BUTTON_A, notice.actionLabel.toString()),
+                    HintRow.hint(host.getContext(), KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_close));
+        } else {
+            HintRow.set(card, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_close);
+        }
         card.setOnKeyListener((v, keyCode, event) -> {
             // Y is taken by the settings screen, which closes the card with it
             if (keyCode == KeyEvent.KEYCODE_BUTTON_A || keyCode == KeyEvent.KEYCODE_DPAD_CENTER
                     || keyCode == KeyEvent.KEYCODE_ENTER) {
                 if (event.getAction() == KeyEvent.ACTION_UP) {
-                    dismiss(true);
+                    if (hasAction) {
+                        runAction(notice);
+                    } else {
+                        dismiss(true);
+                    }
                 }
                 return true;
             }
@@ -115,9 +145,11 @@ class InfoPopup {
         titleView.setPadding(0, 0, 0, dp(8));
         column.addView(titleView);
 
-        TextView textView = ApolloUi.text(host.getContext(), text, 13.5f, colors.onSurfaceVariant, false);
-        textView.setLineSpacing(0, 1.3f);
-        column.addView(textView);
+        if (text != null) {
+            TextView textView = ApolloUi.text(host.getContext(), text, 13.5f, colors.onSurfaceVariant, false);
+            textView.setLineSpacing(0, 1.3f);
+            column.addView(textView);
+        }
 
         if (options != null && !options.isEmpty()) {
             TextView header = ApolloUi.text(host.getContext(), host.getContext().getString(R.string.apollo_info_options),
@@ -151,6 +183,10 @@ class InfoPopup {
             }
         }
 
+        if (notice != null) {
+            addNotice(column, notice, text != null || (options != null && !options.isEmpty()));
+        }
+
         // As wide as it reads well, centered, and scrolling when it is taller than the screen
         int width = Math.min(dp(MAX_WIDTH_DP), host.getWidth() - dp(32));
         column.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.UNSPECIFIED);
@@ -166,6 +202,63 @@ class InfoPopup {
                 .setInterpolator(ApolloMotion.EMPHASIZED_DECELERATE).start();
 
         card.requestFocus();
+    }
+
+    // The notice in a box of its own, then the buttons when it has an action
+    private void addNotice(LinearLayout column, Notice notice, boolean afterText) {
+        LinearLayout box = new LinearLayout(host.getContext());
+        box.setOrientation(LinearLayout.HORIZONTAL);
+        box.setPadding(dp(14), dp(12), dp(14), dp(12));
+        box.setBackground(ApolloUi.roundRect(colors.surfaceContainerHighest, dp(16)));
+        ImageView icon = new ImageView(host.getContext());
+        icon.setImageResource(R.drawable.ic_apollo_link);
+        icon.setImageTintList(ColorStateList.valueOf(colors.primary));
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(18), dp(18));
+        iconParams.topMargin = dp(1);
+        box.addView(icon, iconParams);
+        TextView noticeText = ApolloUi.text(host.getContext(), notice.text, 13, colors.onSurfaceVariant, false);
+        noticeText.setLineSpacing(0, 1.25f);
+        LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        textParams.leftMargin = dp(12);
+        box.addView(noticeText, textParams);
+        LinearLayout.LayoutParams boxParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        boxParams.topMargin = afterText ? dp(14) : 0;
+        column.addView(box, boxParams);
+
+        if (notice.action == null) {
+            return;
+        }
+        LinearLayout buttons = new LinearLayout(host.getContext());
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        buttons.setGravity(Gravity.END);
+        buttons.addView(button(host.getContext().getString(R.string.apollo_hint_close), Color.TRANSPARENT, colors.primary,
+                v -> dismiss(true)));
+        TextView action = button(notice.actionLabel, colors.secondaryContainer, colors.onSecondaryContainer, v -> runAction(notice));
+        LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40));
+        actionParams.leftMargin = dp(8);
+        buttons.addView(action, actionParams);
+        LinearLayout.LayoutParams buttonsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        buttonsParams.topMargin = dp(14);
+        column.addView(buttons, buttonsParams);
+    }
+
+    // A pill button; the card keeps the focus, A presses the action
+    private TextView button(CharSequence label, int fill, int textColor, View.OnClickListener listener) {
+        TextView button = ApolloUi.text(host.getContext(), label, 14, textColor, true);
+        button.setGravity(Gravity.CENTER);
+        button.setSingleLine(true);
+        button.setEllipsize(TextUtils.TruncateAt.END);
+        button.setMinHeight(dp(40));
+        button.setPadding(dp(18), 0, dp(18), 0);
+        button.setBackground(ApolloUi.ripple(ApolloUi.roundRect(fill, dp(20)), dp(20)));
+        button.setFocusable(false);
+        button.setOnClickListener(listener);
+        return button;
+    }
+
+    private void runAction(Notice notice) {
+        dismiss(true);
+        notice.action.run();
     }
 
     /** @return whether the card was open */

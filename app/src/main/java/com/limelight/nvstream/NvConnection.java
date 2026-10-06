@@ -255,7 +255,7 @@ public class NvConnection {
         // 4:2:0, so the host has to have that.
         if ((context.streamConfig.getSupportedVideoFormats() & MoonBridge.VIDEO_FORMAT_MASK_PYROWAVE) != 0 &&
                 (context.serverCodecModeSupport & (MoonBridge.SCM_PYROWAVE | MoonBridge.SCM_PYROWAVE_10BIT)) == 0) {
-            context.connListener.launchFailed("Your host PC doesn't support PyroWave. It needs the matching Sunshine build.");
+            context.connListener.launchFailed(appContext.getString(com.limelight.R.string.apollo_pyrowave_host_unsupported));
             return false;
         }
         

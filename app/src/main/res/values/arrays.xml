@@ -121,6 +121,19 @@
         <item>vulkan</item>
     </string-array>
 
+    <string-array name="leave_app_names">
+        <item>@string/leave_app_close</item>
+        <item>@string/leave_app_reconnect</item>
+        <item>@string/leave_app_keep</item>
+        <item>@string/leave_app_pip</item>
+    </string-array>
+    <string-array name="leave_app_values" translatable="false">
+        <item>close</item>
+        <item>reconnect</item>
+        <item>keep</item>
+        <item>pip</item>
+    </string-array>
+
     <string-array name="pyrowave_late_frames_names">
         <item>@string/pyrowave_late_frames_off</item>
         <item>@string/pyrowave_late_frames_sharp</item>

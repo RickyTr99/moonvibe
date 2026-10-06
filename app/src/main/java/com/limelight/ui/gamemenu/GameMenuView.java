@@ -555,6 +555,7 @@ public class GameMenuView extends FrameLayout {
             case KeyEvent.KEYCODE_BUTTON_X: return "X";
             case KeyEvent.KEYCODE_BUTTON_Y: return "Y";
             case KeyEvent.KEYCODE_BUTTON_START: return "Start";
+            case KeyEvent.KEYCODE_BUTTON_SELECT: return "Select";
             case KeyEvent.KEYCODE_DPAD_UP: return "▲";
             case KeyEvent.KEYCODE_DPAD_DOWN: return "▼";
             case KeyEvent.KEYCODE_DPAD_LEFT: return "◀";
@@ -572,6 +573,7 @@ public class GameMenuView extends FrameLayout {
             case KeyEvent.KEYCODE_BUTTON_X: return R.drawable.ic_apollo_power;
             case KeyEvent.KEYCODE_BUTTON_Y: return R.drawable.ic_menu_perf;
             case KeyEvent.KEYCODE_BUTTON_START: return R.drawable.ic_menu_guide;
+            case KeyEvent.KEYCODE_BUTTON_SELECT: return R.drawable.ic_overlay_windows;
             case KeyEvent.KEYCODE_DPAD_UP: return R.drawable.ic_apollo_cat_keyboard;
             case KeyEvent.KEYCODE_DPAD_DOWN: return R.drawable.ic_menu_pckeyboard;
             case KeyEvent.KEYCODE_DPAD_LEFT: return R.drawable.ic_menu_window;
@@ -603,11 +605,21 @@ public class GameMenuView extends FrameLayout {
         return badge;
     }
 
+    // The 17 dp badge of the hints and dialog buttons: a one-letter button is round, as wide as it is tall
+    private LinearLayout.LayoutParams smallBadgeParams(TextView badge) {
+        boolean round = badge.getText().length() == 1;
+        if (round) {
+            badge.setMinWidth(dp(17));
+        }
+        return new LinearLayout.LayoutParams(round ? dp(17) : LinearLayout.LayoutParams.WRAP_CONTENT, dp(17));
+    }
+
     private View hint(int keyCode, String label) {
         LinearLayout hint = new LinearLayout(getContext());
         hint.setOrientation(LinearLayout.HORIZONTAL);
         hint.setGravity(Gravity.CENTER_VERTICAL);
-        hint.addView(buttonBadge(keyCode), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(17)));
+        TextView badge = buttonBadge(keyCode);
+        hint.addView(badge, smallBadgeParams(badge));
         TextView text = text(label, 12, colors.onSurfaceVariant, false);
         text.setPadding(dp(6), 0, 0, 0);
         hint.addView(text);
@@ -715,8 +727,8 @@ public class GameMenuView extends FrameLayout {
         button.setMinimumHeight(dp(40));
         button.setPadding(dp(14), 0, dp(16), 0);
         button.setBackground(ripple(roundRect(filled ? colors.primary : Color.TRANSPARENT, dp(20)), dp(20)));
-        View badge = buttonBadge(keyCode);
-        button.addView(badge, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(17)));
+        TextView badge = buttonBadge(keyCode);
+        button.addView(badge, smallBadgeParams(badge));
         dialogBadges.add(badge);
         TextView text = text(label, 14, filled ? colors.onPrimary : colors.primary, true);
         button.addView(text);

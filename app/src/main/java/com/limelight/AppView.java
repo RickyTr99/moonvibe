@@ -21,6 +21,7 @@ import com.limelight.ui.apollo.hints.HintRow;
 import com.limelight.ui.apollo.hints.ScreenHints;
 import com.limelight.ui.apollo.ApolloUi;
 import com.limelight.ui.apollo.GameCardView;
+import com.limelight.ui.apollo.settings.ProfileMenu;
 import com.limelight.ui.apollo.settings.QuickSettingsPanel;
 import com.limelight.ui.theme.ApolloColors;
 import com.limelight.utils.QuickLaunchManager;
@@ -673,6 +674,7 @@ public class AppView extends Activity {
                     overridePendingTransition(R.anim.apollo_fade_in, R.anim.apollo_fade_out);
                 });
         topBar.setOnQuickSettingsClickListener(v -> QuickSettingsPanel.of(this).toggle());
+        topBar.setOnProfileClickListener(v -> ProfileMenu.of(this).toggle());
         ((FrameLayout) findViewById(R.id.topBarContainer)).addView(topBar);
 
         findViewById(R.id.libraryStatus).setBackground(ApolloUi.roundRect(colors.surfaceContainerHigh, ApolloUi.dp(this, 14)));
@@ -687,6 +689,7 @@ public class AppView extends Activity {
         // Gamepad hints at the bottom
         HintRow hintRow = ScreenHints.attach(this, findViewById(R.id.libraryColumn));
         hintRow.setFallback(HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_back),
+                HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_profiles),
                 HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings));
 
         libraryGrid = findViewById(R.id.libraryGrid);
@@ -833,6 +836,14 @@ public class AppView extends Activity {
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (event.getRepeatCount() == 0) {
+            // Select opens and closes the profiles; while they are open the other buttons are theirs
+            if (keyCode == KeyEvent.KEYCODE_BUTTON_SELECT) {
+                ProfileMenu.of(this).toggle();
+                return true;
+            }
+            if (ProfileMenu.of(this).isShowing()) {
+                return super.onKeyDown(keyCode, event);
+            }
             switch (keyCode) {
                 case KeyEvent.KEYCODE_BUTTON_Y: {
                     // The options of the focused game, like a long press
@@ -871,7 +882,7 @@ public class AppView extends Activity {
 
     @Override
     public void onBackPressed() {
-        if (ActionSheet.of(this).dismiss() || QuickSettingsPanel.of(this).dismiss()) {
+        if (ActionSheet.of(this).dismiss() || ProfileMenu.of(this).dismiss() || QuickSettingsPanel.of(this).dismiss()) {
             return;
         }
         super.onBackPressed();

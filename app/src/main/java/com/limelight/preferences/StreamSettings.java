@@ -11,7 +11,9 @@ import android.os.Bundle;
 import android.app.Activity;
 import android.os.Handler;
 import android.os.Vibrator;
+import android.app.AlertDialog;
 import android.preference.CheckBoxPreference;
+import android.preference.EditTextPreference;
 import android.preference.ListPreference;
 import android.preference.Preference;
 import android.preference.PreferenceCategory;
@@ -35,10 +37,13 @@ import com.limelight.PcView;
 import com.limelight.R;
 import com.limelight.binding.input.ControllerHandler;
 import com.limelight.binding.video.MediaCodecHelper;
+import com.limelight.profiles.ProfileEditor;
+import com.limelight.profiles.Profiles;
 import com.limelight.ui.apollo.ApolloTopBar;
 import com.limelight.ui.apollo.ApolloUi;
 import com.limelight.ui.apollo.hints.HintRow;
 import com.limelight.ui.apollo.hints.ScreenHints;
+import com.limelight.ui.apollo.settings.ProfileMenu;
 import com.limelight.ui.apollo.settings.QuickSettingsPanel;
 import com.limelight.ui.apollo.settings.SettingsView;
 import com.limelight.ui.theme.ApolloColors;
@@ -49,10 +54,15 @@ import java.lang.reflect.Method;
 import java.util.Arrays;
 
 public class StreamSettings extends Activity {
+    /** MoonVibe: edit this profile instead of the general settings (see ProfileEditor). */
+    public static final String EXTRA_PROFILE_ID = "ProfileId";
+
     private PreferenceConfiguration previousPrefs;
     private int previousDisplayPixelCount;
     private ApolloTopBar topBar;
     private SettingsView settingsView;
+    // Non-null while a profile is edited
+    ProfileEditor profileEditor;
 
     // HACK for Android 9
     static DisplayCutout displayCutoutP;
@@ -73,11 +83,24 @@ public class StreamSettings extends Activity {
 
         previousPrefs = PreferenceConfiguration.readPreferences(this);
 
+        String profileId = getIntent().getStringExtra(EXTRA_PROFILE_ID);
+        if (profileId != null) {
+            if (Profiles.find(this, profileId) == null) {
+                finish();
+                return;
+            }
+            profileEditor = new ProfileEditor(this, profileId);
+        }
+
         UiHelper.setLocale(this);
 
         setContentView(R.layout.activity_stream_settings);
         overridePendingTransition(R.anim.apollo_fade_in, R.anim.apollo_fade_out);
-        initializeApolloViews();
+        if (profileEditor != null) {
+            initializeProfileViews();
+        } else {
+            initializeApolloViews();
+        }
 
         UiHelper.notifyNewRootView(this);
     }
@@ -90,6 +113,7 @@ public class StreamSettings extends Activity {
         topBar.setTabs(new String[] {getString(R.string.apollo_tab_home), getString(R.string.apollo_tab_settings)}, 1,
                 index -> goHome());
         topBar.setOnQuickSettingsClickListener(v -> QuickSettingsPanel.of(this).toggle());
+        topBar.setOnProfileClickListener(v -> ProfileMenu.of(this).toggle());
         ((FrameLayout) findViewById(R.id.topBarContainer)).addView(topBar);
 
         settingsView = new SettingsView(this, colors);
@@ -98,11 +122,61 @@ public class StreamSettings extends Activity {
         // Gamepad hints at the bottom
         HintRow hintRow = ScreenHints.attach(this, findViewById(R.id.settingsColumn));
         hintRow.setFallback(HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_home),
+                HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_profiles),
                 HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings));
 
         // Keep the content clear of a notch, the window draws under it
         ApolloUi.padForCutout(findViewById(R.id.settingsColumn));
     }
+
+    // MoonVibe: a profile's page, without the top bar: its name and rule, then the settings it can change
+    private void initializeProfileViews() {
+        ApolloColors colors = ApolloColors.dark(this);
+        findViewById(R.id.topBarContainer).setVisibility(View.GONE);
+
+        SettingsView.ProfileMode mode = new SettingsView.ProfileMode() {
+            @Override
+            public boolean isProfileSetting(String key) {
+                return ProfileEditor.isProfileSetting(key);
+            }
+
+            @Override
+            public boolean isOverridden(String key) {
+                return profileEditor.isOverridden(key);
+            }
+
+            @Override
+            public void useGeneral(String key) {
+                profileEditor.useGeneral(key);
+            }
+
+            @Override
+            public CharSequence note(Preference pref) {
+                String key = pref.getKey();
+                if (ProfileEditor.isProfileSetting(key) && !profileEditor.isOverridden(key)) {
+                    return getString(R.string.apollo_profile_follows_general);
+                }
+                return null;
+            }
+
+            @Override
+            public CharSequence headerNote() {
+                return getString(R.string.apollo_profile_editor_note);
+            }
+        };
+        settingsView = SettingsView.profilePage(this, colors, getString(R.string.apollo_profile_editor_title), mode,
+                ProfileEditor.KEY_NAME, KEY_PROFILE_DELETE);
+        FrameLayout container = findViewById(R.id.settingsContainer);
+        container.setPadding(0, ApolloUi.dp(this, 16), 0, 0);
+        container.addView(settingsView);
+
+        HintRow hintRow = ScreenHints.attach(this, findViewById(R.id.settingsColumn));
+        hintRow.setFallback(HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_back));
+
+        ApolloUi.padForCutout(findViewById(R.id.settingsColumn));
+    }
+
+    static final String KEY_PROFILE_DELETE = "profile_delete";
 
     void onPreferencesReady(PreferenceScreen screen) {
         settingsView.setScreen(screen);
@@ -111,18 +185,52 @@ public class StreamSettings extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        topBar.onResume();
+        if (topBar != null) {
+            topBar.onResume();
+        }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        topBar.onPause();
+        if (topBar != null) {
+            topBar.onPause();
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (profileEditor != null) {
+            profileEditor.close();
+        }
     }
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (profileEditor != null) {
+            // A profile's page: B goes back from the page's own menus, then leaves
+            if (keyCode == KeyEvent.KEYCODE_BUTTON_B && event.getRepeatCount() == 0) {
+                if (!settingsView.onButtonB()) {
+                    finish();
+                }
+                return true;
+            }
+            return super.onKeyDown(keyCode, event);
+        }
         if (event.getRepeatCount() == 0) {
+            // Select opens and closes the profiles; while they are open the other buttons are theirs
+            if (keyCode == KeyEvent.KEYCODE_BUTTON_SELECT) {
+                ProfileMenu.of(this).toggle();
+                return true;
+            }
+            if (ProfileMenu.of(this).isShowing()) {
+                if (keyCode == KeyEvent.KEYCODE_BUTTON_B) {
+                    ProfileMenu.of(this).dismiss();
+                    return true;
+                }
+                return super.onKeyDown(keyCode, event);
+            }
             switch (keyCode) {
                 case KeyEvent.KEYCODE_BUTTON_L1:
                     topBar.switchTab(-1);
@@ -202,7 +310,13 @@ public class StreamSettings extends Activity {
     @Override
     // NOTE: This will NOT be called on Android 13+ with android:enableOnBackInvokedCallback="true"
     public void onBackPressed() {
-        if (QuickSettingsPanel.of(this).dismiss() || settingsView.onBackPressed()) {
+        if (profileEditor != null) {
+            if (!settingsView.onBackPressed()) {
+                finish();
+            }
+            return;
+        }
+        if (ProfileMenu.of(this).dismiss() || QuickSettingsPanel.of(this).dismiss() || settingsView.onBackPressed()) {
             return;
         }
         goHome();
@@ -371,6 +485,39 @@ public class StreamSettings extends Activity {
                     .apply();
         }
 
+        // The settings this screen edits: the general ones, or the work file of a profile
+        private SharedPreferences prefs() {
+            return getPreferenceManager().getSharedPreferences();
+        }
+
+        private void addProfilePreferences(PreferenceScreen screen, ProfileEditor profileEditor) {
+            EditTextPreference name = new EditTextPreference(getActivity());
+            name.setKey(ProfileEditor.KEY_NAME);
+            name.setTitle(R.string.apollo_profile_name);
+            name.setDialogTitle(R.string.apollo_profile_name);
+            name.setPersistent(true);
+            screen.addPreference(name);
+
+            Preference delete = new Preference(getActivity());
+            delete.setKey(KEY_PROFILE_DELETE);
+            delete.setTitle(R.string.apollo_profile_delete);
+            delete.setPersistent(false);
+            delete.setOnPreferenceClickListener(p -> {
+                new AlertDialog.Builder(getActivity())
+                        .setTitle(R.string.apollo_profile_delete)
+                        .setMessage(getString(R.string.apollo_profile_delete_confirm,
+                                prefs().getString(ProfileEditor.KEY_NAME, "")))
+                        .setPositiveButton(R.string.apollo_profile_delete, (dialog, which) -> {
+                            Profiles.delete(getActivity(), profileEditor.id());
+                            getActivity().finish();
+                        })
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .show();
+                return true;
+            });
+            screen.addPreference(delete);
+        }
+
         @Override
         public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
             View view = super.onCreateView(inflater, container, savedInstanceState);
@@ -390,8 +537,17 @@ public class StreamSettings extends Activity {
         public void onCreate(Bundle savedInstanceState) {
             super.onCreate(savedInstanceState);
 
+            // MoonVibe: a profile is edited in a work file of its own (ProfileEditor), with its name and rule
+            ProfileEditor profileEditor = ((StreamSettings) getActivity()).profileEditor;
+            if (profileEditor != null) {
+                getPreferenceManager().setSharedPreferencesName(ProfileEditor.WORK_FILE);
+            }
+
             addPreferencesFromResource(R.xml.preferences);
             PreferenceScreen screen = getPreferenceScreen();
+            if (profileEditor != null) {
+                addProfilePreferences(screen, profileEditor);
+            }
 
             // hide on-screen controls category on non touch screen devices
             if (!getActivity().getPackageManager().hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)) {
@@ -447,9 +603,24 @@ public class StreamSettings extends Activity {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
                     !getActivity().getPackageManager().hasSystemFeature("android.software.picture_in_picture") ||
                     getActivity().getPackageManager().hasSystemFeature("com.amazon.software.fireos")) {
-                PreferenceCategory category =
-                        (PreferenceCategory) findPreference("category_ui_settings");
-                category.removePreference(findPreference("checkbox_enable_pip"));
+                // MoonVibe: it's an option of "When you leave the app"
+                if (findPreference("list_leave_app") != null) {
+                    removeValue("list_leave_app", PreferenceConfiguration.LEAVE_APP_PIP_VALUE, () ->
+                            ((ListPreference) findPreference("list_leave_app")).setValue("close"));
+                }
+            }
+
+            // A stream kept in the background shows a notification, to come back or disconnect: ask for it
+            // as soon as it's chosen (the stream still runs without it)
+            Preference leaveApp = findPreference("list_leave_app");
+            if (leaveApp != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                leaveApp.setOnPreferenceChangeListener((pref, value) -> {
+                    if ("keep".equals(value) && getActivity().checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                            != PackageManager.PERMISSION_GRANTED) {
+                        getActivity().requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 0);
+                    }
+                    return true;
+                });
             }
 
             // Fire TV apps are not allowed to use WebViews or browsers, so hide the Help category
@@ -601,7 +772,7 @@ public class StreamSettings extends Activity {
                         removeValue(PreferenceConfiguration.RESOLUTION_PREF_STRING, PreferenceConfiguration.RES_4K, new Runnable() {
                             @Override
                             public void run() {
-                                SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(SettingsFragment.this.getActivity());
+                                SharedPreferences prefs = SettingsFragment.this.prefs();
                                 setValue(PreferenceConfiguration.RESOLUTION_PREF_STRING, PreferenceConfiguration.RES_1440P);
                                 resetBitrateToDefault(prefs, null, null);
                             }
@@ -612,7 +783,7 @@ public class StreamSettings extends Activity {
                         removeValue(PreferenceConfiguration.RESOLUTION_PREF_STRING, PreferenceConfiguration.RES_1440P, new Runnable() {
                             @Override
                             public void run() {
-                                SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(SettingsFragment.this.getActivity());
+                                SharedPreferences prefs = SettingsFragment.this.prefs();
                                 setValue(PreferenceConfiguration.RESOLUTION_PREF_STRING, PreferenceConfiguration.RES_1080P);
                                 resetBitrateToDefault(prefs, null, null);
                             }
@@ -623,7 +794,7 @@ public class StreamSettings extends Activity {
                         removeValue(PreferenceConfiguration.RESOLUTION_PREF_STRING, PreferenceConfiguration.RES_1080P, new Runnable() {
                             @Override
                             public void run() {
-                                SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(SettingsFragment.this.getActivity());
+                                SharedPreferences prefs = SettingsFragment.this.prefs();
                                 setValue(PreferenceConfiguration.RESOLUTION_PREF_STRING, PreferenceConfiguration.RES_720P);
                                 resetBitrateToDefault(prefs, null, null);
                             }
@@ -642,13 +813,14 @@ public class StreamSettings extends Activity {
                 addNativeResolutionEntries(width, height, false);
             }
 
-            if (!PreferenceConfiguration.readPreferences(this.getActivity()).unlockFps) {
+            // MoonVibe: from the settings this screen edits (a profile may unlock them on its own)
+            if (!prefs().getBoolean(PreferenceConfiguration.UNLOCK_FPS_STRING, false)) {
                 // We give some extra room in case the FPS is rounded down
                 if (maxSupportedFps < 118) {
                     removeValue(PreferenceConfiguration.FPS_PREF_STRING, "120", new Runnable() {
                         @Override
                         public void run() {
-                            SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(SettingsFragment.this.getActivity());
+                            SharedPreferences prefs = SettingsFragment.this.prefs();
                             setValue(PreferenceConfiguration.FPS_PREF_STRING, "90");
                             resetBitrateToDefault(prefs, null, null);
                         }
@@ -659,7 +831,7 @@ public class StreamSettings extends Activity {
                     removeValue(PreferenceConfiguration.FPS_PREF_STRING, "90", new Runnable() {
                         @Override
                         public void run() {
-                            SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(SettingsFragment.this.getActivity());
+                            SharedPreferences prefs = SettingsFragment.this.prefs();
                             setValue(PreferenceConfiguration.FPS_PREF_STRING, "60");
                             resetBitrateToDefault(prefs, null, null);
                         }
@@ -751,7 +923,7 @@ public class StreamSettings extends Activity {
             findPreference(PreferenceConfiguration.RESOLUTION_PREF_STRING).setOnPreferenceChangeListener(new Preference.OnPreferenceChangeListener() {
                 @Override
                 public boolean onPreferenceChange(Preference preference, Object newValue) {
-                    SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(SettingsFragment.this.getActivity());
+                    SharedPreferences prefs = SettingsFragment.this.prefs();
                     String valueStr = (String) newValue;
 
                     // Detect if this value is the native resolution option
@@ -783,7 +955,7 @@ public class StreamSettings extends Activity {
             findPreference(PreferenceConfiguration.FPS_PREF_STRING).setOnPreferenceChangeListener(new Preference.OnPreferenceChangeListener() {
                 @Override
                 public boolean onPreferenceChange(Preference preference, Object newValue) {
-                    SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(SettingsFragment.this.getActivity());
+                    SharedPreferences prefs = SettingsFragment.this.prefs();
                     String valueStr = (String) newValue;
 
                     // If this is native frame rate, show the warning dialog

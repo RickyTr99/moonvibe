@@ -58,6 +58,18 @@
             android:title="@string/title_checkbox_auto_resume_stream"
             android:summary="@string/summary_checkbox_auto_resume_stream"
             android:defaultValue="false" />
+        <ListPreference
+            android:key="list_leave_app"
+            android:title="@string/title_leave_app"
+            android:entries="@array/leave_app_names"
+            android:entryValues="@array/leave_app_values"
+            android:summary="@string/summary_leave_app"
+            android:defaultValue="close" />
+        <CheckBoxPreference
+            android:key="checkbox_background_audio"
+            android:title="@string/title_background_audio"
+            android:summary="@string/summary_background_audio"
+            android:defaultValue="false" />
     </PreferenceCategory>
     <PreferenceCategory android:title="@string/category_audio_settings">
         <ListPreference
@@ -138,6 +150,11 @@
             android:title="@string/title_checkbox_gamepad_motion_fallback"
             android:summary="@string/summary_checkbox_gamepad_motion_fallback"
             android:defaultValue="false" />
+        <CheckBoxPreference
+            android:key="checkbox_auto_connect_controllers"
+            android:title="@string/title_checkbox_auto_connect_controllers"
+            android:summary="@string/summary_checkbox_auto_connect_controllers"
+            android:defaultValue="true" />
         <ListPreference
             android:key="list_ayn_back_button"
             android:title="@string/title_list_ayn_back_button"
@@ -316,11 +333,6 @@
     </PreferenceCategory>
     <PreferenceCategory android:title="@string/category_ui_settings"
         android:key="category_ui_settings">
-        <CheckBoxPreference
-            android:key="checkbox_enable_pip"
-            android:title="@string/title_checkbox_enable_pip"
-            android:summary="@string/summary_checkbox_enable_pip"
-            android:defaultValue="false" />
         <com.limelight.preferences.LanguagePreference
             android:key="list_languages"
             android:title="@string/title_language_list"
