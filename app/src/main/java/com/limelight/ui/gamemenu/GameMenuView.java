@@ -64,8 +64,8 @@ public class GameMenuView extends FrameLayout {
     private static final float PRESSED_SCALE = 0.96f;
     // No more than the side margin of the panel, so the sliding content never reaches the edge
     private static final int TAB_SLIDE_DP = 10;
-    private static final int BUMPER_WIDTH_DP = 30;
-    private static final int BUMPER_HEIGHT_DP = 17;
+    private static final int BUMPER_WIDTH_DP = 26;
+    private static final int BUMPER_HEIGHT_DP = 19;
     private static final float SLIDER_STICK_DEADZONE = 0.2f;
     // Speed of a slider with the stick fully tilted
     private static final float SLIDER_STICK_PERCENT_PER_SECOND = 40f;
@@ -649,6 +649,8 @@ public class GameMenuView extends FrameLayout {
         chip.setGravity(Gravity.CENTER);
         chip.setIncludeFontPadding(false);
         chip.setBackground(new BumperDrawable(colors.surfaceContainerHighest, direction < 0, density));
+        // The letters a little low, where the shape is fullest
+        chip.setPadding(0, dp(1), 0, 0);
         addPressFeedback(chip);
         chip.setOnClickListener(v -> {
             gamepadMode = false;
@@ -1339,8 +1341,13 @@ public class GameMenuView extends FrameLayout {
         content.addView(line, lineParams);
     }
 
+    // The name is white on every tile, a dangerous action keeps the red of its icon and of its ring
     private int tileLabelColor(QuickAction action, boolean active) {
-        return action.danger ? colors.error : active ? colors.onSecondaryContainer : colors.onSurface;
+        return active ? colors.onSecondaryContainer : colors.onSurface;
+    }
+
+    private int tileIconColor(QuickAction action, boolean active) {
+        return action.danger ? colors.error : tileLabelColor(action, active);
     }
 
     private Tile createTile(QuickAction action, float[] radii) {
@@ -1365,7 +1372,7 @@ public class GameMenuView extends FrameLayout {
         if (padConnected) {
             badgeBox.addView(buttonBadge(action.keyCode), new LayoutParams(LayoutParams.WRAP_CONTENT, dp(20), Gravity.CENTER));
         } else {
-            badgeBox.addView(icon(actionIcon(action.keyCode), tileLabelColor(action, active), 20),
+            badgeBox.addView(icon(actionIcon(action.keyCode), tileIconColor(action, active), 20),
                     new LayoutParams(dp(20), dp(20), Gravity.CENTER));
         }
         view.addView(badgeBox, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(28)));
@@ -1629,7 +1636,8 @@ public class GameMenuView extends FrameLayout {
             if (row.toggle != null) {
                 row.toggle.setChecked(row.item.toggle.isOn(), true);
             }
-            if (row.value != null) {
+            // A slider's value is its own, set while it moves
+            if (row.value != null && row.item.options != null) {
                 row.value.setText(dropdownValue(row.item));
             }
         }
@@ -1845,7 +1853,9 @@ public class GameMenuView extends FrameLayout {
         dropdownCard.animate().cancel();
         dropdownCard.setVisibility(INVISIBLE);
 
-        // Below the row if it fits, otherwise above it. It unfolds from the row.
+        // Below the row if it fits, otherwise above it. It unfolds from the row. A menu too tall for either
+        // opens over the row with the chosen option on it, inside the panel.
+        int selected = Math.max(0, row.item.selection.get());
         dropdownCard.post(() -> {
             if (dropdownGeneration != generation) {
                 return;
@@ -1857,11 +1867,22 @@ public class GameMenuView extends FrameLayout {
             int rowTop = rowLocation[1] - frameLocation[1];
             int rowBottom = rowTop + row.view.getHeight();
             int cardHeight = dropdownCard.getHeight();
+            int frameHeight = panelFrame.getHeight();
 
-            int top = rowBottom + dp(4);
-            boolean above = top + cardHeight > panelFrame.getHeight() - dp(8);
-            if (above) {
-                top = Math.max(dp(8), rowTop - cardHeight - dp(4));
+            int top;
+            float pivotY;
+            if (rowBottom + dp(4) + cardHeight <= frameHeight - dp(8)) {
+                top = rowBottom + dp(4);
+                pivotY = 0;
+            } else if (rowTop - dp(4) - cardHeight >= dp(8)) {
+                top = rowTop - dp(4) - cardHeight;
+                pivotY = cardHeight;
+            } else {
+                View option = dropdownCard.getChildAt(Math.min(selected, dropdownCard.getChildCount() - 1));
+                int optionMiddle = option.getTop() + option.getHeight() / 2;
+                top = rowTop + row.view.getHeight() / 2 - optionMiddle;
+                top = Math.max(dp(8), Math.min(frameHeight - dp(8) - cardHeight, top));
+                pivotY = rowTop + row.view.getHeight() / 2f - top;
             }
             LayoutParams params = (LayoutParams) dropdownCard.getLayoutParams();
             params.topMargin = top;
@@ -1869,7 +1890,7 @@ public class GameMenuView extends FrameLayout {
             dropdownCard.setLayoutParams(params);
 
             dropdownCard.setPivotX(dropdownCard.getWidth());
-            dropdownCard.setPivotY(above ? cardHeight : 0);
+            dropdownCard.setPivotY(pivotY);
             dropdownCard.setScaleY(0.6f);
             dropdownCard.setAlpha(0);
             dropdownCard.setVisibility(VISIBLE);

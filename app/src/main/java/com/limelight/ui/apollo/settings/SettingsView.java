@@ -55,6 +55,7 @@ import com.limelight.ui.apollo.ApolloUi;
 import com.limelight.ui.apollo.ApolloWidgets;
 import com.limelight.ui.apollo.hints.ButtonGlyph;
 import com.limelight.ui.apollo.hints.HintRow;
+import com.limelight.ui.apollo.stats.StatsPrefs;
 import com.limelight.ui.theme.ApolloColors;
 import com.limelight.ui.theme.ApolloMotion;
 
@@ -138,8 +139,8 @@ public class SettingsView extends FrameLayout {
         // Shown after the name while the setting differs from its default
         DotSpan dot;
         boolean modified;
-        // Green, in its place while the profile in use changes the setting
-        DotSpan profileDot;
+        // The grey profile icon, in place of the dot while the profile in use changes the setting
+        ProfileIconSpan profileIcon;
         boolean fromProfile;
         // What the setting does, behind the "i" after its name; null for the obvious ones
         SettingsLayout.Info info;
@@ -494,7 +495,7 @@ public class SettingsView extends FrameLayout {
     // while it is on the settings on the right (or a popup), so the side with the focus is clear
 
     private final List<GradientDrawable> categoryFills = new ArrayList<>();
-    // Green, after a category holding settings the profile in use changes
+    // The grey profile icon, after a category holding settings the profile in use changes
     private final List<View> categoryProfileDots = new ArrayList<>();
     private int categoryFillColor;
     private int categoryFillTarget;
@@ -889,10 +890,11 @@ public class SettingsView extends FrameLayout {
             label.setSingleLine(true);
             label.setEllipsize(TextUtils.TruncateAt.END);
             button.addView(label);
-            View profileDot = new View(getContext());
-            profileDot.setBackground(ApolloUi.roundRect(ApolloTopBar.PROFILE_DOT, dp(2.5f)));
+            ImageView profileDot = new ImageView(getContext());
+            profileDot.setImageResource(R.drawable.ic_apollo_profile);
+            profileDot.setImageTintList(ColorStateList.valueOf(colors.onSurfaceVariant));
             profileDot.setVisibility(INVISIBLE);
-            LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(dp(5), dp(5));
+            LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(dp(14), dp(14));
             dotParams.leftMargin = dp(8);
             button.addView(profileDot, dotParams);
             categoryProfileDots.add(profileDot);
@@ -1012,9 +1014,9 @@ public class SettingsView extends FrameLayout {
             rowList.addView(note);
         }
         if (activeProfile != null && categoryHasProfileSetting(category, false)) {
-            // Where the changes go: a green dot, as next to the name in the top bar, then the profile
+            // Where the changes go: the grey profile icon, as in the top bar, then the profile
             SpannableStringBuilder text = new SpannableStringBuilder(" ");
-            DotSpan dot = new DotSpan(ApolloTopBar.PROFILE_DOT, dp(5), 0);
+            ProfileIconSpan dot = new ProfileIconSpan(getContext(), colors.onSurfaceVariant, dp(15), 0);
             dot.setAlpha(255);
             text.setSpan(dot, 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             text.append("  ").append(getContext().getString(R.string.apollo_profile_settings_note, activeProfile.name()));
@@ -1171,10 +1173,10 @@ public class SettingsView extends FrameLayout {
             categoryProfileDots.get(i).setVisibility(shown ? VISIBLE : INVISIBLE);
         }
         for (Row row : rows) {
-            boolean fromProfile = row.profileDot != null && fromActiveProfile(row.pref);
+            boolean fromProfile = row.profileIcon != null && fromActiveProfile(row.pref);
             if (fromProfile != row.fromProfile || !animate) {
                 row.fromProfile = fromProfile;
-                fadeDot(row, row.profileDot, fromProfile ? 255 : 0, animate);
+                fadeDot(row, row.profileIcon, fromProfile ? 255 : 0, animate);
             }
             // On a profile's page the dot marks the settings the profile changes; a value of the profile in use
             // shows its green dot instead
@@ -1211,7 +1213,7 @@ public class SettingsView extends FrameLayout {
         }
     }
 
-    private static void fadeDot(Row row, DotSpan dot, int to, boolean animate) {
+    private static void fadeDot(Row row, ProfileIconSpan dot, int to, boolean animate) {
         if (dot == null) {
             return;
         }
@@ -1354,10 +1356,10 @@ public class SettingsView extends FrameLayout {
                 text.setSpan(row.dot, text.length() - 1, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
             if (isActiveProfileSetting(pref)) {
-                // Right over the other dot: the gap takes it back, only one of the two shows at a time
-                row.profileDot = new DotSpan(ApolloTopBar.PROFILE_DOT, dp(4), row.dot != null ? -dp(4) : dp(5));
+                // Where the other dot starts: the gap takes it back, only one of the two shows at a time
+                row.profileIcon = new ProfileIconSpan(getContext(), colors.onSurfaceVariant, dp(14), row.dot != null ? -dp(4) : dp(5));
                 text.append(' ');
-                text.setSpan(row.profileDot, text.length() - 1, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                text.setSpan(row.profileIcon, text.length() - 1, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
             if (snippet != null) {
                 text.append('\n');
@@ -1735,7 +1737,10 @@ public class SettingsView extends FrameLayout {
             options[count] = getContext().getString(R.string.apollo_profile_use_general);
         }
         int rightEdge = getWidth() - content.getPaddingRight() - dp(14);
-        popup.show(row.view, rightEdge, options, list.findIndexOfValue(list.getValue()), index -> {
+        // The default is marked in the menu, since the dot after the name only says the value differs from it
+        Object defaultValue = defaults != null ? defaults.defaultOf(list) : null;
+        int defaultIndex = defaultValue != null ? list.findIndexOfValue(defaultValue.toString()) : -1;
+        popup.show(row.view, rightEdge, options, list.findIndexOfValue(list.getValue()), defaultIndex, index -> {
             if (index >= count) {
                 if (profileMode != null) {
                     useGeneral(row);
@@ -1871,6 +1876,10 @@ public class SettingsView extends FrameLayout {
                 // A profile's name
                 String text = ((EditTextPreference) pref).getText();
                 row.value.setText(text != null ? text : "");
+            }
+            else if (StatsPrefs.PAGE_KEY.equals(pref.getKey())) {
+                // The page of the stats: the style in use, or off
+                row.value.setText(StatsPrefs.summary(getContext()));
             }
             else if (singlePage && row.value != null) {
                 // A game page shows what each setting is set to, as its summary tells

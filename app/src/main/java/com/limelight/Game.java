@@ -20,6 +20,7 @@ import com.limelight.binding.video.DisplayRefreshMeter;
 import com.limelight.binding.video.MediaCodecDecoderRenderer;
 import com.limelight.binding.video.MediaCodecHelper;
 import com.limelight.binding.video.PerfOverlayListener;
+import com.limelight.binding.video.PerfStats;
 import com.limelight.nvstream.NvConnection;
 import com.limelight.nvstream.NvConnectionListener;
 import com.limelight.nvstream.StreamConfiguration;
@@ -39,6 +40,8 @@ import com.limelight.ui.StreamView;
 import com.limelight.ui.apollo.launch.LaunchOverlayView;
 import com.limelight.ui.overlay.CustomCommand;
 import com.limelight.ui.apollo.MousePill;
+import com.limelight.ui.apollo.stats.StatsOverlayView;
+import com.limelight.ui.apollo.stats.StatsPrefs;
 import com.limelight.ui.gamemenu.GameMenuView;
 import com.limelight.utils.Dialog;
 import com.limelight.utils.ServerHelper;
@@ -180,7 +183,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     private boolean isHidingOverlays;
     private TextView notificationOverlayView;
     private int requestedNotificationOverlayVisibility = View.GONE;
-    private TextView performanceOverlayView;
+    private StatsOverlayView performanceOverlayView;
     private BrightnessSliderView brightnessSliderView;
     private MousePill mousePill;
     // A touch that started on the left edge and opened the brightness slider
@@ -388,6 +391,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         notificationOverlayView = findViewById(R.id.notificationOverlay);
 
         performanceOverlayView = findViewById(R.id.performanceOverlay);
+        performanceOverlayView.reload(false);
 
         // Initialize brightness slider
         brightnessSliderView = new BrightnessSliderView(this);
@@ -3288,11 +3292,11 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     }
 
     @Override
-    public void onPerfUpdate(final String text) {
+    public void onPerfUpdate(final PerfStats stats) {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                performanceOverlayView.setText(text);
+                performanceOverlayView.update(stats);
             }
         });
     }
@@ -3340,17 +3344,40 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
     public void toggleStatsOverlay() {
         prefConfig.enablePerfOverlay = !prefConfig.enablePerfOverlay;
-
-        // Toggle performance overlay visibility
-        if (performanceOverlayView.getVisibility() == View.VISIBLE) {
-            performanceOverlayView.setVisibility(View.GONE);
-        } else {
-            performanceOverlayView.setVisibility(View.VISIBLE);
-        }
+        performanceOverlayView.setShown(prefConfig.enablePerfOverlay, true);
     }
 
     public boolean isStatsOverlayVisible() {
-        return performanceOverlayView.getVisibility() == View.VISIBLE;
+        return prefConfig.enablePerfOverlay;
+    }
+
+    /** The stats in the game menu: 0 hides them, then one entry per style. */
+    public int getStatsChoice() {
+        return prefConfig.enablePerfOverlay ? StatsPrefs.style(this).ordinal() + 1 : 0;
+    }
+
+    public void setStatsChoice(int choice) {
+        // Off or on lasts for this stream, like Y; the style stays as the new choice
+        boolean shown = choice > 0;
+        if (shown) {
+            StatsPrefs.Style style = StatsPrefs.Style.values()[choice - 1];
+            boolean changed = style != StatsPrefs.style(this);
+            StatsPrefs.setStyle(this, style);
+            if (changed) {
+                performanceOverlayView.reload(prefConfig.enablePerfOverlay);
+            }
+        }
+        prefConfig.enablePerfOverlay = shown;
+        performanceOverlayView.setShown(shown, true);
+    }
+
+    public StatsPrefs.Position getStatsPosition() {
+        return StatsPrefs.position(this, StatsPrefs.style(this));
+    }
+
+    public void setStatsPosition(StatsPrefs.Position position) {
+        StatsPrefs.setPosition(this, StatsPrefs.style(this), position);
+        performanceOverlayView.reload(prefConfig.enablePerfOverlay);
     }
 
     // Screen brightness of the stream, shared by the game menu and the left edge slider

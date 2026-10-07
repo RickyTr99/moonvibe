@@ -1751,66 +1751,50 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
                     smoothedFpsVariance = (VARIANCE_SMOOTHING_FACTOR * rawFpsVariance) + ((1 - VARIANCE_SMOOTHING_FACTOR) * smoothedFpsVariance);
                 }
 
-                // The renderer's fixed details go with the decoder's on the first line, and its
-                // pacing numbers on the last
+                // The overlay draws these numbers as the user set it up
                 VulkanRendererBridge vulkan = vulkanRenderer;
-                String rendererText = vulkan != null ? vulkan.getRendererText() : null;
                 String pacingText = vulkan != null ? vulkan.getPacingText() : null;
 
-                StringBuilder sb = new StringBuilder();
-                sb.append(context.getString(R.string.perf_overlay_decoder, decoder));
-                if (rendererText != null && !rendererText.isEmpty()) {
-                    sb.append(" \u00b7 ").append(rendererText);
-                }
-                sb.append('\n');
-                sb.append(context.getString(R.string.perf_overlay_streamdetails, initialWidth + "x" + initialHeight, fps.totalFps)).append('\n');
-                sb.append(context.getString(R.string.perf_overlay_fps, fps.receivedFps, fps.renderedFps, smoothedFpsVariance)).append('\n');
-                float droppedPercent = (float)lastTwo.framesLost / lastTwo.totalFrames * 100;
+                PerfStats stats = new PerfStats();
+                stats.decoder = decoder;
+                stats.renderer = vulkan != null ? vulkan.getRendererText() : null;
+                stats.width = initialWidth;
+                stats.height = initialHeight;
+                stats.hdr = currentHdrMetadata != null;
+                stats.streamFps = fps.totalFps;
+                stats.receivedFps = fps.receivedFps;
+                stats.renderedFps = fps.renderedFps;
+                stats.fpsVariance = smoothedFpsVariance;
+                stats.droppedPercent = (float)lastTwo.framesLost / lastTwo.totalFrames * 100;
                 if (pyrowave) {
                     // Only PyroWave delivers frames with gaps in them
-                    sb.append(context.getString(R.string.perf_overlay_netdrops_partial,
-                            droppedPercent,
-                            (float)lastTwo.framesPartial / lastTwo.totalFrames * 100)).append('\n');
+                    stats.partialPercent = (float)lastTwo.framesPartial / lastTwo.totalFrames * 100;
                 }
-                else {
-                    sb.append(context.getString(R.string.perf_overlay_netdrops, droppedPercent)).append('\n');
-                }
-                sb.append(context.getString(R.string.perf_overlay_netlatency,
-                        (int)(rttInfo >> 32), (int)rttInfo)).append('\n');
+                stats.rttMs = (int)(rttInfo >> 32);
+                stats.rttVarianceMs = (int)rttInfo;
 
-                // Calculate and display bandwidth
                 long netData = TrafficStatsHelper.getPackageRxBytes(Process.myUid()) + TrafficStatsHelper.getPackageTxBytes(Process.myUid());
                 if(lastNetDataNum != 0){
                     // Convert bytes per second to megabits per second (Mbps)
-                    float realtimeNetData = (netData - lastNetDataNum) * 8 / 1000000f;
-                    sb.append(context.getString(R.string.perf_overlay_bandwidth, realtimeNetData)).append('\n');
+                    stats.bandwidthMbps = (netData - lastNetDataNum) * 8 / 1000000f;
                 }
                 lastNetDataNum = netData;
 
                 if (lastTwo.framesWithHostProcessingLatency > 0) {
-                    sb.append(context.getString(R.string.perf_overlay_hostprocessinglatency,
-                            (float)lastTwo.minHostProcessingLatency / 10,
-                            (float)lastTwo.maxHostProcessingLatency / 10,
-                            (float)lastTwo.totalHostProcessingLatency / 10 / lastTwo.framesWithHostProcessingLatency)).append('\n');
+                    stats.hostLatencyMin = (float)lastTwo.minHostProcessingLatency / 10;
+                    stats.hostLatencyMax = (float)lastTwo.maxHostProcessingLatency / 10;
+                    stats.hostLatencyAvg = (float)lastTwo.totalHostProcessingLatency / 10 / lastTwo.framesWithHostProcessingLatency;
                 }
-                sb.append(context.getString(R.string.perf_overlay_dectime, decodeTimeMs));
+                stats.decodeMs = decodeTimeMs;
                 if (pacingText != null) {
-                    // The buffer on the pacing line, and the lock state and skipped frames below
-                    // it, like the stream details below the decoder
+                    // The buffer and refresh rate, then the lock state and skipped frames
                     int split = pacingText.indexOf('\n');
                     String headline = split >= 0 ? pacingText.substring(0, split) : pacingText;
                     String details = split >= 0 ? pacingText.substring(split + 1) : "";
-                    if (!headline.isEmpty()) {
-                        sb.append('\n').append(context.getString(R.string.perf_overlay_pacing, headline));
-                        if (!details.isEmpty()) {
-                            sb.append('\n').append(context.getString(R.string.perf_overlay_pacing_details, details));
-                        }
-                    }
-                    else if (!details.isEmpty()) {
-                        sb.append('\n').append(context.getString(R.string.perf_overlay_pacing, details));
-                    }
+                    stats.pacingHeadline = headline.isEmpty() ? null : headline;
+                    stats.pacingDetails = details.isEmpty() ? null : details;
                 }
-                perfListener.onPerfUpdate(sb.toString());
+                perfListener.onPerfUpdate(stats);
             }
 
             globalVideoStats.add(activeWindowVideoStats);

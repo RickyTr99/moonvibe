@@ -190,6 +190,15 @@
             <meta-data android:name="WindowManagerPreference:FreeformWindowOrientation" android:value="landscape" />
         </activity>
         <activity
+            android:name=".preferences.StatsSettingsActivity"
+            android:resizeableActivity="true"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="mcc|mnc|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection"
+            android:label="@string/stats_settings_title">
+            <meta-data android:name="WindowManagerPreference:FreeformWindowSize" android:value="system-default" />
+            <meta-data android:name="WindowManagerPreference:FreeformWindowOrientation" android:value="landscape" />
+        </activity>
+        <activity
             android:name=".preferences.CustomCommandsActivity"
             android:resizeableActivity="true"
             android:enableOnBackInvokedCallback="true"

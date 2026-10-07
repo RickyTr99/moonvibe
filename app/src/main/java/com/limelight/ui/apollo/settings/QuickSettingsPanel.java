@@ -28,9 +28,9 @@ import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.profiles.Profiles;
 import com.limelight.ui.apollo.ApolloUi;
 import com.limelight.ui.apollo.ScreenLayer;
-import com.limelight.ui.apollo.ApolloWidgets;
 import com.limelight.ui.apollo.hints.ButtonGlyph;
 import com.limelight.ui.apollo.hints.HintRow;
+import com.limelight.ui.apollo.stats.StatsPrefs;
 import com.limelight.ui.theme.ApolloColors;
 import com.limelight.ui.theme.ApolloMotion;
 import com.limelight.utils.Dialog;
@@ -46,7 +46,6 @@ public class QuickSettingsPanel extends FrameLayout {
     private static final int WIDTH_DP = 340;
     private static final String PREF_BITRATE = "seekbar_bitrate_kbps";
     private static final String PREF_VIDEO_FORMAT = "video_format";
-    private static final String PREF_PERF_OVERLAY = "checkbox_enable_perf_overlay";
     private static final String PREF_RESOLUTION = "list_resolution";
     private static final String PREF_FPS = "list_fps";
     // The defaults of PreferenceConfiguration
@@ -68,7 +67,7 @@ public class QuickSettingsPanel extends FrameLayout {
     private boolean showing;
     private Object backCallback;
 
-    private ApolloWidgets.SwitchView statsSwitch;
+    private TextView statsValue;
     private SliderView bitrateSlider;
     private TextView resolutionValue, fpsValue, bitrateValue, codecValue;
 
@@ -201,11 +200,26 @@ public class QuickSettingsPanel extends FrameLayout {
                     });
         });
 
-        statsSwitch = new ApolloWidgets.SwitchView(context);
-        View statsRow = row(context.getString(R.string.apollo_qs_stats), statsSwitch);
-        statsRow.setOnClickListener(v -> toggle(PREF_PERF_OVERLAY));
-        HintRow.set(statsRow, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_change, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_close);
-        statsSwitch.setColors(colors.primary, colors.onPrimary, colors.surfaceContainerHighest, colors.outline);
+        // The stats: off or one of their styles
+        statsValue = valueChip();
+        View statsRow = row(context.getString(R.string.apollo_qs_stats), statsValue);
+        HintRow.set(statsRow, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_open, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_close);
+        statsRow.setOnClickListener(v -> {
+            StatsPrefs.Style[] styles = StatsPrefs.Style.values();
+            String[] names = new String[styles.length + 1];
+            names[0] = context.getString(R.string.stats_off);
+            for (int i = 0; i < styles.length; i++) {
+                names[i + 1] = context.getString(styles[i].labelRes);
+            }
+            int selected = StatsPrefs.isShown(context) ? StatsPrefs.style(context).ordinal() + 1 : 0;
+            popup.show(statsRow, popupRightEdge(), names, selected, index -> {
+                if (index > 0) {
+                    StatsPrefs.setStyle(context, styles[index - 1]);
+                }
+                StatsPrefs.setShown(context, index > 0);
+                bind(true);
+            });
+        });
 
         // Keep the gamepad focus inside the panel, wrapping at the ends
         for (View row : rows) {
@@ -291,11 +305,6 @@ public class QuickSettingsPanel extends FrameLayout {
         bind(true);
     }
 
-    private void toggle(String key) {
-        prefs.edit().putBoolean(key, !prefs.getBoolean(key, false)).apply();
-        bind(true);
-    }
-
     private void bind(boolean animate) {
         int bitrate = bitrate();
         bitrateSlider.setValue(bitrate);
@@ -313,7 +322,7 @@ public class QuickSettingsPanel extends FrameLayout {
             }
         }
 
-        statsSwitch.setChecked(prefs.getBoolean(PREF_PERF_OVERLAY, false), animate);
+        statsValue.setText(StatsPrefs.summary(getContext()));
 
         resolutionValue.setText(resolutionChoices().nameOf(prefs.getString(PREF_RESOLUTION, DEFAULT_RESOLUTION)));
         fpsValue.setText(fpsChoices().nameOf(prefs.getString(PREF_FPS, DEFAULT_FPS)));

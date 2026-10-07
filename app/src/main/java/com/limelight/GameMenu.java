@@ -10,6 +10,7 @@ import android.view.MotionEvent;
 
 import com.limelight.preferences.CustomCommandEditorDialog;
 import com.limelight.ui.apollo.hints.InputMode;
+import com.limelight.ui.apollo.stats.StatsPrefs;
 import com.limelight.ui.gamemenu.GameMenuView;
 import com.limelight.ui.gamemenu.GameMenuView.Item;
 import com.limelight.ui.BrightnessSliderView;
@@ -207,6 +208,44 @@ public class GameMenu implements GameMenuView.Listener {
 
     private List<Item> buildInputItems() {
         List<Item> items = new ArrayList<>();
+
+        // The stats over the stream: their style, or off, and where the style in use sits
+        items.add(Item.header(getString(R.string.apollo_section_stats)));
+        StatsPrefs.Style[] styles = StatsPrefs.Style.values();
+        String[] styleNames = new String[styles.length + 1];
+        styleNames[0] = getString(R.string.stats_off);
+        for (int i = 0; i < styles.length; i++) {
+            styleNames[i + 1] = getString(styles[i].labelRes);
+        }
+        items.add(Item.dropdown(R.drawable.ic_menu_perf, getString(R.string.stats_menu_style), styleNames,
+                new GameMenuView.Selection() {
+                    @Override
+                    public int get() {
+                        return game.getStatsChoice();
+                    }
+
+                    @Override
+                    public void set(int index) {
+                        game.setStatsChoice(index);
+                    }
+                }));
+        StatsPrefs.Position[] positions = StatsPrefs.Position.values();
+        String[] positionNames = new String[positions.length];
+        for (int i = 0; i < positions.length; i++) {
+            positionNames[i] = getString(positions[i].labelRes);
+        }
+        items.add(Item.dropdown(R.drawable.ic_menu_window, getString(R.string.stats_settings_position), positionNames,
+                new GameMenuView.Selection() {
+                    @Override
+                    public int get() {
+                        return game.getStatsPosition().ordinal();
+                    }
+
+                    @Override
+                    public void set(int index) {
+                        game.setStatsPosition(positions[index]);
+                    }
+                }));
 
         items.add(Item.header(getString(R.string.game_menu_section_controller)));
         items.add(Item.toggle(R.drawable.ic_overlay_gamepad, getString(R.string.game_menu_virtual_controller),

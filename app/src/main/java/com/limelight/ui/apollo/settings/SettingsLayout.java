@@ -91,12 +91,12 @@ final class SettingsLayout {
                 k(nameKey),
                 new Section(R.string.apollo_settings_video, true,
                         k("list_resolution"), k("list_fps"), k("seekbar_bitrate_kbps"), k("checkbox_enable_hdr"),
-                        k("checkbox_stretch_video"), k("checkbox_full_range"), k("spatial_dithering"), k("checkbox_unlock_fps")),
+                        k("checkbox_stretch_video"), k("checkbox_full_range"), k("spatial_dithering"), k("checkbox_unlock_fps"),
+                        k("checkbox_enable_post_stream_toast"), k("checkbox_disable_warnings")),
                 new Section(R.string.apollo_settings_latency, true,
                         k("video_format"), k("video_renderer"), k("pyrowave_late_frames"), k("checkbox_ultra_low_latency"),
                         k("frame_pacing"), k("jitter_buffer"), k("checkbox_reduce_refresh_rate"),
-                        k("text_actual_display_refresh_rate"), k("checkbox_enable_perf_overlay"),
-                        k("checkbox_enable_post_stream_toast"), k("checkbox_disable_warnings")),
+                        k("text_actual_display_refresh_rate")),
                 new Section(R.string.apollo_settings_audio, true,
                         k("list_audio_config"), k("checkbox_enable_audiofx"), k("checkbox_host_audio")),
                 k(deleteKey)};
@@ -105,19 +105,19 @@ final class SettingsLayout {
     static List<Category> categories() {
         List<Category> categories = new ArrayList<>();
         // Video is what the picture looks like, Codec how it gets to the screen: the settings tuned together
-        // (codec, renderer, pacing and the stats that show their effect) sit on one page
+        // (codec, renderer, pacing) sit on one page. The stats go with the picture
         categories.add(new Category(R.string.apollo_settings_video, R.drawable.ic_apollo_cat_video,
                 k("list_resolution"), k("list_fps"), k("seekbar_bitrate_kbps"),
                 k("checkbox_enable_hdr"), k("checkbox_stretch_video"),
+                new Section(R.string.apollo_section_stats, true,
+                        k("stats_overlay"), k("checkbox_enable_post_stream_toast"), k("checkbox_disable_warnings")),
                 new Section(R.string.apollo_section_advanced, false,
                         k("checkbox_full_range"), k("spatial_dithering"), k("checkbox_unlock_fps"))));
         categories.add(new Category(R.string.apollo_settings_latency, R.drawable.ic_apollo_cat_speed,
                 new Section(R.string.apollo_section_decoding, true,
                         k("video_format"), k("video_renderer"), k("pyrowave_late_frames"), k("checkbox_ultra_low_latency")),
                 new Section(R.string.apollo_section_frame_pacing, true,
-                        k("frame_pacing"), k("jitter_buffer"), k("checkbox_reduce_refresh_rate"), k("text_actual_display_refresh_rate")),
-                new Section(R.string.apollo_section_stats, true,
-                        k("checkbox_enable_perf_overlay"), k("checkbox_enable_post_stream_toast"), k("checkbox_disable_warnings"))));
+                        k("frame_pacing"), k("jitter_buffer"), k("checkbox_reduce_refresh_rate"), k("text_actual_display_refresh_rate"))));
         categories.add(new Category(R.string.apollo_settings_audio, R.drawable.ic_apollo_cat_audio,
                 k("list_audio_config"), k("checkbox_enable_audiofx"), k("checkbox_host_audio")));
         categories.add(new Category(R.string.apollo_settings_controller, R.drawable.ic_apollo_cat_gamepad,
@@ -165,7 +165,6 @@ final class SettingsLayout {
     /** Shorter labels for the titles that do not fit on one line. */
     static final Map<String, Integer> SHORT_TITLES = new HashMap<>();
     static {
-        SHORT_TITLES.put("checkbox_enable_perf_overlay", R.string.apollo_label_perf_overlay);
         SHORT_TITLES.put("checkbox_enable_post_stream_toast", R.string.apollo_label_post_stream_toast);
         SHORT_TITLES.put("seekbar_deadzone", R.string.apollo_label_deadzone);
         SHORT_TITLES.put("checkbox_gamepad_motion_sensors", R.string.apollo_label_motion_sensors);

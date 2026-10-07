@@ -26,6 +26,7 @@ import android.widget.TextView;
 import com.limelight.R;
 import com.limelight.profiles.Profiles;
 import com.limelight.ui.apollo.ApolloUi;
+import com.limelight.ui.apollo.DragReorder;
 import com.limelight.ui.apollo.hints.ButtonGlyph;
 import com.limelight.ui.apollo.hints.HintRow;
 import com.limelight.ui.apollo.hints.ScreenHints;
@@ -52,6 +53,7 @@ public class ProfilesActivity extends Activity {
     // The row moved with the gamepad, or null
     private View movingRow;
     private List<Profiles.Profile> orderBeforeMove;
+    private DragReorder reorder;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -110,6 +112,11 @@ public class ProfilesActivity extends Activity {
 
         rowsBox = new LinearLayout(this);
         rowsBox.setOrientation(LinearLayout.VERTICAL);
+        reorder = new DragReorder(rowsBox, 0, () -> {
+            saveOrder();
+            profiles.clear();
+            profiles.addAll(Profiles.list(this));
+        });
         column.addView(rowsBox);
 
         newRow = newProfileRow();
@@ -174,7 +181,7 @@ public class ProfilesActivity extends Activity {
         handle.setPadding(dp(8), dp(8), dp(8), dp(8));
         handle.setContentDescription(getString(R.string.apollo_hint_move));
         row.addView(handle, new LinearLayout.LayoutParams(dp(36), dp(40)));
-        handle.setOnTouchListener(new DragListener(row));
+        reorder.attachHandle(handle, row);
 
         LinearLayout texts = new LinearLayout(this);
         texts.setOrientation(LinearLayout.VERTICAL);
@@ -347,10 +354,10 @@ public class ProfilesActivity extends Activity {
         }
         switch (keyCode) {
             case KeyEvent.KEYCODE_DPAD_UP:
-                step(row, -1);
+                reorder.step(row, -1);
                 return true;
             case KeyEvent.KEYCODE_DPAD_DOWN:
-                step(row, 1);
+                reorder.step(row, 1);
                 return true;
             case KeyEvent.KEYCODE_BUTTON_A:
             case KeyEvent.KEYCODE_BUTTON_X:
@@ -389,81 +396,6 @@ public class ProfilesActivity extends Activity {
             rebuild();
         }
         hintRow.refresh();
-    }
-
-    // One place up or down; the neighbor slides into the place left
-    private void step(View row, int direction) {
-        int index = rowsBox.indexOfChild(row);
-        int target = index + direction;
-        if (target < 0 || target >= rowsBox.getChildCount()) {
-            return;
-        }
-        View neighbor = rowsBox.getChildAt(target);
-        int distance = direction > 0 ? neighbor.getHeight() : -neighbor.getHeight();
-        rowsBox.removeView(row);
-        rowsBox.addView(row, target);
-        row.requestFocus();
-        row.setTranslationY(-distance);
-        row.animate().translationY(0).setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
-        neighbor.setTranslationY(distance > 0 ? row.getHeight() : -row.getHeight());
-        neighbor.animate().translationY(0).setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
-    }
-
-    // Dragging a row by its handle: it follows the finger and swaps places with the rows it passes
-    private class DragListener implements View.OnTouchListener {
-        private final View row;
-        private float startY;
-        private float offset;
-
-        DragListener(View row) {
-            this.row = row;
-        }
-
-        @SuppressLint("ClickableViewAccessibility")
-        @Override
-        public boolean onTouch(View v, MotionEvent event) {
-            switch (event.getActionMasked()) {
-                case MotionEvent.ACTION_DOWN:
-                    startY = event.getRawY();
-                    offset = 0;
-                    row.setActivated(true);
-                    v.getParent().requestDisallowInterceptTouchEvent(true);
-                    return true;
-                case MotionEvent.ACTION_MOVE: {
-                    float dy = event.getRawY() - startY - offset;
-                    int index = rowsBox.indexOfChild(row);
-                    if (dy > row.getHeight() / 2f && index < rowsBox.getChildCount() - 1) {
-                        View neighbor = rowsBox.getChildAt(index + 1);
-                        swap(index, index + 1, neighbor, -row.getHeight());
-                        offset += neighbor.getHeight();
-                        dy -= neighbor.getHeight();
-                    } else if (dy < -row.getHeight() / 2f && index > 0) {
-                        View neighbor = rowsBox.getChildAt(index - 1);
-                        swap(index, index - 1, neighbor, row.getHeight());
-                        offset -= neighbor.getHeight();
-                        dy += neighbor.getHeight();
-                    }
-                    row.setTranslationY(dy);
-                    return true;
-                }
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    row.animate().translationY(0).setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD)
-                            .withEndAction(() -> row.setActivated(false)).start();
-                    saveOrder();
-                    profiles.clear();
-                    profiles.addAll(Profiles.list(ProfilesActivity.this));
-                    return true;
-            }
-            return false;
-        }
-
-        private void swap(int from, int to, View neighbor, int neighborShift) {
-            rowsBox.removeView(row);
-            rowsBox.addView(row, to);
-            neighbor.setTranslationY(neighborShift);
-            neighbor.animate().translationY(0).setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
-        }
     }
 
     // --- Keys

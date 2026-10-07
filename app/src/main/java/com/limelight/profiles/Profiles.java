@@ -39,7 +39,7 @@ public final class Profiles {
             "checkbox_full_range", "spatial_dithering", "checkbox_unlock_fps",
             "video_format", "video_renderer", "pyrowave_late_frames", "checkbox_ultra_low_latency",
             "frame_pacing", "jitter_buffer", "checkbox_reduce_refresh_rate", "text_actual_display_refresh_rate",
-            "checkbox_enable_perf_overlay", "checkbox_enable_post_stream_toast", "checkbox_disable_warnings",
+            "checkbox_enable_post_stream_toast", "checkbox_disable_warnings",
             "list_audio_config", "checkbox_enable_audiofx", "checkbox_host_audio"));
 
     private static final String INDEX_FILE = "moonvibe_profiles";

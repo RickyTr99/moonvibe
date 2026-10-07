@@ -22,23 +22,12 @@
         <requestFocus />
     </com.limelight.ui.StreamView>
 
-    <TextView
+    <!-- MoonVibe: the stats, drawn as the user set them up -->
+    <com.limelight.ui.apollo.stats.StatsOverlayView
         android:id="@+id/performanceOverlay"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginLeft="5dp"
-        android:layout_marginStart="5dp"
-        android:layout_marginTop="5dp"
-        android:layout_gravity="left"
-        android:padding="2dp"
-        android:textSize="10sp"
-        android:textColor="#BFFFFFFF"
-        android:typeface="monospace"
-        android:gravity="left"
-        android:background="#60000000"
-        android:preferKeepClear="true"
-        android:visibility="gone"
-        android:text="..." />
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
 
     <TextView
         android:id="@+id/notificationOverlay"

@@ -78,6 +78,14 @@ class OptionsPopup {
      * @param rightEdge where the menu ends, in host coordinates
      */
     void show(View anchor, int rightEdge, CharSequence[] options, int selected, Listener listener) {
+        show(anchor, rightEdge, options, selected, -1, listener);
+    }
+
+    /**
+     * @param rightEdge where the menu ends, in host coordinates
+     * @param defaultIndex the option marked as the default on its right, or -1
+     */
+    void show(View anchor, int rightEdge, CharSequence[] options, int selected, int defaultIndex, Listener listener) {
         dismiss(false);
         this.anchor = anchor;
         content.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
@@ -122,6 +130,12 @@ class OptionsPopup {
             TextView label = ApolloUi.text(host.getContext(), options[i], 13.5f, colors.onSurface, i == selected);
             label.setPadding(dp(10), 0, 0, 0);
             row.addView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            if (i == defaultIndex) {
+                TextView tag = ApolloUi.text(host.getContext(), host.getContext().getString(R.string.apollo_option_default), 12, colors.outline, false);
+                tag.setSingleLine(true);
+                tag.setPadding(dp(16), 0, 0, 0);
+                row.addView(tag);
+            }
 
             HintRow.set(row, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_choose, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_cancel);
             row.setOnClickListener(v -> {

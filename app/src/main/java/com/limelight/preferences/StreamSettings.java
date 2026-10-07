@@ -47,6 +47,7 @@ import com.limelight.ui.apollo.hints.ScreenHints;
 import com.limelight.ui.apollo.settings.ProfileMenu;
 import com.limelight.ui.apollo.settings.QuickSettingsPanel;
 import com.limelight.ui.apollo.settings.SettingsView;
+import com.limelight.ui.apollo.stats.StatsPrefs;
 import com.limelight.ui.theme.ApolloColors;
 import com.limelight.utils.Dialog;
 import com.limelight.utils.UiHelper;
@@ -1052,6 +1053,15 @@ public class StreamSettings extends Activity {
                     return true;
                 }
             });
+
+            // MoonVibe: the page of the stats overlay
+            Preference statsPref = findPreference(StatsPrefs.PAGE_KEY);
+            if (statsPref != null) {
+                statsPref.setOnPreferenceClickListener(preference -> {
+                    startActivity(new Intent(getActivity(), StatsSettingsActivity.class));
+                    return true;
+                });
+            }
 
             // Setup custom commands preference click listener
             Preference customCommandsPref = findPreference("overlay_custom_commands");

@@ -52,10 +52,11 @@ public final class ButtonGlyph {
             TextView bumper = ApolloUi.text(context, key == KeyEvent.KEYCODE_BUTTON_L1 ? "LB" : "RB", 8.5f, foreground, true);
             bumper.setGravity(Gravity.CENTER);
             bumper.setIncludeFontPadding(false);
+            bumper.setPadding(0, ApolloUi.dp(context, 1), 0, 0);
             bumper.setBackground(new BumperDrawable(background, key == KeyEvent.KEYCODE_BUTTON_L1,
                     context.getResources().getDisplayMetrics().density));
             // Lower than the round buttons, centered on them
-            bumper.setLayoutParams(new FrameLayout.LayoutParams(ApolloUi.dp(context, 26), ApolloUi.dp(context, 14), Gravity.CENTER));
+            bumper.setLayoutParams(new FrameLayout.LayoutParams(ApolloUi.dp(context, 22), ApolloUi.dp(context, 16), Gravity.CENTER));
             return bumper;
         }
 

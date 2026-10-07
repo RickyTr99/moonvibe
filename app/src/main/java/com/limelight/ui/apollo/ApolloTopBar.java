@@ -3,7 +3,6 @@ package com.limelight.ui.apollo;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.ColorStateList;
-import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.hardware.input.InputManager;
 import android.os.Looper;
@@ -56,9 +55,8 @@ public class ApolloTopBar extends FrameLayout {
     // How long a screen waits before its heavy work while the mark slides in (idle wait + slide)
     public static final long SLIDE_SETTLE_MS = 350;
     private final StatusRowView status;
-    // The name and the profile icon open the profiles. A profile in use shows in a veil shaped like
-    // the status one, with its name and a green dot (the same green as a PC online)
-    public static final int PROFILE_DOT = 0xFF6DD58C;
+    // The name and the profile icon open the profiles. The profile in use, or "Default", shows in a veil
+    // shaped like the status one
     private final LinearLayout profileButton;
     private final LinearLayout profileChip;
     private final GradientDrawable profileChipBackground;
@@ -67,7 +65,7 @@ public class ApolloTopBar extends FrameLayout {
     private final TextView profileName;
     private final TextView appNameView;
     private final LinearLayout center;
-    private boolean profileActive;
+    private String shownProfileName;
     private final Runnable profilesListener = () -> showProfile(true);
     private final TextView leftBumper;
     private final TextView rightBumper;
@@ -123,25 +121,24 @@ public class ApolloTopBar extends FrameLayout {
         profileChip = new LinearLayout(context);
         profileChip.setOrientation(LinearLayout.HORIZONTAL);
         profileChip.setGravity(Gravity.CENTER_VERTICAL);
-        profileChipBackground = ApolloUi.roundRect(Color.TRANSPARENT, dp(ApolloUi.ROW_RADIUS_DP));
+        profileChipBackground = ApolloUi.roundRect(veil(VEIL_ALPHA), dp(ApolloUi.ROW_RADIUS_DP));
         profileChip.setBackground(profileChipBackground);
+        profileChip.setPadding(dp(10), 0, dp(12), 0);
         LinearLayout.LayoutParams chipParams = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, dp(40));
         chipParams.leftMargin = dp(8);
         profileButton.addView(profileChip, chipParams);
         profileIcon = new ImageView(context);
         profileIcon.setImageResource(R.drawable.ic_apollo_profile);
+        profileIcon.setImageTintList(ColorStateList.valueOf(colors.onSurfaceVariant));
         profileChip.addView(profileIcon, new LinearLayout.LayoutParams(dp(18), dp(18)));
 
-        // The name with a small green dot at its top right
+        // The name of the profile in use, or "Default"
         profileNameFrame = new FrameLayout(context);
         profileName = ApolloUi.text(context, "", 13.5f, colors.onSurface, true);
         profileName.setSingleLine(true);
         profileName.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        profileName.setPadding(0, dp(2), dp(6), 0);
+        profileName.setPadding(0, 0, dp(2), 0);
         profileNameFrame.addView(profileName, new FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL));
-        View dot = new View(context);
-        dot.setBackground(ApolloUi.roundRect(PROFILE_DOT, dp(2.5f)));
-        profileNameFrame.addView(dot, new FrameLayout.LayoutParams(dp(5), dp(5), Gravity.TOP | Gravity.END));
         LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
         nameParams.leftMargin = dp(8);
         profileChip.addView(profileNameFrame, nameParams);
@@ -157,7 +154,7 @@ public class ApolloTopBar extends FrameLayout {
         addView(center, new LayoutParams(LayoutParams.WRAP_CONTENT, dp(52), Gravity.CENTER));
 
         leftBumper = shoulderChip("LB", -1);
-        center.addView(leftBumper, new LinearLayout.LayoutParams(dp(30), dp(17)));
+        center.addView(leftBumper, new LinearLayout.LayoutParams(dp(26), dp(19)));
         // The mark under the selected tab is a separate view that slides from tab to tab
         FrameLayout tabsFrame = new FrameLayout(context);
         LinearLayout.LayoutParams tabsParams = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT);
@@ -174,7 +171,7 @@ public class ApolloTopBar extends FrameLayout {
         tabsFrame.addView(tabIndicator, indicatorParams);
         tabIndicator.setVisibility(INVISIBLE);
         rightBumper = shoulderChip("RB", 1);
-        center.addView(rightBumper, new LinearLayout.LayoutParams(dp(30), dp(17)));
+        center.addView(rightBumper, new LinearLayout.LayoutParams(dp(26), dp(19)));
         updateBumpers();
 
         // The status on a light fixed veil with a small arrow after it: one button that opens the quick settings
@@ -265,22 +262,18 @@ public class ApolloTopBar extends FrameLayout {
         profileButton.setOnClickListener(listener);
     }
 
-    // With a profile in use the veil, its name and the dot fade in; without one only a grey icon stays
+    // The veil always shows the profile in use, or "Default" without one; a new name fades in and the veil
+    // widens or narrows to it
     private void showProfile(boolean animate) {
         Profiles.Profile profile = Profiles.active(getContext());
         boolean active = profile != null;
-        boolean changed = active != profileActive;
-        profileActive = active;
+        String name = active ? profile.name : getContext().getString(R.string.apollo_profile_default_label);
+        boolean changed = !name.equals(shownProfileName);
+        shownProfileName = name;
         int fromWidth = profileChip.getWidth();
-        if (active) {
-            profileName.setText(profile.name);
-        }
-        profileNameFrame.setVisibility(active ? VISIBLE : GONE);
-        profileChip.setPadding(active ? dp(10) : dp(2), 0, active ? dp(12) : dp(2), 0);
-        profileIcon.setImageTintList(ColorStateList.valueOf(active ? colors.onSurfaceVariant : colors.outline));
-        int to = active ? veil(VEIL_ALPHA) : Color.TRANSPARENT;
+        profileName.setText(name);
+        profileName.setTextColor(active ? colors.onSurface : colors.onSurfaceVariant);
         if (animate && changed && fromWidth > 0) {
-            // The veil widens or narrows to its new content instead of jumping
             profileChip.measure(MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
                     MeasureSpec.makeMeasureSpec(dp(40), MeasureSpec.EXACTLY));
             int toWidth = profileChip.getMeasuredWidth();
@@ -302,19 +295,8 @@ public class ApolloTopBar extends FrameLayout {
             params.width = fromWidth;
             profileChip.setLayoutParams(params);
             resize.start();
-        }
-        if (animate && changed) {
-            ValueAnimator fade = ValueAnimator.ofArgb(active ? Color.TRANSPARENT : veil(VEIL_ALPHA), to);
-            fade.setDuration(ApolloMotion.MEDIUM);
-            fade.setInterpolator(ApolloMotion.STANDARD);
-            fade.addUpdateListener(a -> profileChipBackground.setColor((int) a.getAnimatedValue()));
-            fade.start();
-            if (active) {
-                profileNameFrame.setAlpha(0f);
-                profileNameFrame.animate().alpha(1f).setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
-            }
-        } else {
-            profileChipBackground.setColor(to);
+            profileNameFrame.setAlpha(0f);
+            profileNameFrame.animate().alpha(1f).setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
         }
     }
 
@@ -323,6 +305,8 @@ public class ApolloTopBar extends FrameLayout {
         chip.setGravity(Gravity.CENTER);
         chip.setIncludeFontPadding(false);
         chip.setBackground(new BumperDrawable(colors.surfaceContainerHighest, direction < 0, getResources().getDisplayMetrics().density));
+        // The letters a little low, where the shape is fullest
+        chip.setPadding(0, dp(1), 0, 0);
         chip.setOnClickListener(v -> switchTab(direction));
         chip.setFocusable(false);
         return chip;
