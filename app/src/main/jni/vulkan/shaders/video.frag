@@ -10,7 +10,18 @@ layout(set = 0, binding = 0) uniform sampler2D uVideo;
 layout(location = 0) in vec2 vUv;
 layout(location = 0) out vec4 outColor;
 
+vec3 fetchRgb(vec2 uv) {
+    return textureLod(uVideo, clamp(uv, pc.uvClamp.xy, pc.uvClamp.zw), 0.0).rgb;
+}
+
+// Near enough to the stream's own luma to find edges by. Its weights sum to 1, so a change
+// added to all three channels changes it by as much.
+float fetchLuma(vec2 uv) {
+    return dot(fetchRgb(uv), vec3(0.2126, 0.7152, 0.0722));
+}
+
+#include "sharpen.glsl"
+
 void main() {
-    vec2 uv = clamp(vUv, pc.uvClamp.xy, pc.uvClamp.zw);
-    outColor = outputColor(texture(uVideo, uv).rgb);
+    outColor = outputColor(sharpenedColor(vUv));
 }

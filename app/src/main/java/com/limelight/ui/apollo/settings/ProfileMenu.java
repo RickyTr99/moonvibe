@@ -122,10 +122,8 @@ public class ProfileMenu extends FrameLayout {
         list.addView(divider, dividerParams);
 
         View manage = row(context.getString(R.string.apollo_profile_manage), null, false, R.drawable.ic_apollo_cat_menu);
-        manage.setOnClickListener(v -> {
-            dismiss();
-            context.startActivity(new Intent(context, ProfilesActivity.class));
-        });
+        // The screen opens once the menu has folded away: both together would play over each other
+        manage.setOnClickListener(v -> dismiss(() -> context.startActivity(new Intent(context, ProfilesActivity.class))));
         HintRow.set(manage, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_open, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_close);
         list.addView(manage);
         rows.add(manage);
@@ -304,6 +302,11 @@ public class ProfileMenu extends FrameLayout {
 
     /** Returns true if the menu was open. */
     public boolean dismiss() {
+        return dismiss(null);
+    }
+
+    // Then runs after, once the panel has faded out
+    private boolean dismiss(Runnable after) {
         if (!showing) {
             return false;
         }
@@ -322,6 +325,9 @@ public class ProfileMenu extends FrameLayout {
                 .withEndAction(() -> {
                     if (!showing) {
                         setVisibility(GONE);
+                    }
+                    if (after != null) {
+                        after.run();
                     }
                 })
                 .start();

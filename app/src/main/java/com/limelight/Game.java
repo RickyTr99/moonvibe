@@ -34,11 +34,13 @@ import com.limelight.nvstream.jni.MoonBridge;
 import com.limelight.preferences.AppPreferences;
 import com.limelight.preferences.GlPreferences;
 import com.limelight.preferences.PreferenceConfiguration;
+import com.limelight.profiles.Profiles;
 import com.limelight.ui.BrightnessSliderView;
 import com.limelight.ui.GameGestures;
 import com.limelight.ui.StreamView;
 import com.limelight.ui.apollo.launch.LaunchOverlayView;
 import com.limelight.ui.overlay.CustomCommand;
+import com.limelight.ui.apollo.CompareSplitView;
 import com.limelight.ui.apollo.MousePill;
 import com.limelight.ui.apollo.stats.StatsOverlayView;
 import com.limelight.ui.apollo.stats.StatsPrefs;
@@ -184,6 +186,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     private TextView notificationOverlayView;
     private int requestedNotificationOverlayVisibility = View.GONE;
     private StatsOverlayView performanceOverlayView;
+    private CompareSplitView compareSplitView;
     private BrightnessSliderView brightnessSliderView;
     private MousePill mousePill;
     // A touch that started on the left edge and opened the brightness slider
@@ -393,6 +396,10 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         performanceOverlayView = findViewById(R.id.performanceOverlay);
         performanceOverlayView.reload(false);
 
+        compareSplitView = findViewById(R.id.compareSplitView);
+        compareSplitView.setPicture(streamView);
+        compareSplitView.setListener(split -> applySharpening());
+
         // Initialize brightness slider
         brightnessSliderView = new BrightnessSliderView(this);
 
@@ -520,6 +527,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                 willStreamHdr,
                 glPrefs.glRenderer,
                 this);
+        applySharpening();
 
         // PyroWave decodes in the Vulkan renderer, and only when it's chosen explicitly.
         // If it can't, the launch fails below.
@@ -3429,6 +3437,62 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         prefConfig.mouseEmulationSpeed = percent;
         PreferenceManager.getDefaultSharedPreferences(this).edit()
                 .putInt("seekbar_mouse_emulation_speed", percent).apply();
+    }
+
+    // Sharpening by the Vulkan renderer. Saved like in the settings, so into the profile in use if it has one.
+    public boolean canSharpen() {
+        return decoderRenderer != null && decoderRenderer.isVulkanRendererActive();
+    }
+
+    public boolean isSharpeningOn() {
+        return prefConfig.sharpening;
+    }
+
+    public void toggleSharpening() {
+        prefConfig.sharpening = !prefConfig.sharpening;
+        Profiles.prefs(this).edit()
+                .putBoolean(PreferenceConfiguration.SHARPENING_PREF_STRING, prefConfig.sharpening).apply();
+        // Nothing to compare without it
+        if (!prefConfig.sharpening && comparingSharpening) {
+            comparingSharpening = false;
+            compareSplitView.hide();
+        }
+        applySharpening();
+    }
+
+    // The original beside the sharpened picture, split where the line over the stream is. Only for this stream.
+    private boolean comparingSharpening;
+
+    public boolean isComparingSharpening() {
+        return comparingSharpening;
+    }
+
+    public void toggleCompareSharpening() {
+        comparingSharpening = !comparingSharpening;
+        if (comparingSharpening) {
+            compareSplitView.show();
+        } else {
+            compareSplitView.hide();
+        }
+        applySharpening();
+    }
+
+    public int getSharpeningStrength() {
+        return prefConfig.sharpeningStrength;
+    }
+
+    public void setSharpeningStrength(int percent) {
+        prefConfig.sharpeningStrength = percent;
+        Profiles.prefs(this).edit()
+                .putInt(PreferenceConfiguration.SHARPENING_STRENGTH_PREF_STRING, percent).apply();
+        applySharpening();
+    }
+
+    private void applySharpening() {
+        if (decoderRenderer != null) {
+            decoderRenderer.setSharpening(prefConfig.sharpening ? prefConfig.sharpeningStrength / 100f : 0f,
+                    comparingSharpening ? compareSplitView.getSplit() : 0f);
+        }
     }
 
     public int getMouseScrollSpeed() {

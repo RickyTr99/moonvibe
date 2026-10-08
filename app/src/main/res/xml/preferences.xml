@@ -445,6 +445,20 @@
             android:summary="@string/summary_spatial_dithering"
             android:defaultValue="off" />
         <CheckBoxPreference
+            android:key="checkbox_sharpening"
+            android:title="@string/title_checkbox_sharpening"
+            android:defaultValue="false" />
+        <com.limelight.preferences.SeekBarPreference
+            android:key="seekbar_sharpening_strength"
+            android:dependency="checkbox_sharpening"
+            android:defaultValue="50"
+            seekbar:min="10"
+            android:max="100"
+            seekbar:step="5"
+            seekbar:keyStep="5"
+            android:text="@string/suffix_seekbar_vibrate_fallback_strength"
+            android:title="@string/title_seekbar_sharpening_strength"/>
+        <CheckBoxPreference
             android:key="checkbox_enable_hdr"
             android:title="@string/title_enable_hdr"
             android:summary="@string/summary_enable_hdr"

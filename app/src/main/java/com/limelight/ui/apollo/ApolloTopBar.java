@@ -273,6 +273,8 @@ public class ApolloTopBar extends FrameLayout {
         int fromWidth = profileChip.getWidth();
         profileName.setText(name);
         profileName.setTextColor(active ? colors.onSurface : colors.onSurfaceVariant);
+        // In the accent color while a profile is in use, as the icon that marks its values in the settings
+        profileIcon.setImageTintList(ColorStateList.valueOf(active ? colors.primary : colors.onSurfaceVariant));
         if (animate && changed && fromWidth > 0) {
             profileChip.measure(MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
                     MeasureSpec.makeMeasureSpec(dp(40), MeasureSpec.EXACTLY));

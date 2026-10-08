@@ -36,6 +36,7 @@ public final class Profiles {
     /** The settings a profile can change: those of the Video, Codec and Audio categories. */
     public static final Set<String> KEYS = new HashSet<>(Arrays.asList(
             "list_resolution", "list_fps", "seekbar_bitrate_kbps", "checkbox_enable_hdr", "checkbox_stretch_video",
+            "checkbox_sharpening", "seekbar_sharpening_strength",
             "checkbox_full_range", "spatial_dithering", "checkbox_unlock_fps",
             "video_format", "video_renderer", "pyrowave_late_frames", "checkbox_ultra_low_latency",
             "frame_pacing", "jitter_buffer", "checkbox_reduce_refresh_rate", "text_actual_display_refresh_rate",

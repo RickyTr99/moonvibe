@@ -78,11 +78,15 @@ final class SettingsRules {
                 case "jitter_buffer":
                     return needsValue(context, screen, "frame_pacing", PACING_HOST_TIMED, labels);
                 case "spatial_dithering":
-                    // PyroWave always shows through the Vulkan renderer
-                    if (!pyrowave) {
-                        return needsValue(context, screen, "video_renderer", "vulkan", labels);
+                case "checkbox_sharpening":
+                case "seekbar_sharpening_strength": {
+                    // PyroWave always shows through the Vulkan renderer; the strength then follows its switch
+                    Block block = pyrowave ? null : needsValue(context, screen, "video_renderer", "vulkan", labels);
+                    if (block != null) {
+                        return block;
                     }
                     break;
+                }
                 case "checkbox_reduce_refresh_rate":
                     // The other pacing modes decide on their own (Game.mayReduceRefreshRate)
                     return needsValue(context, screen, "frame_pacing", "balanced", labels);

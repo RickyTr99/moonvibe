@@ -8,6 +8,8 @@ layout(push_constant) uniform PushConstants {
     vec4 params;   // x = dither amplitude, y = frame counter, z = output mode, w = content peak nits
     vec4 params2;  // x = SDR reference white nits, y = quarter turns clockwise to pre-rotate by
     vec4 ycbcr;    // Planar video: x = Kr, y = Kb, z = chroma midpoint, w = chroma U offset
+    vec4 sharpen;  // x = sharpening strength (0 = off), y = U left of which the picture stays unsharpened
+    vec4 texel;    // xy = one texel of the video in UV, zw = the video's size in texels
 } pc;
 
 const float OUTPUT_PASSTHROUGH = 0.0;

@@ -138,6 +138,16 @@ public class VulkanRendererBridge {
         }
     }
 
+    /**
+     * Sharpening of the picture from the next draw: 0 is off, 1 is CAS at full sharpness. To
+     * compare, the picture left of split (0 to 1 across it) stays as it came; 0 sharpens it all.
+     */
+    public void setSharpening(float strength, float split) {
+        if (handle != 0) {
+            nativeSetSharpening(handle, strength, split);
+        }
+    }
+
     /** Frames presented since the last call */
     public int takePresentedFrames() {
         return handle != 0 ? nativeTakePresentedFrames(handle) : 0;
@@ -192,6 +202,7 @@ public class VulkanRendererBridge {
     private static native boolean nativeIsTracing(long handle);
     private static native void nativeNoteReceived(long handle, long hostPtsUs, long receiveTimeUs, long enqueueTimeUs);
     private static native void nativeSetHdrMode(long handle, boolean enabled, byte[] hdrMetadata);
+    private static native void nativeSetSharpening(long handle, float strength, float split);
     private static native int nativeTakePresentedFrames(long handle);
     private static native String nativeGetRendererText(long handle);
     private static native String nativeGetPacingText(long handle);

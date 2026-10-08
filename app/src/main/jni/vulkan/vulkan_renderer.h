@@ -106,6 +106,11 @@ public:
 
     void setHdrMode(bool enabled, const uint8_t* metadata, size_t metadataLength);
 
+    // Sharpening of the picture (shaders/sharpen.glsl): 0 is off, 1 is CAS at full sharpness.
+    // To compare, the picture left of split (0 to 1 across it) stays as it came: 0 sharpens it all.
+    // Applies from the next draw, which it asks for.
+    void setSharpening(float strength, float split);
+
     // Network timing of a frame, for pacer traces
     bool tracing();
     void noteReceived(int64_t hostPtsNs, int64_t receiveNs, int64_t enqueueNs);
@@ -390,6 +395,9 @@ private:
 
     // Render thread copy of the HDR state
     bool hdrActive_ = false;
+
+    std::atomic<float> sharpenStrength_ {0.0f};
+    std::atomic<float> sharpenSplit_ {0.0f};
 
     std::atomic<uint32_t> presentedFrames_ {0};
 };

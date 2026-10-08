@@ -209,6 +209,28 @@ public class GameMenu implements GameMenuView.Listener {
     private List<Item> buildInputItems() {
         List<Item> items = new ArrayList<>();
 
+        // Sharpening is done by the Vulkan renderer only
+        if (game.canSharpen()) {
+            items.add(Item.header(getString(R.string.game_menu_section_picture)));
+            items.add(Item.toggle(R.drawable.ic_apollo_cat_video, getString(R.string.title_checkbox_sharpening),
+                    game::isSharpeningOn, game::toggleSharpening));
+            items.add(Item.slider(R.drawable.ic_apollo_tune, getString(R.string.game_menu_sharpening_strength),
+                    10, 100, 5, "%", new GameMenuView.QuickSlider.Value() {
+                        @Override
+                        public int get() {
+                            return game.getSharpeningStrength();
+                        }
+
+                        @Override
+                        public void set(int value) {
+                            game.setSharpeningStrength(value);
+                        }
+                    }).enabledWhen(game::isSharpeningOn));
+            // The line over the stream drags by touch
+            items.add(Item.toggle(R.drawable.ic_menu_window, getString(R.string.game_menu_compare_sharpening),
+                    game::isComparingSharpening, game::toggleCompareSharpening).enabledWhen(game::isSharpeningOn));
+        }
+
         // The stats over the stream: their style, or off, and where the style in use sits
         items.add(Item.header(getString(R.string.apollo_section_stats)));
         StatsPrefs.Style[] styles = StatsPrefs.Style.values();

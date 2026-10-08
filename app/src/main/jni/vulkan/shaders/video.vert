@@ -7,6 +7,8 @@ layout(push_constant) uniform PushConstants {
     vec4 params;   // x = dither amplitude, y = frame counter, z = output mode, w = content peak nits
     vec4 params2;  // x = SDR reference white nits, y = quarter turns clockwise to pre-rotate by
     vec4 ycbcr;    // Used by the planar fragment shader
+    vec4 sharpen;  // Used by the fragment shaders
+    vec4 texel;
 } pc;
 
 layout(location = 0) out vec2 vUv;

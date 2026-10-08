@@ -90,6 +90,15 @@ Java_com_limelight_binding_video_VulkanRendererBridge_nativeSetHdrMode(
     }
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_com_limelight_binding_video_VulkanRendererBridge_nativeSetSharpening(
+        JNIEnv*, jclass, jlong handle, jfloat strength, jfloat split) {
+    VulkanRenderer* renderer = fromHandle(handle);
+    if (renderer) {
+        renderer->setSharpening(strength, split);
+    }
+}
+
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_limelight_binding_video_VulkanRendererBridge_nativeSubmitPyrowaveFrame(
         JNIEnv* env, jclass, jlong handle, jbyteArray data, jint length, jlong hostPtsUs, jlong lastPacketUs,

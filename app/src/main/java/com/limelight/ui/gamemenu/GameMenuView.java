@@ -64,6 +64,8 @@ public class GameMenuView extends FrameLayout {
     private static final float PRESSED_SCALE = 0.96f;
     // No more than the side margin of the panel, so the sliding content never reaches the edge
     private static final int TAB_SLIDE_DP = 10;
+    // A row that does nothing now, as the settings dim it
+    private static final float DISABLED_ROW_ALPHA = 0.38f;
     private static final int BUMPER_WIDTH_DP = 26;
     private static final int BUMPER_HEIGHT_DP = 19;
     private static final float SLIDER_STICK_DEADZONE = 0.2f;
@@ -193,6 +195,7 @@ public class GameMenuView extends FrameLayout {
         String[] options;
         Selection selection;
         Runnable longPressAction;
+        Toggle enabled;
         QuickSlider.Value sliderValue;
         int sliderMin, sliderMax, sliderStep;
         String sliderSuffix;
@@ -259,6 +262,12 @@ public class GameMenuView extends FrameLayout {
 
         public Item onLongPress(Runnable action) {
             longPressAction = action;
+            return this;
+        }
+
+        // Dimmed and still while this is off, like a setting that depends on another (sliders and switches)
+        public Item enabledWhen(Toggle enabled) {
+            this.enabled = enabled;
             return this;
         }
     }
@@ -332,6 +341,7 @@ public class GameMenuView extends FrameLayout {
         ApolloWidgets.SwitchView toggle;
         TextView value;
         SliderView slider;
+        boolean enabled = true;
         int backgroundColor = Color.TRANSPARENT;
         int labelColor;
         int iconColor;
@@ -841,7 +851,7 @@ public class GameMenuView extends FrameLayout {
             soloExitPending = false;
             soloRow = null;
             soloCard.animate().cancel();
-            soloCard.animate().alpha(0).setDuration(ApolloMotion.SHORT).setInterpolator(ApolloMotion.STANDARD).start();
+            soloCard.animate().alpha(0).setStartDelay(0).setDuration(ApolloMotion.SHORT).setInterpolator(ApolloMotion.STANDARD).start();
         }
         hideDropdown(false);
         dialogConfirm = null;
@@ -1139,6 +1149,13 @@ public class GameMenuView extends FrameLayout {
         }
         soloRow = row;
 
+        // Moved while the panel still slides in: it's fading out anyway, so it ends its slide now, and
+        // the lone slider goes where the row really is rather than where the slide has got to
+        soloCard.animate().cancel();
+        panelFrame.animate().cancel();
+        scrim.animate().cancel();
+        panelFrame.setTranslationX(0);
+
         int[] rowLocation = new int[2], ownLocation = new int[2];
         row.container.getLocationInWindow(rowLocation);
         getLocationInWindow(ownLocation);
@@ -1153,12 +1170,9 @@ public class GameMenuView extends FrameLayout {
         soloValue.setText(row.value.getText());
         soloSlider.setStickHandle(padConnected ? stickLetter(row.slider) : null);
 
-        soloCard.animate().cancel();
-        panelFrame.animate().cancel();
-        scrim.animate().cancel();
         soloCard.bringToFront();
         soloCard.setVisibility(VISIBLE);
-        soloCard.animate().alpha(1).setDuration(ApolloMotion.SHORT).setInterpolator(ApolloMotion.STANDARD).start();
+        soloCard.animate().alpha(1).setStartDelay(0).setDuration(ApolloMotion.SHORT).setInterpolator(ApolloMotion.STANDARD).start();
         panelFrame.animate().alpha(0).setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
         scrim.animate().alpha(0).setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
     }
@@ -1180,7 +1194,10 @@ public class GameMenuView extends FrameLayout {
         if (!isOpen()) {
             return;
         }
-        soloCard.animate().alpha(0).setDuration(ApolloMotion.SHORT).setInterpolator(ApolloMotion.STANDARD)
+        // The menu comes back under the card, which stays whole over its row and only then fades into
+        // it: faded together, the two sliders showed through each other
+        soloCard.animate().alpha(0).setStartDelay(ApolloMotion.MEDIUM - ApolloMotion.SHORT / 2)
+                .setDuration(ApolloMotion.SHORT).setInterpolator(ApolloMotion.STANDARD)
                 .withEndAction(() -> {
                     if (soloRow == null) {
                         soloCard.setVisibility(GONE);
@@ -1513,7 +1530,24 @@ public class GameMenuView extends FrameLayout {
                 return true;
             });
         }
+        if (item.enabled != null) {
+            setRowEnabled(row, item.enabled.isOn(), false);
+        }
         return row;
+    }
+
+    // A row whose setting does nothing now is dimmed, as in the settings, and its slider stays put
+    private void setRowEnabled(Row row, boolean enabled, boolean animate) {
+        row.enabled = enabled;
+        if (row.slider != null) {
+            row.slider.setEnabled(enabled);
+        }
+        float alpha = enabled ? 1f : DISABLED_ROW_ALPHA;
+        if (animate) {
+            row.view.animate().alpha(alpha).setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
+        } else {
+            row.view.setAlpha(alpha);
+        }
     }
 
     private void buildHintRow() {
@@ -1636,6 +1670,12 @@ public class GameMenuView extends FrameLayout {
             if (row.toggle != null) {
                 row.toggle.setChecked(row.item.toggle.isOn(), true);
             }
+            if (row.item.enabled != null) {
+                boolean enabled = row.item.enabled.isOn();
+                if (enabled != row.enabled) {
+                    setRowEnabled(row, enabled, true);
+                }
+            }
             // A slider's value is its own, set while it moves
             if (row.value != null && row.item.options != null) {
                 row.value.setText(dropdownValue(row.item));
@@ -1693,6 +1733,9 @@ public class GameMenuView extends FrameLayout {
 
     private void setRowSlider(Row row, int value) {
         Item item = row.item;
+        if (item.enabled != null && !item.enabled.isOn()) {
+            return;
+        }
         value = Math.max(item.sliderMin, Math.min(item.sliderMax, value));
         item.sliderValue.set(value);
         row.slider.setValue(value);
@@ -1701,6 +1744,10 @@ public class GameMenuView extends FrameLayout {
 
     private void activate(Row row) {
         Item item = row.item;
+        if (!row.enabled) {
+            shake(row.view);
+            return;
+        }
         if (item.sliderValue != null) {
             // Left and right move it
             return;

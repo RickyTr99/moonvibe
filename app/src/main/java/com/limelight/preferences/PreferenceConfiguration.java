@@ -105,6 +105,8 @@ public class PreferenceConfiguration {
     private static final String BACKGROUND_AUDIO_PREF_STRING = "checkbox_background_audio";
     private static final String VIDEO_RENDERER_PREF_STRING = "video_renderer";
     private static final String SPATIAL_DITHERING_PREF_STRING = "spatial_dithering";
+    public static final String SHARPENING_PREF_STRING = "checkbox_sharpening";
+    public static final String SHARPENING_STRENGTH_PREF_STRING = "seekbar_sharpening_strength";
     private static final String JITTER_BUFFER_PREF_STRING = "jitter_buffer";
     private static final String PYROWAVE_LATE_FRAMES_PREF_STRING = "pyrowave_late_frames";
 
@@ -123,6 +125,8 @@ public class PreferenceConfiguration {
     private static final String DEFAULT_VIDEO_FORMAT = "auto";
     private static final String DEFAULT_VIDEO_RENDERER = "auto";
     private static final String DEFAULT_SPATIAL_DITHERING = "off";
+    private static final boolean DEFAULT_SHARPENING = false;
+    private static final int DEFAULT_SHARPENING_STRENGTH = 50;
     private static final String DEFAULT_JITTER_BUFFER = "balanced";
     private static final String DEFAULT_PYROWAVE_LATE_FRAMES = "balanced";
 
@@ -220,6 +224,9 @@ public class PreferenceConfiguration {
     public FormatOption videoFormat;
     public VideoRendererOption videoRenderer;
     public SpatialDitheringOption spatialDithering;
+    // CAS by the Vulkan renderer, the strength in percent of its full sharpness
+    public boolean sharpening;
+    public int sharpeningStrength;
     public int deadzonePercentage;
     public int oscOpacity;
     public int oscKeyboardOpacity;
@@ -803,6 +810,8 @@ public class PreferenceConfiguration {
         config.videoFormat = getVideoFormatValue(context);
         config.videoRenderer = getVideoRendererValue(context);
         config.spatialDithering = getSpatialDitheringValue(context);
+        config.sharpening = prefs.getBoolean(SHARPENING_PREF_STRING, DEFAULT_SHARPENING);
+        config.sharpeningStrength = prefs.getInt(SHARPENING_STRENGTH_PREF_STRING, DEFAULT_SHARPENING_STRENGTH);
         config.framePacing = getFramePacingValue(context);
         config.jitterBuffer = getJitterBufferValue(context);
         config.pyrowaveLateFrames = getPyrowaveLateFramesValue(context);

@@ -11,7 +11,6 @@ import android.os.Bundle;
 import android.app.Activity;
 import android.os.Handler;
 import android.os.Vibrator;
-import android.app.AlertDialog;
 import android.preference.CheckBoxPreference;
 import android.preference.EditTextPreference;
 import android.preference.ListPreference;
@@ -188,12 +187,15 @@ public class StreamSettings extends Activity {
             }
 
             @Override
-            public CharSequence headerNote() {
-                return getString(R.string.apollo_profile_editor_note);
+            public void delete() {
+                Profiles.Profile profile = Profiles.find(StreamSettings.this, profileEditor.id());
+                if (profile != null) {
+                    ProfilesActivity.confirmDelete(StreamSettings.this, profile.id, profile.name, StreamSettings.this::finish);
+                }
             }
         };
         settingsView = SettingsView.profilePage(this, colors, getString(R.string.apollo_profile_editor_title), mode,
-                ProfileEditor.KEY_NAME, KEY_PROFILE_DELETE);
+                ProfileEditor.KEY_NAME);
         FrameLayout container = findViewById(R.id.settingsContainer);
         container.setPadding(0, ApolloUi.dp(this, 16), 0, 0);
         container.addView(settingsView);
@@ -204,7 +206,6 @@ public class StreamSettings extends Activity {
         ApolloUi.padForCutout(findViewById(R.id.settingsColumn));
     }
 
-    static final String KEY_PROFILE_DELETE = "profile_delete";
 
     void onPreferencesReady(PreferenceScreen screen) {
         ActiveProfileSettings profile = withProfile;
@@ -544,18 +545,17 @@ public class StreamSettings extends Activity {
             pref.setEntryValues(entryValues);
         }
 
-        private void resetBitrateToDefault(SharedPreferences prefs, String res, String fps) {
-            if (res == null) {
-                res = prefs.getString(PreferenceConfiguration.RESOLUTION_PREF_STRING, PreferenceConfiguration.DEFAULT_RESOLUTION);
+        // A new resolution or frame rate leaves the bitrate as it is. Never set, it would follow the new
+        // default, so the one in use is kept.
+        private void keepBitrate() {
+            SharedPreferences prefs = prefs();
+            if (!prefs.contains(PreferenceConfiguration.BITRATE_PREF_STRING)) {
+                prefs.edit()
+                        .putInt(PreferenceConfiguration.BITRATE_PREF_STRING, PreferenceConfiguration.getDefaultBitrate(
+                                prefs.getString(PreferenceConfiguration.RESOLUTION_PREF_STRING, PreferenceConfiguration.DEFAULT_RESOLUTION),
+                                prefs.getString(PreferenceConfiguration.FPS_PREF_STRING, PreferenceConfiguration.DEFAULT_FPS)))
+                        .apply();
             }
-            if (fps == null) {
-                fps = prefs.getString(PreferenceConfiguration.FPS_PREF_STRING, PreferenceConfiguration.DEFAULT_FPS);
-            }
-
-            prefs.edit()
-                    .putInt(PreferenceConfiguration.BITRATE_PREF_STRING,
-                            PreferenceConfiguration.getDefaultBitrate(res, fps))
-                    .apply();
         }
 
         // The settings this screen edits: the general ones, or the work file of a profile
@@ -570,25 +570,6 @@ public class StreamSettings extends Activity {
             name.setDialogTitle(R.string.apollo_profile_name);
             name.setPersistent(true);
             screen.addPreference(name);
-
-            Preference delete = new Preference(getActivity());
-            delete.setKey(KEY_PROFILE_DELETE);
-            delete.setTitle(R.string.apollo_profile_delete);
-            delete.setPersistent(false);
-            delete.setOnPreferenceClickListener(p -> {
-                new AlertDialog.Builder(getActivity())
-                        .setTitle(R.string.apollo_profile_delete)
-                        .setMessage(getString(R.string.apollo_profile_delete_confirm,
-                                prefs().getString(ProfileEditor.KEY_NAME, "")))
-                        .setPositiveButton(R.string.apollo_profile_delete, (dialog, which) -> {
-                            Profiles.delete(getActivity(), profileEditor.id());
-                            getActivity().finish();
-                        })
-                        .setNegativeButton(android.R.string.cancel, null)
-                        .show();
-                return true;
-            });
-            screen.addPreference(delete);
         }
 
         @Override
@@ -851,9 +832,7 @@ public class StreamSettings extends Activity {
                         removeValue(PreferenceConfiguration.RESOLUTION_PREF_STRING, PreferenceConfiguration.RES_4K, new Runnable() {
                             @Override
                             public void run() {
-                                SharedPreferences prefs = SettingsFragment.this.prefs();
                                 setValue(PreferenceConfiguration.RESOLUTION_PREF_STRING, PreferenceConfiguration.RES_1440P);
-                                resetBitrateToDefault(prefs, null, null);
                             }
                         });
                     }
@@ -862,9 +841,7 @@ public class StreamSettings extends Activity {
                         removeValue(PreferenceConfiguration.RESOLUTION_PREF_STRING, PreferenceConfiguration.RES_1440P, new Runnable() {
                             @Override
                             public void run() {
-                                SharedPreferences prefs = SettingsFragment.this.prefs();
                                 setValue(PreferenceConfiguration.RESOLUTION_PREF_STRING, PreferenceConfiguration.RES_1080P);
-                                resetBitrateToDefault(prefs, null, null);
                             }
                         });
                     }
@@ -873,9 +850,7 @@ public class StreamSettings extends Activity {
                         removeValue(PreferenceConfiguration.RESOLUTION_PREF_STRING, PreferenceConfiguration.RES_1080P, new Runnable() {
                             @Override
                             public void run() {
-                                SharedPreferences prefs = SettingsFragment.this.prefs();
                                 setValue(PreferenceConfiguration.RESOLUTION_PREF_STRING, PreferenceConfiguration.RES_720P);
-                                resetBitrateToDefault(prefs, null, null);
                             }
                         });
                     }
@@ -899,9 +874,7 @@ public class StreamSettings extends Activity {
                     removeValue(PreferenceConfiguration.FPS_PREF_STRING, "120", new Runnable() {
                         @Override
                         public void run() {
-                            SharedPreferences prefs = SettingsFragment.this.prefs();
                             setValue(PreferenceConfiguration.FPS_PREF_STRING, "90");
-                            resetBitrateToDefault(prefs, null, null);
                         }
                     });
                 }
@@ -910,9 +883,7 @@ public class StreamSettings extends Activity {
                     removeValue(PreferenceConfiguration.FPS_PREF_STRING, "90", new Runnable() {
                         @Override
                         public void run() {
-                            SharedPreferences prefs = SettingsFragment.this.prefs();
                             setValue(PreferenceConfiguration.FPS_PREF_STRING, "60");
-                            resetBitrateToDefault(prefs, null, null);
                         }
                     });
                 }
@@ -1002,8 +973,8 @@ public class StreamSettings extends Activity {
             findPreference(PreferenceConfiguration.RESOLUTION_PREF_STRING).setOnPreferenceChangeListener(new Preference.OnPreferenceChangeListener() {
                 @Override
                 public boolean onPreferenceChange(Preference preference, Object newValue) {
-                    SharedPreferences prefs = SettingsFragment.this.prefs();
                     String valueStr = (String) newValue;
+                    keepBitrate();
 
                     // Detect if this value is the native resolution option
                     CharSequence[] values = ((ListPreference)preference).getEntryValues();
@@ -1024,9 +995,6 @@ public class StreamSettings extends Activity {
                                 false);
                     }
 
-                    // Write the new bitrate value
-                    resetBitrateToDefault(prefs, valueStr, null);
-
                     // Allow the original preference change to take place
                     return true;
                 }
@@ -1034,8 +1002,8 @@ public class StreamSettings extends Activity {
             findPreference(PreferenceConfiguration.FPS_PREF_STRING).setOnPreferenceChangeListener(new Preference.OnPreferenceChangeListener() {
                 @Override
                 public boolean onPreferenceChange(Preference preference, Object newValue) {
-                    SharedPreferences prefs = SettingsFragment.this.prefs();
                     String valueStr = (String) newValue;
+                    keepBitrate();
 
                     // If this is native frame rate, show the warning dialog
                     CharSequence[] values = ((ListPreference)preference).getEntryValues();
@@ -1045,9 +1013,6 @@ public class StreamSettings extends Activity {
                                 getResources().getString(R.string.text_native_res_dialog),
                                 false);
                     }
-
-                    // Write the new bitrate value
-                    resetBitrateToDefault(prefs, null, valueStr);
 
                     // Allow the original preference change to take place
                     return true;

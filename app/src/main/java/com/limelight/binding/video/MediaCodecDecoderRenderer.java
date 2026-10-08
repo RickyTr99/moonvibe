@@ -142,6 +142,9 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
     // Vulkan renderer, when selected and it started on this device
     private boolean wantVulkan;
     private volatile VulkanRendererBridge vulkanRenderer;
+    // See setSharpening()
+    private float sharpenStrength;
+    private float sharpenSplit;
 
     // A PyroWave stream: no MediaCodec, the Vulkan renderer decodes it
     private boolean pyrowave;
@@ -613,8 +616,28 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
             if (currentHdrMetadata != null) {
                 renderer.setHdrMode(true, currentHdrMetadata);
             }
+            renderer.setSharpening(sharpenStrength, sharpenSplit);
         }
         return renderer;
+    }
+
+    /**
+     * Sharpening of the picture, by the Vulkan renderer only. Kept for a renderer made later,
+     * as after the stream comes back from the background.
+     */
+    public void setSharpening(float strength, float split) {
+        synchronized (backgroundLock) {
+            sharpenStrength = strength;
+            sharpenSplit = split;
+            if (vulkanRenderer != null) {
+                vulkanRenderer.setSharpening(strength, split);
+            }
+        }
+    }
+
+    /** Whether the stream is drawn by the Vulkan renderer, the one that can sharpen */
+    public boolean isVulkanRendererActive() {
+        return vulkanRenderer != null;
     }
 
     private void configureAndStartDecoder(MediaFormat format) {

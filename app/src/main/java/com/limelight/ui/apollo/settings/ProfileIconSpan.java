@@ -9,8 +9,8 @@ import android.text.style.ReplacementSpan;
 import com.limelight.R;
 
 /**
- * The profile icon right after the name of a setting: the profile in use changes it, like the
- * icon in the top bar. It always takes its room, so fading it in or out never moves the text.
+ * The profile icon inside a line of text, as in the note on top of a category: where the changes
+ * go while a profile is in use.
  */
 final class ProfileIconSpan extends ReplacementSpan {
     private final Drawable icon;

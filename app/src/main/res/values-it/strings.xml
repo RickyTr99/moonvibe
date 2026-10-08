@@ -381,8 +381,8 @@
         <item quantity="other">altre %1$d</item>
     </plurals>
     <string name="apollo_hint_edit">Modifica</string>
+    <string name="apollo_hint_delete">Elimina</string>
     <string name="apollo_profile_editor_title">Modifica profilo</string>
-    <string name="apollo_profile_editor_note">Le voci con il puntino sono cambiate in questo profilo, le altre seguono le impostazioni generali. Tieni premuta una voce (X col controller) per farla tornare alle generali.</string>
     <string name="apollo_profile_name">Nome</string>
     <string name="apollo_profile_follows_general">Come nelle impostazioni generali</string>
     <string name="apollo_profile_use_general">Usa le generali</string>
@@ -417,6 +417,8 @@
     <string name="videorenderer_vulkan">Vulkan (sperimentale)</string>
     <string name="videoformat_pyrowave">PyroWave (sperimentale, rete locale da 200+ Mbps)</string>
     <string name="title_spatial_dithering">Dithering spaziale</string>
+    <string name="title_checkbox_sharpening">Nitidezza</string>
+    <string name="title_seekbar_sharpening_strength">Intensità della nitidezza</string>
     <string name="dithering_off">Off</string>
     <string name="dithering_low">Basso</string>
     <string name="dithering_high">Alto</string>
@@ -567,6 +569,11 @@
     <string name="game_menu_toggle_keyboard">Tastiera Android</string>
     <string name="game_menu_toggle_full_keyboard">Tastiera PC completa</string>
     <string name="game_menu_tab_input">Varie</string>
+    <string name="game_menu_section_picture">Immagine</string>
+    <string name="game_menu_sharpening_strength">Intensità</string>
+    <string name="game_menu_compare_sharpening">Confronta con l\'originale</string>
+    <string name="compare_original">Originale</string>
+    <string name="compare_sharpened">Nitidezza</string>
     <string name="game_menu_tab_keys">Scorciatoie</string>
     <string name="game_menu_tab_quick">Rapide</string>
     <string name="game_menu_touch_mode">Modalità</string>
@@ -669,6 +676,7 @@
         <item>Aggiunge il dithering e un suo frame pacing, più regolare. Sperimentale</item>
     </string-array>
     <string name="apollo_info_spatial_dithering">Aggiunge un rumore finissimo e in movimento che nasconde le bande di colore nelle sfumature, soprattutto in HDR. Solo con il renderer Vulkan.</string>
+    <string name="apollo_info_sharpening">Recupera i dettagli fini che lo stream ammorbidisce, con AMD FidelityFX CAS: agisce di più dove il contrasto è basso, come texture e dettagli lontani, e poco sui bordi già netti, così testo e HUD restano puliti. Se esageri si vede il rumore della compressione. Solo con il renderer Vulkan, regolabile anche dal menu di gioco.</string>
     <string name="apollo_info_full_range">Usa tutta la gamma di colori invece di quella ridotta del video. Se lo schermo non la gestisce bene, si perdono dettagli nelle zone molto chiare e molto scure.</string>
     <string name="apollo_info_unlock_fps">Mostra anche i frame rate più alti, come 90, 120 o 144 FPS. Sui dispositivi potenti riducono il ritardo, ma su quelli che non li reggono causano scatti e instabilità.</string>
     <string name="apollo_info_reduce_refresh_rate">Lascia scendere lo schermo al frame rate dello stream invece di tenerlo alla frequenza massima. Si risparmia batteria, con un po\' di ritardo in più.</string>

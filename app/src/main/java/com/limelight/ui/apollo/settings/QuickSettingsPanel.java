@@ -62,6 +62,7 @@ public class QuickSettingsPanel extends FrameLayout {
     private final LinearLayout panel;
     private final LinearLayout list;
     private final OptionsPopup popup;
+    private final ValuePopup valuePopup;
     private final List<View> rows = new ArrayList<>();
     private View focusBeforeShow;
     private boolean showing;
@@ -114,6 +115,7 @@ public class QuickSettingsPanel extends FrameLayout {
         scroll.addView(list);
 
         popup = new OptionsPopup(this, panel, colors);
+        valuePopup = new ValuePopup(this, panel, colors);
 
         // Gamepad hints at the bottom of the panel
         HintRow hints = new HintRow(context, colors, Gravity.START);
@@ -166,7 +168,13 @@ public class QuickSettingsPanel extends FrameLayout {
                 setBitrate(value);
             }
         });
-        HintRow.set(bitrateRow, ButtonGlyph.DPAD_LEFT_RIGHT, R.string.apollo_hint_adjust, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_close);
+        HintRow.set(bitrateRow, new HintRow.Hint[]{
+                HintRow.hint(context, ButtonGlyph.DPAD_LEFT_RIGHT, R.string.apollo_hint_adjust),
+                HintRow.hint(context, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_write),
+                HintRow.hint(context, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_close)});
+        // A tap or A types the value by hand, as in the settings, also past the end of the slider
+        bitrateRow.setClickable(true);
+        bitrateRow.setOnClickListener(v -> showBitratePopup(bitrateRow));
         bitrateRow.setOnKeyListener((v, keyCode, event) -> {
             if (keyCode != KeyEvent.KEYCODE_DPAD_LEFT && keyCode != KeyEvent.KEYCODE_DPAD_RIGHT) {
                 return false;
@@ -305,6 +313,17 @@ public class QuickSettingsPanel extends FrameLayout {
         bind(true);
     }
 
+    private void showBitratePopup(View row) {
+        popup.dismiss(false);
+        int[] shortcuts = new int[SettingsView.BITRATE_SHORTCUTS_MBPS.length];
+        for (int i = 0; i < shortcuts.length; i++) {
+            shortcuts[i] = SettingsView.BITRATE_SHORTCUTS_MBPS[i] * 1000;
+        }
+        valuePopup.show(row, getContext().getString(R.string.title_seekbar_bitrate),
+                getContext().getString(R.string.suffix_seekbar_bitrate_mbps), bitrate(), BITRATE_MIN_KBPS,
+                BITRATE_MAX_KBPS, 1000, shortcuts, this::setBitrate);
+    }
+
     private void bind(boolean animate) {
         int bitrate = bitrate();
         bitrateSlider.setValue(bitrate);
@@ -427,13 +446,14 @@ public class QuickSettingsPanel extends FrameLayout {
         popup.show(row, popupRightEdge(), choices.names.toArray(new String[0]), Math.max(0, choices.values.indexOf(current)),
                 index -> {
                     String value = choices.values.get(index);
-                    // Like the settings: a new resolution or frame rate resets the bitrate to its default
-                    String resolution = key.equals(PREF_RESOLUTION) ? value : prefs.getString(PREF_RESOLUTION, DEFAULT_RESOLUTION);
-                    String fps = key.equals(PREF_FPS) ? value : prefs.getString(PREF_FPS, DEFAULT_FPS);
-                    prefs.edit()
-                            .putString(key, value)
-                            .putInt(PREF_BITRATE, PreferenceConfiguration.getDefaultBitrate(resolution, fps))
-                            .apply();
+                    // The bitrate stays as it is: it's the user's to change. Never set, it would follow
+                    // the new default, so the one in use is kept.
+                    SharedPreferences.Editor editor = prefs.edit().putString(key, value);
+                    if (!prefs.contains(PREF_BITRATE)) {
+                        editor.putInt(PREF_BITRATE, PreferenceConfiguration.getDefaultBitrate(
+                                prefs.getString(PREF_RESOLUTION, DEFAULT_RESOLUTION), prefs.getString(PREF_FPS, DEFAULT_FPS)));
+                    }
+                    editor.apply();
                     bind(true);
 
                     if (choices.isNative(value) && getContext() instanceof Activity) {
@@ -542,7 +562,7 @@ public class QuickSettingsPanel extends FrameLayout {
 
     // Returns true if the panel was open; B closes the options menu first
     public boolean dismiss() {
-        if (popup.dismiss(true)) {
+        if (popup.dismiss(true) || valuePopup.dismiss(true)) {
             return true;
         }
         if (!showing) {

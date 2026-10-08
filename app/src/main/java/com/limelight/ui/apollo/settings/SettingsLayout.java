@@ -84,22 +84,22 @@ final class SettingsLayout {
 
     /**
      * A profile's page: name and rule, the settings a profile can change grouped as in the Video,
-     * Codec and Audio categories, and the row that deletes it. Profiles.KEYS lists the same settings.
+     * Codec and Audio categories (deleting it is a button next to the title). Profiles.KEYS lists the same settings.
      */
-    static Object[] profileEntries(String nameKey, String deleteKey) {
+    static Object[] profileEntries(String nameKey) {
         return new Object[] {
                 k(nameKey),
                 new Section(R.string.apollo_settings_video, true,
                         k("list_resolution"), k("list_fps"), k("seekbar_bitrate_kbps"), k("checkbox_enable_hdr"),
-                        k("checkbox_stretch_video"), k("checkbox_full_range"), k("spatial_dithering"), k("checkbox_unlock_fps"),
+                        k("checkbox_stretch_video"), k("checkbox_sharpening"), k("seekbar_sharpening_strength"),
+                        k("checkbox_full_range"), k("spatial_dithering"), k("checkbox_unlock_fps"),
                         k("checkbox_enable_post_stream_toast"), k("checkbox_disable_warnings")),
                 new Section(R.string.apollo_settings_latency, true,
                         k("video_format"), k("video_renderer"), k("pyrowave_late_frames"), k("checkbox_ultra_low_latency"),
                         k("frame_pacing"), k("jitter_buffer"), k("checkbox_reduce_refresh_rate"),
                         k("text_actual_display_refresh_rate")),
                 new Section(R.string.apollo_settings_audio, true,
-                        k("list_audio_config"), k("checkbox_enable_audiofx"), k("checkbox_host_audio")),
-                k(deleteKey)};
+                        k("list_audio_config"), k("checkbox_enable_audiofx"), k("checkbox_host_audio"))};
     }
 
     static List<Category> categories() {
@@ -109,6 +109,7 @@ final class SettingsLayout {
         categories.add(new Category(R.string.apollo_settings_video, R.drawable.ic_apollo_cat_video,
                 k("list_resolution"), k("list_fps"), k("seekbar_bitrate_kbps"),
                 k("checkbox_enable_hdr"), k("checkbox_stretch_video"),
+                k("checkbox_sharpening"), k("seekbar_sharpening_strength"),
                 new Section(R.string.apollo_section_stats, true,
                         k("stats_overlay"), k("checkbox_enable_post_stream_toast"), k("checkbox_disable_warnings")),
                 new Section(R.string.apollo_section_advanced, false,
@@ -231,6 +232,7 @@ final class SettingsLayout {
         INFO.put("video_renderer", new Info(R.string.apollo_info_video_renderer, R.array.video_renderer_values,
                 R.array.apollo_info_video_renderer_names, R.array.apollo_info_video_renderer_texts));
         INFO.put("spatial_dithering", new Info(R.string.apollo_info_spatial_dithering));
+        INFO.put("checkbox_sharpening", new Info(R.string.apollo_info_sharpening));
         INFO.put("checkbox_full_range", new Info(R.string.apollo_info_full_range));
         INFO.put("checkbox_unlock_fps", new Info(R.string.apollo_info_unlock_fps));
         INFO.put("checkbox_reduce_refresh_rate", new Info(R.string.apollo_info_reduce_refresh_rate));

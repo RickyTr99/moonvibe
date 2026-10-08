@@ -361,6 +361,8 @@
     <string name="dithering_high">High</string>
 
     <string name="title_spatial_dithering">Spatial Dithering</string>
+    <string name="title_checkbox_sharpening">Sharpening</string>
+    <string name="title_seekbar_sharpening_strength">Sharpening strength</string>
     <string name="summary_spatial_dithering">Adds fine moving noise that hides color banding, most visible in HDR gradients (Vulkan renderer only)</string>
 
     <string name="title_frame_pacing">Video frame pacing</string>
@@ -544,8 +546,8 @@
         <item quantity="other">%1$d more</item>
     </plurals>
     <string name="apollo_hint_edit">Edit</string>
+    <string name="apollo_hint_delete">Delete</string>
     <string name="apollo_profile_editor_title">Edit profile</string>
-    <string name="apollo_profile_editor_note">Settings with the dot are changed in this profile; the others follow the general settings. Hold one (X on a gamepad) to make it follow the general settings again.</string>
     <string name="apollo_profile_name">Name</string>
     <string name="apollo_profile_follows_general">As in the general settings</string>
     <string name="apollo_profile_use_general">Use general</string>
@@ -703,6 +705,11 @@
     <string name="game_menu_toggle_keyboard">Android keyboard</string>
     <string name="game_menu_toggle_full_keyboard">Full PC keyboard</string>
     <string name="game_menu_tab_input">More</string>
+    <string name="game_menu_section_picture">Picture</string>
+    <string name="game_menu_sharpening_strength">Strength</string>
+    <string name="game_menu_compare_sharpening">Compare with the original</string>
+    <string name="compare_original">Original</string>
+    <string name="compare_sharpened">Sharpened</string>
     <string name="game_menu_tab_keys">Shortcuts</string>
     <string name="game_menu_tab_quick">Quick</string>
     <string name="game_menu_touch_mode">Mode</string>
@@ -805,6 +812,7 @@
         <item>Adds dithering and its own, more even frame pacing. Experimental</item>
     </string-array>
     <string name="apollo_info_spatial_dithering">Adds very fine moving noise that hides the color banding in gradients, most visible in HDR. Vulkan renderer only.</string>
+    <string name="apollo_info_sharpening">Brings back the fine detail the stream softens, with AMD FidelityFX CAS: it sharpens most where contrast is low, like textures and distant details, and little on edges that are already hard, so text and HUD stay clean. Too much makes compression noise show. Vulkan renderer only, also in the game menu.</string>
     <string name="apollo_info_full_range">Uses the full range of colors instead of the reduced one of video. If your screen doesn\'t handle it properly, detail is lost in very light and very dark areas.</string>
     <string name="apollo_info_unlock_fps">Also lists the highest frame rates, like 90, 120 or 144 FPS. They can lower latency on high-end devices, but cause stutter and instability on devices that can\'t keep up.</string>
     <string name="apollo_info_reduce_refresh_rate">Lets the screen drop to the frame rate of the stream instead of staying at its highest refresh rate. Saves battery, for a little more latency.</string>

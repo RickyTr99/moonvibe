@@ -25,6 +25,7 @@ import android.widget.TextView;
 
 import com.limelight.R;
 import com.limelight.profiles.Profiles;
+import com.limelight.ui.apollo.ApolloDialog;
 import com.limelight.ui.apollo.ApolloUi;
 import com.limelight.ui.apollo.DragReorder;
 import com.limelight.ui.apollo.hints.ButtonGlyph;
@@ -40,7 +41,7 @@ import java.util.Map;
 
 /**
  * Manage profiles: the list in the order of the profiles menu, reordered by dragging the handle
- * (X then up/down on a gamepad), a tap or A to edit one, and a new profile at the end.
+ * (X then up/down on a gamepad), a tap or A to edit one, the bin or Y to delete one, and a new profile at the end.
  */
 public class ProfilesActivity extends Activity {
     private static final int COLUMN_MAX_WIDTH_DP = 640;
@@ -155,8 +156,9 @@ public class ProfilesActivity extends Activity {
             rowsBox.addView(profileRow(profile, active != null && active.id.equals(profile.id)));
         }
 
-        View target = focusedIndex >= 0 && focusedIndex < rowsBox.getChildCount()
-                ? rowsBox.getChildAt(focusedIndex) : rowsBox.getChildCount() > 0 ? rowsBox.getChildAt(0) : newRow;
+        // After a delete the focus moves to the next row, or the one before at the end
+        int count = rowsBox.getChildCount();
+        View target = count == 0 ? newRow : rowsBox.getChildAt(focusedIndex >= 0 ? Math.min(focusedIndex, count - 1) : 0);
         ApolloUi.focusByDefault(this, target);
         if (focused != null) {
             target.requestFocus();
@@ -203,6 +205,21 @@ public class ProfilesActivity extends Activity {
         texts.addView(summary);
         row.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
+        // Delete by touch; a gamepad has Y on the row
+        ImageView delete = new ImageView(this);
+        delete.setImageResource(R.drawable.ic_apollo_delete);
+        delete.setImageTintList(ColorStateList.valueOf(colors.onSurfaceVariant));
+        delete.setPadding(dp(10), dp(10), dp(10), dp(10));
+        delete.setFocusable(false);
+        delete.setContentDescription(getString(R.string.apollo_profile_delete));
+        delete.setBackground(ApolloUi.pressLayer(dp(20)));
+        delete.setOnClickListener(v -> {
+            if (movingRow == null) {
+                confirmDelete(profile);
+            }
+        });
+        row.addView(delete, new LinearLayout.LayoutParams(dp(40), dp(40)));
+
         row.setOnClickListener(v -> {
             if (movingRow == null) {
                 edit(profile.id);
@@ -223,8 +240,29 @@ public class ProfilesActivity extends Activity {
             HintRow.set(row, new HintRow.Hint[]{
                     HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_edit),
                     HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_X, R.string.apollo_hint_move),
+                    HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_Y, R.string.apollo_hint_delete),
                     HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_back)});
         }
+    }
+
+    private void confirmDelete(Profiles.Profile profile) {
+        confirmDelete(this, profile.id, profile.name, this::rebuild);
+    }
+
+    /** Asks before deleting a profile, here and on its page; onDeleted runs once it is gone. */
+    static void confirmDelete(Activity activity, String id, String name, Runnable onDeleted) {
+        ApolloDialog dialog = new ApolloDialog(activity, activity.getString(R.string.apollo_profile_delete), 420);
+        TextView message = ApolloUi.text(activity, activity.getString(R.string.apollo_profile_delete_confirm, name),
+                14, dialog.colors.onSurfaceVariant, false);
+        message.setLineSpacing(0, 1.2f);
+        message.setPadding(dialog.dp(14), 0, dialog.dp(14), 0);
+        dialog.body.addView(message);
+        dialog.buttons(activity.getString(R.string.apollo_cancel), activity.getString(R.string.apollo_hint_delete), () -> {
+            dialog.dismiss();
+            Profiles.delete(activity, id);
+            onDeleted.run();
+        });
+        dialog.show();
     }
 
     private View newProfileRow() {
@@ -342,6 +380,12 @@ public class ProfilesActivity extends Activity {
             if (keyCode == KeyEvent.KEYCODE_BUTTON_X) {
                 if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
                     startMove(row);
+                }
+                return true;
+            }
+            if (keyCode == KeyEvent.KEYCODE_BUTTON_Y) {
+                if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                    confirmDelete((Profiles.Profile) row.getTag());
                 }
                 return true;
             }

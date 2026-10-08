@@ -1,4 +1,6 @@
-# MoonVibe
+<p align="center">
+  <img src=".github/banner.png" alt="MoonVibe" width="640">
+</p>
 
 MoonVibe is an Android client for game streaming from your PC with [Sunshine](https://github.com/LizardByte/Sunshine) or [Apollo](https://github.com/ClassicOldSong/Apollo).
 

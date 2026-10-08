@@ -33,6 +33,8 @@ namespace {
         float params[4];
         float params2[4];
         float ycbcr[4];
+        float sharpen[4];
+        float texel[4];
     };
 
     constexpr float kOutputPassthrough = 0.0f;
@@ -74,6 +76,7 @@ namespace {
     constexpr uint32_t kWakeFrame = 1;
     constexpr uint32_t kWakeHdr = 2;
     constexpr uint32_t kWakeQuit = 4;
+    constexpr uint32_t kWakeRedraw = 8;
 
     constexpr int kLooperIdWake = 1;
 
@@ -903,6 +906,12 @@ void VulkanRenderer::setHdrMode(bool enabled, const uint8_t* metadata, size_t me
     wake(kWakeHdr);
 }
 
+void VulkanRenderer::setSharpening(float strength, float split) {
+    sharpenStrength_ = strength;
+    sharpenSplit_ = split;
+    wake(kWakeRedraw);
+}
+
 std::string VulkanRenderer::rendererText() {
     std::lock_guard<std::mutex> lock(mutex_);
 
@@ -1211,8 +1220,8 @@ void VulkanRenderer::onWake() {
             presentedFrames_++;
         }
     }
-    else if ((flags & kWakeHdr) && current_ && renderFrame(current_)) {
-        // Redrawn in the new output format
+    else if ((flags & (kWakeHdr | kWakeRedraw)) && current_ && renderFrame(current_)) {
+        // Redrawn in the new output format, or with the new sharpening
     }
 }
 
@@ -1454,6 +1463,12 @@ bool VulkanRenderer::renderFrame(const FramePtr& frame, uint64_t presentId, int6
         // style); the nonary host sites it at the center of each 2x2 quad
         pc.ycbcr[3] = pyrowave_->recordFraming() ? 0.0f : 0.5f / bufferWidth;
     }
+    pc.sharpen[0] = sharpenStrength_.load();
+    pc.sharpen[1] = pc.uvRect[0] + pc.uvRect[2] * std::max(sharpenSplit_.load(), 0.0f);
+    pc.texel[0] = 1.0f / bufferWidth;
+    pc.texel[1] = 1.0f / bufferHeight;
+    pc.texel[2] = bufferWidth;
+    pc.texel[3] = bufferHeight;
 
     VkCommandBuffer cmd = commandBuffers_[slot];
     vk_.vkResetCommandBuffer(cmd, 0);

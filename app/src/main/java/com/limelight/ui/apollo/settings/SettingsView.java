@@ -139,8 +139,9 @@ public class SettingsView extends FrameLayout {
         // Shown after the name while the setting differs from its default
         DotSpan dot;
         boolean modified;
-        // The grey profile icon, in place of the dot while the profile in use changes the setting
-        ProfileIconSpan profileIcon;
+        // The profile icon before the control while the value comes from the profile in use; null on the
+        // settings no profile holds and on a profile's page, where the dot marks its changes
+        ImageView profileIcon;
         boolean fromProfile;
         // What the setting does, behind the "i" after its name; null for the obvious ones
         SettingsLayout.Info info;
@@ -188,15 +189,15 @@ public class SettingsView extends FrameLayout {
         // A line under the name, or null
         CharSequence note(Preference pref);
 
-        // Under the page title
-        CharSequence headerNote();
+        // The button next to the title: asks, then deletes the profile and closes its page
+        void delete();
     }
 
     private ProfileMode profileMode;
 
     /**
      * The profile in use, on the general settings: the settings it can hold show its values, and those
-     * it changes have a green dot, as the dot next to its name in the top bar.
+     * it changes have the profile icon before their value.
      */
     public interface ActiveProfile {
         CharSequence name();
@@ -244,13 +245,13 @@ public class SettingsView extends FrameLayout {
     }
 
     /**
-     * The page of a profile: its name and rule, the settings it can change (Video, Codec, Audio)
-     * and a last row to delete it.
+     * The page of a profile: its name and rule and the settings it can change (Video, Codec, Audio),
+     * with the button that deletes it next to the title.
      */
     public static SettingsView profilePage(Activity activity, ApolloColors colors, CharSequence title, ProfileMode mode,
-                                           String nameKey, String deleteKey) {
+                                           String nameKey) {
         List<SettingsLayout.Category> page = new ArrayList<>();
-        page.add(new SettingsLayout.Category(title, SettingsLayout.profileEntries(nameKey, deleteKey)));
+        page.add(new SettingsLayout.Category(title, SettingsLayout.profileEntries(nameKey)));
         SettingsView view = new SettingsView(activity, colors, page, true);
         view.profileMode = mode;
         return view;
@@ -892,7 +893,7 @@ public class SettingsView extends FrameLayout {
             button.addView(label);
             ImageView profileDot = new ImageView(getContext());
             profileDot.setImageResource(R.drawable.ic_apollo_profile);
-            profileDot.setImageTintList(ColorStateList.valueOf(colors.onSurfaceVariant));
+            profileDot.setImageTintList(ColorStateList.valueOf(colors.primary));
             profileDot.setVisibility(INVISIBLE);
             LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(dp(14), dp(14));
             dotParams.leftMargin = dp(8);
@@ -1000,23 +1001,58 @@ public class SettingsView extends FrameLayout {
 
     // --- Rows
 
+    // A pill in the error color, tinted a little more with the focus
+    private View deleteProfileButton() {
+        LinearLayout button = new LinearLayout(getContext());
+        button.setOrientation(LinearLayout.HORIZONTAL);
+        button.setGravity(Gravity.CENTER_VERTICAL);
+        button.setPadding(dp(12), 0, dp(16), 0);
+        button.setFocusable(true);
+        button.setClickable(true);
+        StateListDrawable fill = new StateListDrawable();
+        fill.setEnterFadeDuration((int) ApolloMotion.SHORT);
+        fill.setExitFadeDuration((int) ApolloMotion.MEDIUM);
+        Drawable stronger = ApolloUi.roundRect(ApolloColors.blend(colors.surfaceContainerLow, colors.error, 0.3f), dp(18));
+        fill.addState(new int[]{android.R.attr.state_pressed}, stronger);
+        fill.addState(new int[]{android.R.attr.state_focused}, stronger);
+        fill.addState(new int[]{}, ApolloUi.roundRect(ApolloColors.blend(colors.surfaceContainerLow, colors.error, 0.14f), dp(18)));
+        button.setBackground(fill);
+
+        ImageView icon = new ImageView(getContext());
+        icon.setImageResource(R.drawable.ic_apollo_delete);
+        icon.setImageTintList(ColorStateList.valueOf(colors.error));
+        button.addView(icon, new LinearLayout.LayoutParams(dp(18), dp(18)));
+        TextView label = ApolloUi.text(getContext(), getContext().getString(R.string.apollo_profile_delete), 13.5f, colors.error, true);
+        label.setPadding(dp(8), 0, 0, 0);
+        button.addView(label);
+
+        button.setOnClickListener(v -> profileMode.delete());
+        HintRow.set(button, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_delete, KeyEvent.KEYCODE_BUTTON_B, backHint());
+        return button;
+    }
+
     private void buildRows(SettingsLayout.Category category) {
         rows.clear();
         rowList.removeAllViews();
 
         TextView header = ApolloUi.text(getContext(), category.title(getContext()), 18, colors.onSurface, true);
         header.setPadding(dp(14), dp(14), dp(14), dp(6));
-        rowList.addView(header);
-        if (profileMode != null && profileMode.headerNote() != null) {
-            TextView note = ApolloUi.text(getContext(), profileMode.headerNote(), 12.5f, colors.outline, false);
-            note.setLineSpacing(0, 1.25f);
-            note.setPadding(dp(14), 0, dp(14), dp(8));
-            rowList.addView(note);
+        if (profileMode != null) {
+            LinearLayout titleRow = new LinearLayout(getContext());
+            titleRow.setOrientation(LinearLayout.HORIZONTAL);
+            titleRow.setGravity(Gravity.CENTER_VERTICAL);
+            titleRow.addView(header, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            LinearLayout.LayoutParams deleteParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(36));
+            deleteParams.setMargins(0, dp(10), dp(6), dp(8));
+            titleRow.addView(deleteProfileButton(), deleteParams);
+            rowList.addView(titleRow);
+        } else {
+            rowList.addView(header);
         }
         if (activeProfile != null && categoryHasProfileSetting(category, false)) {
-            // Where the changes go: the grey profile icon, as in the top bar, then the profile
+            // Where the changes go: the profile icon that marks its values, then the profile
             SpannableStringBuilder text = new SpannableStringBuilder(" ");
-            ProfileIconSpan dot = new ProfileIconSpan(getContext(), colors.onSurfaceVariant, dp(15), 0);
+            ProfileIconSpan dot = new ProfileIconSpan(getContext(), colors.primary, dp(15), 0);
             dot.setAlpha(255);
             text.setSpan(dot, 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             text.append("  ").append(getContext().getString(R.string.apollo_profile_settings_note, activeProfile.name()));
@@ -1174,13 +1210,13 @@ public class SettingsView extends FrameLayout {
         }
         for (Row row : rows) {
             boolean fromProfile = row.profileIcon != null && fromActiveProfile(row.pref);
-            if (fromProfile != row.fromProfile || !animate) {
+            if (row.profileIcon != null && (fromProfile != row.fromProfile || !animate)) {
                 row.fromProfile = fromProfile;
-                fadeDot(row, row.profileIcon, fromProfile ? 255 : 0, animate);
+                fadeTo(row.profileIcon, fromProfile, animate);
             }
-            // On a profile's page the dot marks the settings the profile changes; a value of the profile in use
-            // shows its green dot instead
-            boolean modified = profileMode != null ? isProfileOverride(row) : defaults.isModified(row.pref) && !fromProfile;
+            // The dot: the value shown, the general one or the profile's, differs from the default;
+            // on a profile's page, the profile changes the setting
+            boolean modified = profileMode != null ? isProfileOverride(row) : defaults.isModified(row.pref);
             if (row.dot == null || (modified == row.modified && animate)) {
                 continue;
             }
@@ -1211,25 +1247,6 @@ public class SettingsView extends FrameLayout {
                 restoreRow.setVisibility(GONE);
             }
         }
-    }
-
-    private static void fadeDot(Row row, ProfileIconSpan dot, int to, boolean animate) {
-        if (dot == null) {
-            return;
-        }
-        if (!animate) {
-            dot.setAlpha(to);
-            row.label.invalidate();
-            return;
-        }
-        ValueAnimator fade = ValueAnimator.ofInt(dot.getAlpha(), to);
-        fade.setDuration(ApolloMotion.MEDIUM);
-        fade.setInterpolator(ApolloMotion.STANDARD);
-        fade.addUpdateListener(a -> {
-            dot.setAlpha((int) a.getAnimatedValue());
-            row.label.invalidate();
-        });
-        fade.start();
     }
 
     private View sectionHeader(String label, boolean open, String sectionKey, List<View> sectionRows) {
@@ -1355,12 +1372,6 @@ public class SettingsView extends FrameLayout {
                 text.append(' ');
                 text.setSpan(row.dot, text.length() - 1, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
-            if (isActiveProfileSetting(pref)) {
-                // Where the other dot starts: the gap takes it back, only one of the two shows at a time
-                row.profileIcon = new ProfileIconSpan(getContext(), colors.onSurfaceVariant, dp(14), row.dot != null ? -dp(4) : dp(5));
-                text.append(' ');
-                text.setSpan(row.profileIcon, text.length() - 1, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            }
             if (snippet != null) {
                 text.append('\n');
                 int snippetStart = text.length();
@@ -1371,6 +1382,16 @@ public class SettingsView extends FrameLayout {
         }
         row.baseText = row.label.getText();
         view.addView(row.label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        if (isActiveProfileSetting(pref)) {
+            // Right before the value it marks; it always takes its room, so the control never moves
+            row.profileIcon = new ImageView(getContext());
+            row.profileIcon.setImageResource(R.drawable.ic_apollo_profile);
+            row.profileIcon.setImageTintList(ColorStateList.valueOf(colors.primary));
+            row.profileIcon.setAlpha(0f);
+            LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(16), dp(16));
+            iconParams.rightMargin = dp(10);
+            view.addView(row.profileIcon, iconParams);
+        }
 
         if (pref instanceof TwoStatePreference) {
             row.toggle = new ApolloWidgets.SwitchView(getContext());
@@ -1557,8 +1578,8 @@ public class SettingsView extends FrameLayout {
         row.slider.setOverRange(over);
     }
 
-    // The bitrate shortcuts, in Mbps
-    private static final int[] BITRATE_SHORTCUTS_MBPS = {50, 100, 150, 300, 500, 800};
+    // The bitrate shortcuts, in Mbps, also in the quick settings
+    static final int[] BITRATE_SHORTCUTS_MBPS = {50, 100, 150, 300, 500, 800};
 
     private void showValuePopup(Row row, SeekBarPreference seekBar) {
         popup.dismiss(false);
