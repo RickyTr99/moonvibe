@@ -10,10 +10,15 @@ import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Outline;
+import android.graphics.Rect;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.InsetDrawable;
+import android.graphics.drawable.LayerDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.os.Build;
+import android.os.SystemClock;
 import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.TypedValue;
@@ -37,8 +42,11 @@ import com.limelight.R;
 import com.limelight.ui.apollo.ApolloUi;
 import com.limelight.ui.apollo.ApolloWidgets;
 import com.limelight.ui.apollo.BumperDrawable;
+import com.limelight.ui.apollo.hints.ButtonGlyph;
 import com.limelight.ui.apollo.hints.InputMode;
 import com.limelight.ui.apollo.StatusRowView;
+import com.limelight.ui.apollo.ValuePopup;
+import com.limelight.ui.apollo.settings.SettingsView;
 import com.limelight.ui.apollo.settings.SliderView;
 import com.limelight.ui.theme.ApolloBackground;
 import com.limelight.ui.theme.ApolloColors;
@@ -199,6 +207,10 @@ public class GameMenuView extends FrameLayout {
         QuickSlider.Value sliderValue;
         int sliderMin, sliderMax, sliderStep;
         String sliderSuffix;
+        int sliderValueWidthDp = 44;
+        // A tap or A on the slider opens the popup to type the value in, as in the settings
+        String popupTitle, popupSuffix;
+        int[] popupShortcuts;
 
         private Item(int iconResId, String label, Runnable action, boolean header) {
             this.iconResId = iconResId;
@@ -247,6 +259,20 @@ public class GameMenuView extends FrameLayout {
 
         public Item keepOpen() {
             keepOpen = true;
+            return this;
+        }
+
+        // Room for the value after the slider, for a longer one like "150 Mbps"
+        public Item valueWidth(int dp) {
+            sliderValueWidthDp = dp;
+            return this;
+        }
+
+        // The slider's value can also be typed in a popup; shortcuts in the slider's units
+        public Item withPopup(String title, String suffix, int[] shortcuts) {
+            popupTitle = title;
+            popupSuffix = suffix;
+            popupShortcuts = shortcuts;
             return this;
         }
 
@@ -358,6 +384,8 @@ public class GameMenuView extends FrameLayout {
 
     private final float density;
     private final ApolloColors colors;
+    // Typing a slider's value, made the first time it is needed
+    private ValuePopup valuePopup;
     private Listener listener;
     private boolean flipFaceButtons;
 
@@ -417,6 +445,12 @@ public class GameMenuView extends FrameLayout {
     private boolean holdCompleted;
 
     private int lastHatX, lastHatY;
+    // Left or right held on a hat repeats like a key, as Android repeats the D-pad keys
+    private static final long HAT_REPEAT_DELAY_MS = 400;
+    private static final long HAT_REPEAT_INTERVAL_MS = 50;
+    private int hatKey, hatRepeats;
+    // How many times the key being handled repeated: the sliders step further the longer it is held
+    private int keyRepeats;
     private long lastAnalogNavTime;
 
     public GameMenuView(Context context) {
@@ -487,6 +521,7 @@ public class GameMenuView extends FrameLayout {
 
         scrollView = new ScrollView(context);
         scrollView.setVerticalScrollBarEnabled(false);
+        ApolloUi.fadeEdges(scrollView);
         scrollView.setOverScrollMode(OVER_SCROLL_NEVER);
         scrollView.setClipToPadding(false);
         LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(
@@ -576,13 +611,14 @@ public class GameMenuView extends FrameLayout {
     }
 
     private static String badgeLabel(int keyCode) {
+        String face = ButtonGlyph.faceLabel(keyCode);
+        if (face != null) {
+            return face;
+        }
+        boolean playStation = InputMode.isPlayStation();
         switch (keyCode) {
-            case KeyEvent.KEYCODE_BUTTON_A: return "A";
-            case KeyEvent.KEYCODE_BUTTON_B: return "B";
-            case KeyEvent.KEYCODE_BUTTON_X: return "X";
-            case KeyEvent.KEYCODE_BUTTON_Y: return "Y";
-            case KeyEvent.KEYCODE_BUTTON_START: return "Start";
-            case KeyEvent.KEYCODE_BUTTON_SELECT: return "Select";
+            case KeyEvent.KEYCODE_BUTTON_START: return playStation ? "Options" : "Start";
+            case KeyEvent.KEYCODE_BUTTON_SELECT: return playStation ? "Create" : "Select";
             case KeyEvent.KEYCODE_DPAD_UP: return "▲";
             case KeyEvent.KEYCODE_DPAD_DOWN: return "▼";
             case KeyEvent.KEYCODE_DPAD_LEFT: return "◀";
@@ -609,26 +645,30 @@ public class GameMenuView extends FrameLayout {
         }
     }
 
-    // The badge of a gamepad button: Xbox colors for the face buttons, neutral for the others
+    // The badge of a gamepad button: Xbox colored letters for the face buttons, neutral for the others
     private TextView buttonBadge(int keyCode) {
         String label = badgeLabel(keyCode);
         int background = colors.surfaceContainerHighest;
-        int foreground = colors.onSurface;
-
-        switch (keyCode) {
-            case KeyEvent.KEYCODE_BUTTON_A: background = 0xFF5DBB3C; foreground = 0xFF0B1A05; break;
-            case KeyEvent.KEYCODE_BUTTON_B: background = 0xFFE0453A; foreground = Color.WHITE; break;
-            case KeyEvent.KEYCODE_BUTTON_X: background = 0xFF3B7BE0; foreground = Color.WHITE; break;
-            case KeyEvent.KEYCODE_BUTTON_Y: background = 0xFFF0B428; foreground = 0xFF231A00; break;
-        }
+        int letterColor = ButtonGlyph.letterColor(keyCode);
+        int foreground = letterColor != 0 ? letterColor : colors.onSurface;
 
         boolean wide = label.length() > 1;
-        TextView badge = text(label, wide ? 9 : 10, foreground, true);
+        TextView badge = text(label, wide ? 9 : letterColor != 0 ? 11 : 10, foreground, true);
         badge.setGravity(Gravity.CENTER);
         badge.setIncludeFontPadding(false);
         badge.setMinWidth(dp(20));
         badge.setPadding(wide ? dp(5) : 0, 0, wide ? dp(5) : 0, 0);
         badge.setBackground(roundRect(background, isDpad(keyCode) ? dp(6) : dp(10)));
+        int symbol = ButtonGlyph.symbolResource(keyCode);
+        if (symbol != 0) {
+            // The PlayStation symbol drawn over the button; the text stays, unseen, for the round size
+            Drawable mark = getContext().getDrawable(symbol).mutate();
+            mark.setTint(letterColor);
+            int inset = dp(4);
+            badge.setBackground(new LayerDrawable(new Drawable[]{badge.getBackground(),
+                    new InsetDrawable(mark, inset)}));
+            badge.setTextColor(Color.TRANSPARENT);
+        }
         return badge;
     }
 
@@ -786,6 +826,11 @@ public class GameMenuView extends FrameLayout {
         this.flipFaceButtons = flip;
     }
 
+    /** The side panel of the menu, for an illustration that frames it. */
+    public View getPanel() {
+        return panelFrame;
+    }
+
     public boolean isOpen() {
         return getVisibility() == VISIBLE && !closing;
     }
@@ -811,6 +856,7 @@ public class GameMenuView extends FrameLayout {
         currentTab = 0;
         selectedRow = 0;
         lastHatX = lastHatY = 0;
+        removeCallbacks(hatRepeat);
         hideDropdown(false);
         dialogLayer.setVisibility(GONE);
         rebuild();
@@ -845,6 +891,7 @@ public class GameMenuView extends FrameLayout {
         closing = true;
         cancelHold(false);
         stopSliderSticks();
+        removeCallbacks(hatRepeat);
         // Closed while only the slider shows: it fades with the dimming, the hidden panel needs no slide
         if (soloRow != null) {
             removeCallbacks(soloExit);
@@ -854,6 +901,9 @@ public class GameMenuView extends FrameLayout {
             soloCard.animate().alpha(0).setStartDelay(0).setDuration(ApolloMotion.SHORT).setInterpolator(ApolloMotion.STANDARD).start();
         }
         hideDropdown(false);
+        if (valuePopup != null) {
+            valuePopup.dismiss(false);
+        }
         dialogConfirm = null;
         dialogLayer.animate().cancel();
         dialogLayer.setVisibility(GONE);
@@ -927,7 +977,7 @@ public class GameMenuView extends FrameLayout {
 
         // LB and RB mean something only with a gamepad, like in the top bar of the app
         if (padConnected) {
-            tabsRow.addView(shoulderChip("LB", -1), new LinearLayout.LayoutParams(dp(BUMPER_WIDTH_DP), dp(BUMPER_HEIGHT_DP)));
+            tabsRow.addView(shoulderChip(ButtonGlyph.bumperLabel(true), -1), new LinearLayout.LayoutParams(dp(BUMPER_WIDTH_DP), dp(BUMPER_HEIGHT_DP)));
         }
 
         // The selected tab pill is a separate view that slides from tab to tab
@@ -969,7 +1019,7 @@ public class GameMenuView extends FrameLayout {
         }
 
         if (padConnected) {
-            tabsRow.addView(shoulderChip("RB", 1), new LinearLayout.LayoutParams(dp(BUMPER_WIDTH_DP), dp(BUMPER_HEIGHT_DP)));
+            tabsRow.addView(shoulderChip(ButtonGlyph.bumperLabel(false), 1), new LinearLayout.LayoutParams(dp(BUMPER_WIDTH_DP), dp(BUMPER_HEIGHT_DP)));
         }
 
         updateTabs(false);
@@ -1055,6 +1105,8 @@ public class GameMenuView extends FrameLayout {
         view.addView(button, new LinearLayout.LayoutParams(dp(40), dp(40)));
 
         SliderView sliderView = new SliderView(getContext(), colors);
+        // No tick in the game menu: the stream plays its own sound
+        sliderView.setTicks(false);
         // With a gamepad the handle is the stick that moves it
         sliderView.setStickHandle(padConnected ? stickLetter(slider) : null);
         sliderView.setRange(slider.min, 100, 1);
@@ -1124,6 +1176,8 @@ public class GameMenuView extends FrameLayout {
         soloCard.addView(iconFrame, new LinearLayout.LayoutParams(dp(40), dp(40)));
 
         soloSlider = new SliderView(context, colors);
+        // No tick in the game menu: the stream plays its own sound
+        soloSlider.setTicks(false);
         // Only shows the value: the finger still drags the slider of the menu under it
         soloSlider.setEnabled(false);
         LinearLayout.LayoutParams sliderParams = new LinearLayout.LayoutParams(0, dp(40), 1);
@@ -1156,13 +1210,14 @@ public class GameMenuView extends FrameLayout {
         scrim.animate().cancel();
         panelFrame.setTranslationX(0);
 
-        int[] rowLocation = new int[2], ownLocation = new int[2];
-        row.container.getLocationInWindow(rowLocation);
-        getLocationInWindow(ownLocation);
+        // Where the row is laid out in this view, not on the window: the same over the stream, and right also
+        // when the menu is drawn scaled (the setup shows it in miniature)
+        Rect rowBounds = new Rect(0, 0, row.container.getWidth(), row.container.getHeight());
+        offsetDescendantRectToMyCoords(row.container, rowBounds);
         LayoutParams params = (LayoutParams) soloCard.getLayoutParams();
         params.width = row.container.getWidth() + dp(SOLO_PADDING_DP) * 2;
-        params.leftMargin = rowLocation[0] - ownLocation[0] - dp(SOLO_PADDING_DP);
-        params.topMargin = rowLocation[1] - ownLocation[1] + (row.container.getHeight() - dp(40)) / 2 - dp(SOLO_PADDING_DP);
+        params.leftMargin = rowBounds.left - dp(SOLO_PADDING_DP);
+        params.topMargin = rowBounds.top + (row.container.getHeight() - dp(40)) / 2 - dp(SOLO_PADDING_DP);
         soloCard.setLayoutParams(params);
         soloIcon.setImageResource(row.slider.active.isOn() ? row.slider.activeIconResId : row.slider.iconResId);
         soloSlider.setRange(row.slider.min, 100, 1);
@@ -1471,13 +1526,15 @@ public class GameMenuView extends FrameLayout {
 
         if (item.sliderValue != null) {
             row.slider = new SliderView(getContext(), colors);
+            // No tick in the game menu: the stream plays its own sound
+            row.slider.setTicks(false);
             row.slider.setRange(item.sliderMin, item.sliderMax, item.sliderStep);
             row.slider.setValue(item.sliderValue.get());
             view.addView(row.slider, new LinearLayout.LayoutParams(dp(110), dp(36)));
             row.value = text(item.sliderValue.get() + item.sliderSuffix, 13, colors.onSurface, true);
             row.value.setGravity(Gravity.END);
             row.value.setSingleLine(true);
-            view.addView(row.value, new LinearLayout.LayoutParams(dp(44), LinearLayout.LayoutParams.WRAP_CONTENT));
+            view.addView(row.value, new LinearLayout.LayoutParams(dp(item.sliderValueWidthDp), LinearLayout.LayoutParams.WRAP_CONTENT));
             row.slider.setListener(new SliderView.Listener() {
                 @Override
                 public void onSliderMoved(int value) {
@@ -1731,6 +1788,31 @@ public class GameMenuView extends FrameLayout {
         runAndMaybeClose(action.action, action.keepOpen);
     }
 
+    private void showValuePopup(Row row) {
+        if (valuePopup == null) {
+            valuePopup = new ValuePopup(this, this, colors);
+        }
+        Item item = row.item;
+        valuePopup.show(row.view, item.popupTitle, item.popupSuffix, item.sliderValue.get(), item.sliderMin,
+                item.sliderMax, 1, item.popupShortcuts, value -> setRowSlider(row, value));
+    }
+
+    /** Back closes the value popup first: whether it was open. */
+    public boolean dismissPopup() {
+        return valuePopup != null && valuePopup.back();
+    }
+
+    /** The sliders of the list show their values again, as they may have changed elsewhere (the host's bitrate). */
+    public void refreshValues() {
+        for (Row row : rows) {
+            if (row.slider != null) {
+                int value = row.item.sliderValue.get();
+                row.slider.setValue(value);
+                row.value.setText(value + row.item.sliderSuffix);
+            }
+        }
+    }
+
     private void setRowSlider(Row row, int value) {
         Item item = row.item;
         if (item.enabled != null && !item.enabled.isOn()) {
@@ -1749,7 +1831,10 @@ public class GameMenuView extends FrameLayout {
             return;
         }
         if (item.sliderValue != null) {
-            // Left and right move it
+            // Left and right move it; A or a tap types the value in, where it can
+            if (item.popupTitle != null) {
+                showValuePopup(row);
+            }
             return;
         }
         if (item.options != null) {
@@ -2004,6 +2089,12 @@ public class GameMenuView extends FrameLayout {
     public boolean dispatchKeyEvent(KeyEvent event) {
         int keyCode = flipFaceButtons ? flipFaceButton(event.getKeyCode()) : event.getKeyCode();
 
+        // The value popup over the menu takes every key while it is open
+        if (valuePopup != null && valuePopup.isShowing()) {
+            valuePopup.handleKey(keyCode, event);
+            return true;
+        }
+
         if (event.getAction() == KeyEvent.ACTION_UP) {
             if (holdingAction != null && keyCode == holdingAction.keyCode) {
                 cancelHold(true);
@@ -2017,6 +2108,7 @@ public class GameMenuView extends FrameLayout {
         if (keyCode == KeyEvent.KEYCODE_BACK) {
             keyCode = KeyEvent.KEYCODE_BUTTON_B;
         }
+        keyRepeats = event.getRepeatCount();
         handleButton(keyCode, event.getRepeatCount() == 0);
         return true;
     }
@@ -2103,7 +2195,8 @@ public class GameMenuView extends FrameLayout {
                 Row selected = selectedRow < rows.size() ? rows.get(selectedRow) : null;
                 if (selected != null && selected.slider != null) {
                     // On a slider, left and right move it instead of changing tab
-                    setRowSlider(selected, selected.item.sliderValue.get() + direction * selected.item.sliderStep);
+                    setRowSlider(selected, selected.item.sliderValue.get()
+                            + direction * selected.item.sliderStep * SettingsView.sliderSpeed(keyRepeats));
                 } else {
                     switchTab(direction);
                 }
@@ -2127,23 +2220,58 @@ public class GameMenuView extends FrameLayout {
         updateSelection(true);
     }
 
+    // The hat's direction as a D-pad key, to the value popup when it is open
+    private void pressHat() {
+        if (valuePopup != null && valuePopup.isShowing()) {
+            long now = SystemClock.uptimeMillis();
+            valuePopup.handleKey(hatKey, new KeyEvent(now, now, KeyEvent.ACTION_DOWN, hatKey, hatRepeats));
+            return;
+        }
+        keyRepeats = hatRepeats;
+        handleButton(hatKey, hatRepeats == 0);
+    }
+
+    private final Runnable hatRepeat = new Runnable() {
+        @Override
+        public void run() {
+            // Only where holding means more: a slider, or the popup's shortcuts. Elsewhere it would change tab after tab
+            Row selected = selectedRow < rows.size() ? rows.get(selectedRow) : null;
+            boolean onSlider = currentTab != 0 && selected != null && selected.slider != null;
+            if (!onSlider && (valuePopup == null || !valuePopup.isShowing())) {
+                return;
+            }
+            hatRepeats++;
+            pressHat();
+            postDelayed(this, HAT_REPEAT_INTERVAL_MS);
+        }
+    };
+
     @Override
     public boolean onGenericMotionEvent(MotionEvent event) {
         if ((event.getSource() & InputDevice.SOURCE_JOYSTICK) != InputDevice.SOURCE_JOYSTICK) {
             return super.onGenericMotionEvent(event);
         }
-
-        // A D-pad reported as a hat axis acts like the D-pad buttons, once per press
+        // A D-pad reported as a hat axis acts like the D-pad buttons: up and down once per press,
+        // left and right repeat while held, like a key, so the sliders speed up as in the settings
         int hatX = Math.round(event.getAxisValue(MotionEvent.AXIS_HAT_X));
         int hatY = Math.round(event.getAxisValue(MotionEvent.AXIS_HAT_Y));
         if (hatX != lastHatX || hatY != lastHatY) {
+            removeCallbacks(hatRepeat);
             if (hatX != 0 && hatX != lastHatX) {
-                handleButton(hatX < 0 ? KeyEvent.KEYCODE_DPAD_LEFT : KeyEvent.KEYCODE_DPAD_RIGHT, true);
+                hatKey = hatX < 0 ? KeyEvent.KEYCODE_DPAD_LEFT : KeyEvent.KEYCODE_DPAD_RIGHT;
+                hatRepeats = 0;
+                pressHat();
+                postDelayed(hatRepeat, HAT_REPEAT_DELAY_MS);
             } else if (hatY != 0 && hatY != lastHatY) {
-                handleButton(hatY < 0 ? KeyEvent.KEYCODE_DPAD_UP : KeyEvent.KEYCODE_DPAD_DOWN, true);
+                hatKey = hatY < 0 ? KeyEvent.KEYCODE_DPAD_UP : KeyEvent.KEYCODE_DPAD_DOWN;
+                hatRepeats = 0;
+                pressHat();
             }
             lastHatX = hatX;
             lastHatY = hatY;
+            return true;
+        }
+        if (valuePopup != null && valuePopup.isShowing()) {
             return true;
         }
 

@@ -17,6 +17,7 @@ import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
+import com.limelight.ui.apollo.GamepadDialogs;
 import com.limelight.R;
 
 import java.util.Locale;
@@ -278,6 +279,7 @@ public class SeekBarPreference extends DialogPreference
                 .create();
         dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
         dialog.show();
+        GamepadDialogs.attach(dialog);
 
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(new OnClickListener() {
             @Override

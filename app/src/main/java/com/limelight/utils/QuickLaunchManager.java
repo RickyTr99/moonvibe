@@ -281,6 +281,17 @@ public class QuickLaunchManager {
     /**
      * Add an app to Quick Launch
      */
+    /**
+     * Pins a game shown as a recent one, from the names its card already has, without telling the row:
+     * the caller sets the order of the row right after.
+     * @return the key of the pinned game
+     */
+    public String pinRecent(String computerUuid, String computerName, int appId, String appName) {
+        String key = createUniqueKey(computerUuid, appId);
+        preferences.edit().putString(key, createValue(computerName, appName, appName)).apply();
+        return key;
+    }
+
     public void addQuickLaunchItem(ComputerDetails computer, NvApp app) {
         String key = createUniqueKey(computer.uuid, app.getAppId());
         String value = createValue(computer.name, app.getAppName(), app.getAppName());

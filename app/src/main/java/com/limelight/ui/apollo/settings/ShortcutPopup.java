@@ -20,6 +20,7 @@ import com.limelight.R;
 import com.limelight.binding.input.Shortcuts;
 import com.limelight.ui.apollo.ApolloUi;
 import com.limelight.ui.apollo.ScreenLayer;
+import com.limelight.ui.apollo.UiSounds;
 import com.limelight.ui.apollo.hints.HintRow;
 import com.limelight.ui.theme.ApolloColors;
 import com.limelight.ui.theme.ApolloMotion;
@@ -85,6 +86,7 @@ class ShortcutPopup {
     void show(View anchor, View glyphs, CharSequence title, List<Shortcuts.Group> groups, boolean aynButton,
               String selected, Listener listener) {
         dismiss(false);
+        UiSounds.play(UiSounds.Sound.OPEN);
         this.anchor = anchor;
         root = ScreenLayer.of(anchor);
         blockOthers();
@@ -119,6 +121,7 @@ class ShortcutPopup {
 
         ScrollView scroll = new ScrollView(host.getContext());
         scroll.setVerticalScrollBarEnabled(false);
+        ApolloUi.fadeEdges(scroll);
         // One list, the groups one after the other
         LinearLayout target = column();
         scroll.addView(target);

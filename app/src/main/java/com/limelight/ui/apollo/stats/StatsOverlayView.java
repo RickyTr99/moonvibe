@@ -229,6 +229,10 @@ public class StatsOverlayView extends FrameLayout {
                 return R.drawable.ic_stats_bandwidth;
             case PACING:
                 return R.drawable.ic_stats_pacing;
+            case HOST_CPU:
+                return R.drawable.ic_stats_host_cpu;
+            case HOST_GPU:
+                return R.drawable.ic_stats_host_gpu;
             case BATTERY:
                 return R.drawable.ic_stats_battery;
             default:
@@ -383,6 +387,10 @@ public class StatsOverlayView extends FrameLayout {
                 return R.string.stats_label_decode;
             case PACING:
                 return R.string.stats_label_pacing;
+            case HOST_CPU:
+                return R.string.stats_label_host_cpu;
+            case HOST_GPU:
+                return R.string.stats_label_host_gpu;
             case BATTERY:
                 return R.string.stats_label_battery;
             default:
@@ -525,6 +533,45 @@ public class StatsOverlayView extends FrameLayout {
                         }
                     }
                     break;
+                case HOST_CPU:
+                    if (s.hostCpuPercent >= 0) {
+                        warn = s.hostCpuPercent >= 90;
+                        text = value(number(s.hostCpuPercent, 0), "%", null, unitSp);
+                    }
+                    break;
+                case HOST_GPU: {
+                    // A GPU busy all the time is normal in a game; a hot one is not
+                    warn = s.hostGpuTempC >= 90;
+                    if (panel) {
+                        // Use, temperature, power and the memory in use, on one row
+                        StringBuilder parts = new StringBuilder();
+                        if (s.hostGpuPercent >= 0) {
+                            parts.append(number(s.hostGpuPercent, 0)).append(" %");
+                        }
+                        if (s.hostGpuTempC >= 0) {
+                            parts.append(parts.length() > 0 ? " · " : "").append(number(s.hostGpuTempC, 0)).append(" °C");
+                        }
+                        if (s.hostGpuPowerW >= 0) {
+                            parts.append(parts.length() > 0 ? " · " : "").append(number(s.hostGpuPowerW, 0)).append(" W");
+                        }
+                        if (s.hostVramUsedMb >= 0) {
+                            parts.append(parts.length() > 0 ? " · " : "").append(number(s.hostVramUsedMb / 1024, 1)).append(" GB");
+                        }
+                        if (parts.length() > 0) {
+                            text = value(parts.toString(), null, null, unitSp);
+                        }
+                    } else if (s.hostGpuPercent >= 0 || s.hostGpuTempC >= 0) {
+                        SpannableStringBuilder both = new SpannableStringBuilder();
+                        if (s.hostGpuPercent >= 0) {
+                            both.append(value(number(s.hostGpuPercent, 0), "%", null, unitSp));
+                        }
+                        if (s.hostGpuTempC >= 0) {
+                            both.append(both.length() > 0 ? " " : "").append(value(number(s.hostGpuTempC, 0), "°C", null, unitSp));
+                        }
+                        text = both;
+                    }
+                    break;
+                }
                 case BATTERY: {
                     int level = battery();
                     if (level >= 0) {
@@ -578,6 +625,11 @@ public class StatsOverlayView extends FrameLayout {
         s.decodeMs = 1.84f;
         s.pacingHeadline = "4.2 ms buffer, 120.00 Hz";
         s.pacingDetails = "locked at 1 vsync/frame";
+        s.hostCpuPercent = 34;
+        s.hostGpuPercent = 87;
+        s.hostGpuTempC = 71;
+        s.hostGpuPowerW = 245;
+        s.hostVramUsedMb = 10035;
         return s;
     }
 

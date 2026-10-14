@@ -61,6 +61,11 @@ public class BumperDrawable extends Drawable {
         canvas.restore();
     }
 
+    public void setColor(int color) {
+        paint.setColor(color);
+        invalidateSelf();
+    }
+
     @Override
     public void setAlpha(int alpha) {
         paint.setAlpha(alpha);

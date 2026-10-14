@@ -103,6 +103,7 @@ public class NetworkTestActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.setVerticalScrollBarEnabled(false);
+        ApolloUi.fadeEdges(scroll);
         root.addView(scroll, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         // The column sits in the middle; the bottom padding keeps it clear of the buttons in the corner

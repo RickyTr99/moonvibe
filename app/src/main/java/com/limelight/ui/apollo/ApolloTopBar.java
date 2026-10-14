@@ -19,6 +19,7 @@ import android.widget.TextView;
 
 import com.limelight.R;
 import com.limelight.profiles.Profiles;
+import com.limelight.ui.apollo.hints.ButtonGlyph;
 import com.limelight.ui.apollo.hints.InputMode;
 import com.limelight.ui.theme.ApolloColors;
 import com.limelight.ui.theme.ApolloMotion;
@@ -66,9 +67,14 @@ public class ApolloTopBar extends FrameLayout {
     private final TextView appNameView;
     private final LinearLayout center;
     private String shownProfileName;
+    // In an illustration of the app: the profile it makes up, instead of the one in use
+    private boolean illustration;
+    private String illustrationProfile;
     private final Runnable profilesListener = () -> showProfile(true);
     private final TextView leftBumper;
     private final TextView rightBumper;
+    // LB/RB or L1/R1, for the controller in use
+    private final InputMode.Listener inputListener = gamepad -> updateBumpers();
     // A gamepad connected or disconnected shows or hides LB and RB
     private final InputManager.InputDeviceListener deviceListener = new InputManager.InputDeviceListener() {
         @Override
@@ -153,7 +159,7 @@ public class ApolloTopBar extends FrameLayout {
         // The whole height of the bar, so the mark sits under the tab names and not over them
         addView(center, new LayoutParams(LayoutParams.WRAP_CONTENT, dp(52), Gravity.CENTER));
 
-        leftBumper = shoulderChip("LB", -1);
+        leftBumper = shoulderChip(ButtonGlyph.bumperLabel(true), -1);
         center.addView(leftBumper, new LinearLayout.LayoutParams(dp(26), dp(19)));
         // The mark under the selected tab is a separate view that slides from tab to tab
         FrameLayout tabsFrame = new FrameLayout(context);
@@ -170,7 +176,7 @@ public class ApolloTopBar extends FrameLayout {
         indicatorParams.bottomMargin = dp(7);
         tabsFrame.addView(tabIndicator, indicatorParams);
         tabIndicator.setVisibility(INVISIBLE);
-        rightBumper = shoulderChip("RB", 1);
+        rightBumper = shoulderChip(ButtonGlyph.bumperLabel(false), 1);
         center.addView(rightBumper, new LinearLayout.LayoutParams(dp(26), dp(19)));
         updateBumpers();
 
@@ -240,6 +246,8 @@ public class ApolloTopBar extends FrameLayout {
         int visibility = InputMode.isGamepadConnected() ? VISIBLE : GONE;
         leftBumper.setVisibility(visibility);
         rightBumper.setVisibility(visibility);
+        leftBumper.setText(ButtonGlyph.bumperLabel(true));
+        rightBumper.setText(ButtonGlyph.bumperLabel(false));
     }
 
     @Override
@@ -247,6 +255,7 @@ public class ApolloTopBar extends FrameLayout {
         super.onAttachedToWindow();
         ((InputManager) getContext().getSystemService(Context.INPUT_SERVICE)).registerInputDeviceListener(deviceListener, null);
         updateBumpers();
+        InputMode.addListener(inputListener);
         Profiles.addListener(profilesListener);
         showProfile(false);
     }
@@ -255,6 +264,7 @@ public class ApolloTopBar extends FrameLayout {
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         ((InputManager) getContext().getSystemService(Context.INPUT_SERVICE)).unregisterInputDeviceListener(deviceListener);
+        InputMode.removeListener(inputListener);
         Profiles.removeListener(profilesListener);
     }
 
@@ -264,10 +274,18 @@ public class ApolloTopBar extends FrameLayout {
 
     // The veil always shows the profile in use, or "Default" without one; a new name fades in and the veil
     // widens or narrows to it
+    /** For an illustration of the app: shows this profile (null for none) instead of the one in use. */
+    public void showIllustrationProfile(String name, boolean animate) {
+        illustration = true;
+        illustrationProfile = name;
+        showProfile(animate);
+    }
+
     private void showProfile(boolean animate) {
-        Profiles.Profile profile = Profiles.active(getContext());
-        boolean active = profile != null;
-        String name = active ? profile.name : getContext().getString(R.string.apollo_profile_default_label);
+        Profiles.Profile profile = illustration ? null : Profiles.active(getContext());
+        String activeName = illustration ? illustrationProfile : profile != null ? profile.name : null;
+        boolean active = activeName != null;
+        String name = active ? activeName : getContext().getString(R.string.apollo_profile_default_label);
         boolean changed = !name.equals(shownProfileName);
         shownProfileName = name;
         int fromWidth = profileChip.getWidth();

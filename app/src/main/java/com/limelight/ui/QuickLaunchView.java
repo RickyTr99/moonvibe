@@ -9,16 +9,19 @@ import android.content.IntentFilter;
 import android.graphics.Rect;
 import android.os.Build;
 import android.text.InputType;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewTreeObserver;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.limelight.ui.apollo.GamepadDialogs;
 import com.limelight.R;
 import com.limelight.computers.ComputerManagerService;
 import com.limelight.nvstream.http.ComputerDetails;
@@ -65,6 +68,7 @@ public class QuickLaunchView {
     // The other cards while one is moved
     private static final float MOVING_OTHERS_ALPHA = 0.45f;
     private static final int CARD_GAP_DP = 14;
+    private static final int GHOST_CARDS = 5;
 
     private final Activity activity;
     private final LinearLayout quickLaunchSection;
@@ -81,6 +85,9 @@ public class QuickLaunchView {
     // The pinned games come first in the row: their cards and keys, in the order shown
     private final Map<View, String> pinnedKeys = new HashMap<>();
     private int pinnedCount;
+    // Every card of the row with its game, the recent ones too: any of them can be moved
+    private final Map<View, Entry> cardEntries = new HashMap<>();
+    private boolean showingGhosts;
     // The card being moved to reorder the pinned games, null otherwise
     private GameCardView movingCard;
     // A rebuild asked while moving waits for the end
@@ -134,6 +141,13 @@ public class QuickLaunchView {
         this.callback = callback;
         this.colors = ApolloColors.dark(activity);
         ApolloUi.allowFocusOverflow(quickLaunchContainer, ApolloUi.dp(activity, 8));
+        // A scroll view takes the focus itself when nothing inside can: with only the ghost cards
+        // the gamepad would land on the whole row
+        if (quickLaunchContainer.getParent() instanceof View) {
+            View scroll = (View) quickLaunchContainer.getParent();
+            scroll.setFocusable(false);
+            scroll.setFocusableInTouchMode(false);
+        }
         // More room on top: the focused card grows upwards from the bottom of its cover and lifts
         quickLaunchContainer.setPadding(quickLaunchContainer.getPaddingLeft(), ApolloUi.dp(activity, 14),
                 quickLaunchContainer.getPaddingRight(), quickLaunchContainer.getPaddingBottom());
@@ -298,8 +312,10 @@ public class QuickLaunchView {
         List<Entry> entries = buildEntries();
         StringBuilder signature = new StringBuilder();
         for (Entry entry : entries) {
+            // The key of a pinned game too: pinning a recent one changes what its card offers
             signature.append(entry.computerUuid).append('/').append(entry.appId).append('/')
-                    .append(entry.title).append('/').append(entry.running).append(';');
+                    .append(entry.title).append('/').append(entry.running).append('/')
+                    .append(entry.item != null ? entry.item.key : "").append(';');
         }
         if (signature.toString().equals(shownSignature)) {
             return;
@@ -310,15 +326,18 @@ public class QuickLaunchView {
         View focused = quickLaunchContainer.findFocus();
         Object focusedKey = focused != null ? focused.getTag() : null;
 
+        boolean wasEmpty = showingGhosts;
         quickLaunchContainer.removeAllViews();
         pinnedKeys.clear();
         pinnedCount = 0;
-        if (entries.isEmpty()) {
-            quickLaunchSection.setVisibility(View.GONE);
+        cardEntries.clear();
+        quickLaunchSection.setVisibility(View.VISIBLE);
+        showingGhosts = entries.isEmpty();
+        if (showingGhosts) {
+            addGhostCards();
             callback.onQuickLaunchChanged();
             return;
         }
-        quickLaunchSection.setVisibility(View.VISIBLE);
 
         for (int i = 0; i < entries.size(); i++) {
             Entry entry = entries.get(i);
@@ -326,7 +345,7 @@ public class QuickLaunchView {
                     entry.computerUuid, entry.appId, entry.running);
             card.setTag(entry.computerUuid + "/" + entry.appId);
             HintRow.set(card, KeyEvent.KEYCODE_BUTTON_A, entry.running ? R.string.apollo_hint_resume : R.string.apollo_hint_start,
-                    KeyEvent.KEYCODE_BUTTON_Y, R.string.apollo_hint_options, KeyEvent.KEYCODE_BUTTON_X, R.string.apollo_hint_add_pc,
+                    KeyEvent.KEYCODE_BUTTON_Y, R.string.apollo_hint_options, KeyEvent.KEYCODE_BUTTON_X, R.string.apollo_hint_add_pc, KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_profiles,
                     KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings);
             card.setOnClickListener(v -> launch(entry));
             card.setOnLongClickListener(v -> {
@@ -340,16 +359,66 @@ public class QuickLaunchView {
                 params.leftMargin = ApolloUi.dp(activity, CARD_GAP_DP);
             }
             quickLaunchContainer.addView(card, params);
+            if (wasEmpty) {
+                // The first games take the place of the ghost cards
+                card.setAlpha(0);
+                card.animate().alpha(1).setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
+            }
             if (entry.item != null) {
                 pinnedKeys.put(card, entry.item.key);
                 pinnedCount++;
             }
+            cardEntries.put(card, entry);
 
             if (focusedKey != null && focusedKey.equals(card.getTag())) {
                 card.requestFocus();
             }
         }
         callback.onQuickLaunchChanged();
+    }
+
+    /** True while the row only holds the ghost cards, which take no focus */
+    public boolean isEmpty() {
+        return showingGhosts;
+    }
+
+    // Without games the row keeps its place with the outlines of cards that fade to the right
+    private void addGhostCards() {
+        int width = ApolloUi.dp(activity, GameCardView.WIDTH_DP);
+        for (int i = 0; i < GHOST_CARDS; i++) {
+            LinearLayout ghost = new LinearLayout(activity);
+            ghost.setOrientation(LinearLayout.VERTICAL);
+            ghost.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            ghost.setAlpha(1 - 0.8f * i / GHOST_CARDS);
+
+            View cover = new View(activity);
+            cover.setBackground(ApolloUi.roundRect(0x0FE2E2E9, ApolloUi.dp(activity, 16)));
+            ghost.addView(cover, new LinearLayout.LayoutParams(width, width * 4 / 3));
+            ghost.addView(ghostLine(13, 7, 72, 10, 0x12E2E2E9));
+            ghost.addView(ghostLine(11, 0, 48, 8, 0x0DE2E2E9));
+
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            if (i > 0) {
+                params.leftMargin = gap();
+            }
+            quickLaunchContainer.addView(ghost, params);
+        }
+    }
+
+    // A bar as tall as the text line of a real card, so the empty row has the same height
+    private View ghostLine(float textSp, int topDp, int widthDp, int heightDp, int color) {
+        FrameLayout line = new FrameLayout(activity);
+        line.setPadding(0, ApolloUi.dp(activity, topDp), 0, 0);
+        TextView sizer = ApolloUi.text(activity, "Ag", textSp, 0, topDp > 0);
+        sizer.setSingleLine(true);
+        sizer.setVisibility(View.INVISIBLE);
+        line.addView(sizer);
+        View bar = new View(activity);
+        bar.setBackground(ApolloUi.roundRect(color, ApolloUi.dp(activity, heightDp / 2f)));
+        line.addView(bar, new FrameLayout.LayoutParams(ApolloUi.dp(activity, widthDp), ApolloUi.dp(activity, heightDp),
+                Gravity.CENTER_VERTICAL));
+        return line;
     }
 
     private void launch(Entry entry) {
@@ -376,15 +445,13 @@ public class QuickLaunchView {
                     activity.getString(R.string.quick_launch_rename), () -> showRenameQuickLaunchDialog(key)));
             actions.add(new ActionSheet.Action(R.drawable.ic_apollo_tune,
                     activity.getString(R.string.quick_launch_settings), () -> openQuickLaunchSettings(key)));
-            if (pinnedCount > 1) {
-                actions.add(new ActionSheet.Action(R.drawable.ic_apollo_reorder,
-                        activity.getString(R.string.apollo_quick_launch_reorder), () -> startMove(key)));
-            }
+            addReorderAction(actions, entry);
             actions.add(new ActionSheet.Action(R.drawable.ic_apollo_delete,
                     activity.getString(R.string.quick_launch_delete), () -> removeFromQuickLaunch(key)).danger());
         } else {
             actions.add(new ActionSheet.Action(R.drawable.ic_apollo_star,
                     activity.getString(R.string.apollo_action_add_quick_launch), () -> pinGame(entry)));
+            addReorderAction(actions, entry);
             if (!entry.running) {
                 actions.add(new ActionSheet.Action(R.drawable.ic_apollo_delete,
                         activity.getString(R.string.apollo_action_remove_recent), () -> {
@@ -398,6 +465,28 @@ public class QuickLaunchView {
                 ? activity.getString(R.string.apollo_running_on, entry.computerName)
                 : entry.computerName;
         ActionSheet.of(activity).show(entry.title, subtitle, actions);
+    }
+
+    // Any card moves once the row has another one it can swap with; moving a recent game pins it
+    private void addReorderAction(List<ActionSheet.Action> actions, Entry entry) {
+        String tag = entry.computerUuid + "/" + entry.appId;
+        if (entry.nameKnown && movableCount() > 1) {
+            actions.add(new ActionSheet.Action(R.drawable.ic_apollo_reorder,
+                    activity.getString(R.string.apollo_quick_launch_reorder), () -> startMove(tag)));
+        }
+    }
+
+    // The cards that can be moved: all of them up to the first game running without a known name
+    private int movableCount() {
+        int count = 0;
+        for (int i = 0; i < quickLaunchContainer.getChildCount(); i++) {
+            Entry entry = cardEntries.get(quickLaunchContainer.getChildAt(i));
+            if (entry == null || !entry.nameKnown) {
+                break;
+            }
+            count++;
+        }
+        return count;
     }
 
     private ComputerDetails findComputer(String computerUuid) {
@@ -506,7 +595,7 @@ public class QuickLaunchView {
         });
         builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
 
-        builder.show();
+        GamepadDialogs.attach(builder.show());
     }
 
     private void removeFromQuickLaunch(final String key) {
@@ -522,25 +611,33 @@ public class QuickLaunchView {
 
         builder.setPositiveButton("Remove", (dialog, which) -> {
             quickLaunchManager.removeQuickLaunchItem(key);
+            // Gone from the row, not back as a recent game, unless another card of it is still pinned
+            boolean stillPinned = false;
+            for (QuickLaunchManager.QuickLaunchItem other : quickLaunchManager.getAllQuickLaunchItems()) {
+                if (other.computerUuid.equals(item.computerUuid) && other.appId == item.appId) {
+                    stillPinned = true;
+                    break;
+                }
+            }
+            if (!stillPinned) {
+                RecentGames.remove(activity, item.computerUuid, item.appId);
+                loadQuickLaunchButtons();
+            }
             Toast.makeText(activity, activity.getString(R.string.quick_launch_removed), Toast.LENGTH_SHORT).show();
         });
         builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
 
-        builder.show();
+        GamepadDialogs.attach(builder.show());
     }
 
     // --- Reordering: the card lifts, the others fade, and it moves with the D-pad or the finger
 
-    private void startMove(String key) {
-        GameCardView card = null;
-        for (Map.Entry<View, String> pinned : pinnedKeys.entrySet()) {
-            if (pinned.getValue().equals(key)) {
-                card = (GameCardView) pinned.getKey();
-            }
-        }
-        if (card == null || movingCard != null) {
+    private void startMove(String tag) {
+        View found = quickLaunchContainer.findViewWithTag(tag);
+        if (!(found instanceof GameCardView) || movingCard != null) {
             return;
         }
+        GameCardView card = (GameCardView) found;
         movingCard = card;
         dragging = false;
 
@@ -613,7 +710,7 @@ public class QuickLaunchView {
                     if (dragging) {
                         v.setTranslationX(dx);
                         int index = quickLaunchContainer.indexOfChild(v);
-                        View next = index + 1 < pinnedCount ? quickLaunchContainer.getChildAt(index + 1) : null;
+                        View next = index + 1 < movableCount() ? quickLaunchContainer.getChildAt(index + 1) : null;
                         View previous = index > 0 ? quickLaunchContainer.getChildAt(index - 1) : null;
                         // Past the middle of a neighbor: they swap, and the finger keeps its place on the card
                         if (next != null && dx > (next.getWidth() + gap()) / 2f) {
@@ -643,12 +740,12 @@ public class QuickLaunchView {
         return ApolloUi.dp(activity, CARD_GAP_DP);
     }
 
-    // Swaps the moving card with its neighbor among the pinned games; animate slides the card too
+    // Swaps the moving card with its neighbor in the row; animate slides the card too
     private void moveBy(int direction, boolean animate) {
         GameCardView card = movingCard;
         int index = quickLaunchContainer.indexOfChild(card);
         int target = index + direction;
-        if (card == null || target < 0 || target >= pinnedCount) {
+        if (card == null || target < 0 || target >= movableCount()) {
             return;
         }
         View neighbor = quickLaunchContainer.getChildAt(target);
@@ -689,9 +786,27 @@ public class QuickLaunchView {
         if (movingCard == null) {
             return false;
         }
+        // The pinned games and the moved one keep the order shown: a recent game among them (the moved one, or
+        // one a pinned game was moved past) is pinned too, the recent ones after them stay recent
         List<String> order = new ArrayList<>();
-        for (int i = 0; i < pinnedCount; i++) {
-            order.add(pinnedKeys.get(quickLaunchContainer.getChildAt(i)));
+        if (keep) {
+            int last = quickLaunchContainer.indexOfChild(movingCard);
+            for (int i = 0; i < quickLaunchContainer.getChildCount(); i++) {
+                if (pinnedKeys.containsKey(quickLaunchContainer.getChildAt(i))) {
+                    last = Math.max(last, i);
+                }
+            }
+            for (int i = 0; i <= last; i++) {
+                View child = quickLaunchContainer.getChildAt(i);
+                String key = pinnedKeys.get(child);
+                Entry entry = cardEntries.get(child);
+                if (key == null && entry != null) {
+                    key = quickLaunchManager.pinRecent(entry.computerUuid, entry.computerName, entry.appId, entry.title);
+                }
+                if (key != null) {
+                    order.add(key);
+                }
+            }
         }
         boolean refocus = movingCard.hasFocus();
         Object movedTag = movingCard.getTag();

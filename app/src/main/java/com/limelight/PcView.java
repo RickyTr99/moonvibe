@@ -4,10 +4,15 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import com.limelight.binding.PlatformBinding;
 import com.limelight.binding.crypto.AndroidCryptoProvider;
+import com.limelight.computers.ComputerDatabaseManager;
 import com.limelight.computers.ComputerManagerListener;
 import com.limelight.computers.ComputerManagerService;
 import com.limelight.grid.PcGridAdapter;
@@ -22,6 +27,7 @@ import com.limelight.preferences.AddComputerManually;
 import com.limelight.preferences.GlPreferences;
 import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.preferences.StreamSettings;
+import com.limelight.setup.SetupWizardActivity;
 import com.limelight.ui.apollo.settings.ProfileMenu;
 import com.limelight.ui.apollo.settings.QuickSettingsPanel;
 import com.limelight.ui.QuickLaunchView;
@@ -32,6 +38,7 @@ import com.limelight.ui.apollo.hints.HintRow;
 import com.limelight.ui.apollo.hints.ScreenHints;
 import com.limelight.ui.apollo.PcCardRow;
 import com.limelight.ui.theme.ApolloColors;
+import com.limelight.ui.theme.ApolloMotion;
 import com.limelight.utils.Dialog;
 import com.limelight.utils.HelpLauncher;
 import com.limelight.utils.ServerHelper;
@@ -52,9 +59,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.PowerManager;
+import android.os.SystemClock;
 import android.preference.PreferenceManager;
-import android.text.Html;
-import android.view.Display;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
@@ -78,8 +84,17 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
     private ComputerManagerService.ComputerManagerBinder managerBinder;
     private boolean freezeUpdates, runningPolling, inForeground, completeOnCreateCalled;
     private int autoResumeNoGamePollCount = 0;
-    private boolean hasShownRefreshRateToast = false;
     private QuickLaunchView quickLaunchView;
+    // Not a screen rebuilt after a change (like the theme color): only then the first-run setup may open
+    private boolean savedStateEmpty;
+    // The PCs as the last Home showed them: a Home made again (a color or background change) shows them at once,
+    // before the computer manager sends them again
+    private static final Map<String, ComputerDetails> lastComputers = new LinkedHashMap<>();
+    private static long lastComputersAt;
+    private static final long LAST_COMPUTERS_TTL_MS = 60000;
+    // PCs shown from that list: their state stays until a real poll, the computer manager made again first
+    // sends them as unknown (searching)
+    private final Set<String> preloaded = new HashSet<>();
     
     private final ServiceConnection serviceConnection = new ServiceConnection() {
         public void onServiceConnected(ComponentName className, IBinder binder) {
@@ -155,6 +170,9 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
         topBar = new ApolloTopBar(this, colors);
         topBar.setTabs(new String[] {getString(R.string.apollo_tab_home), getString(R.string.apollo_tab_settings)}, 0,
                 index -> {
+                    // The menus of the top bar close with the switch: they are not found open on coming back
+                    ProfileMenu.of(this).dismiss();
+                    QuickSettingsPanel.of(this).dismiss();
                     startActivity(new Intent(PcView.this, StreamSettings.class));
                     overridePendingTransition(R.anim.apollo_fade_in, R.anim.apollo_fade_out);
                 });
@@ -165,6 +183,14 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
 
         // Keep the content clear of a notch, the window draws under it
         ApolloUi.padForCutout(findViewById(R.id.homeColumn));
+        ApolloUi.fadeEdges(findViewById(R.id.homeScroll));
+        // A scroll view takes the focus itself while nothing inside can (PCs and games still loading):
+        // the whole Home would light up and keep the focus from the first card
+        for (int id : new int[] {R.id.homeScroll, R.id.pcScroll}) {
+            View scroll = findViewById(id);
+            scroll.setFocusable(false);
+            scroll.setFocusableInTouchMode(false);
+        }
 
         // Initialize Quick Launch component
         LinearLayout quickLaunchSection = findViewById(R.id.quickLaunchSection);
@@ -210,8 +236,10 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
         emptyAddPcButton.setOnClickListener(v -> startActivity(new Intent(PcView.this, AddComputerManually.class)));
         ApolloUi.scaleOnFocus(emptyAddPcButton);
         HintRow.set(emptyAddPcButton, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_add_pc,
-                KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings);
-        if (pcGridAdapter.getCount() == 0) {
+                KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_profiles, KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings);
+        // With saved PCs still on their way from the computer manager (a Home made again after a color or
+        // background change) the empty state would flash: it shows only when there are none
+        if (pcGridAdapter.getCount() == 0 && !hasSavedPcs()) {
             noPcFoundLayout.setVisibility(View.VISIBLE);
         }
         else {
@@ -220,9 +248,19 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
         pcGridAdapter.notifyDataSetChanged();
     }
 
+    private boolean hasSavedPcs() {
+        ComputerDatabaseManager database = new ComputerDatabaseManager(this);
+        try {
+            return !database.getAllComputers().isEmpty();
+        } finally {
+            database.close();
+        }
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        savedStateEmpty = savedInstanceState == null;
 
         // Assume we're in the foreground when created to avoid a race
         // between binding to CMS and onResume()
@@ -281,6 +319,17 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
         pcGridAdapter = new PcGridAdapter(this, PreferenceConfiguration.readPreferences(this));
 
         initializeViews();
+        if (SystemClock.elapsedRealtime() - lastComputersAt < LAST_COMPUTERS_TTL_MS) {
+            for (ComputerDetails details : new ArrayList<>(lastComputers.values())) {
+                updateComputer(new ComputerDetails(details), false);
+                preloaded.add(details.uuid);
+            }
+        }
+
+        // MoonVibe: the first start without saved PCs opens the setup over the Home
+        if (savedStateEmpty) {
+            SetupWizardActivity.startIfFirstRun(this);
+        }
     }
 
     private void refreshPcCards() {
@@ -289,7 +338,14 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
             computers.add(((ComputerObject) pcGridAdapter.getItem(i)).details);
         }
         pcCardRow.update(computers);
-        findViewById(R.id.pcScroll).setVisibility(computers.isEmpty() ? View.GONE : View.VISIBLE);
+        View pcScroll = findViewById(R.id.pcScroll);
+        boolean appearing = !computers.isEmpty() && pcScroll.getVisibility() != View.VISIBLE;
+        pcScroll.setVisibility(computers.isEmpty() ? View.GONE : View.VISIBLE);
+        if (appearing) {
+            // The PCs come from the computer manager a moment after the Home is made: they fade in
+            pcScroll.setAlpha(0f);
+            pcScroll.animate().alpha(1f).setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
+        }
         updateDefaultFocus();
     }
 
@@ -313,7 +369,7 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
             return;
         }
         // Without PCs the row is hidden and the empty state offers to add one
-        View target = quickLaunchContainer.isShown() && quickLaunchContainer.getChildCount() > 0
+        View target = quickLaunchContainer.isShown() && quickLaunchView != null && !quickLaunchView.isEmpty()
                 ? quickLaunchContainer.getChildAt(0)
                 : findViewById(R.id.pcScroll).getVisibility() == View.VISIBLE ? pcRow.getChildAt(0) : findViewById(R.id.emptyAddPcButton);
         ApolloUi.focusByDefault(this, target);
@@ -389,14 +445,6 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
 
         // Display a decoder crash notification if we've returned after a crash
         UiHelper.showDecoderCrashDialog(this);
-
-        // Display current refresh rate only on first load
-        if (!hasShownRefreshRateToast) {
-            Display display = getWindowManager().getDefaultDisplay();
-            float refreshRate = display.getRefreshRate();
-            Toast.makeText(this, Html.fromHtml("Current refresh rate: <b>" + UiHelper.formatRefreshRate(refreshRate) + "</b>"), Toast.LENGTH_LONG).show();
-            hasShownRefreshRateToast = true;
-        }
 
         inForeground = true;
 
@@ -813,6 +861,7 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
                         getResources().getString(R.string.scut_deleted_pc));
 
                 pcGridAdapter.removeComputer(computer);
+                lastComputers.remove(details.uuid);
                 pcGridAdapter.notifyDataSetChanged();
 
                 if (pcGridAdapter.getCount() == 0) {
@@ -826,6 +875,11 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
     }
     
     private void updateComputer(ComputerDetails details, boolean isFreshPoll) {
+        if (isFreshPoll) {
+            preloaded.remove(details.uuid);
+        } else if (details.state == ComputerDetails.State.UNKNOWN && preloaded.contains(details.uuid)) {
+            return;
+        }
         ComputerObject existingEntry = null;
 
         for (int i = 0; i < pcGridAdapter.getCount(); i++) {
@@ -849,6 +903,9 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
             // Remove the "Discovery in progress" view
             noPcFoundLayout.setVisibility(View.GONE);
         }
+
+        lastComputers.put(details.uuid, new ComputerDetails(details));
+        lastComputersAt = SystemClock.elapsedRealtime();
 
         // Notify the view that the data has changed
         pcGridAdapter.notifyDataSetChanged();
@@ -921,6 +978,11 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
                 // Start goes on to the quick settings, as Select goes from them to the profiles
                 if (keyCode == KeyEvent.KEYCODE_BUTTON_START) {
                     QuickSettingsPanel.of(this).show();
+                    return true;
+                }
+                // LB/RB still change tab, as with the quick settings open
+                if (keyCode == KeyEvent.KEYCODE_BUTTON_L1 || keyCode == KeyEvent.KEYCODE_BUTTON_R1) {
+                    topBar.switchTab(keyCode == KeyEvent.KEYCODE_BUTTON_R1 ? 1 : -1);
                     return true;
                 }
                 return super.onKeyDown(keyCode, event);

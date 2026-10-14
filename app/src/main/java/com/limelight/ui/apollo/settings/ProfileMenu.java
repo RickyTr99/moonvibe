@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.os.Build;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -24,7 +25,9 @@ import com.limelight.preferences.ProfilesActivity;
 import com.limelight.profiles.Profiles;
 import com.limelight.ui.apollo.ApolloUi;
 import com.limelight.ui.apollo.ScreenLayer;
+import com.limelight.ui.apollo.UiSounds;
 import com.limelight.ui.apollo.hints.HintRow;
+import com.limelight.ui.apollo.hints.InputMode;
 import com.limelight.ui.theme.ApolloColors;
 import com.limelight.ui.theme.ApolloMotion;
 
@@ -48,6 +51,39 @@ public class ProfileMenu extends FrameLayout {
     private View focusTarget;
     private boolean showing;
     private Object backCallback;
+
+    /** A profile picked in an illustration: its index, or -1 for none. */
+    public interface IllustrationChoice {
+        void onChosen(int index);
+    }
+
+    // In an illustration of the app: the anchor in its screen, the profiles it makes up and the one picked
+    private View illustrationAnchor;
+    private String[] illustrationProfiles;
+    private int illustrationActive = -1;
+    private IllustrationChoice illustrationChoice;
+
+    /**
+     * The menu inside an illustration of the app: over its screen, under the given anchor, with made-up
+     * profiles. It changes nothing in the app and leaves the window's focus and back alone.
+     */
+    public static ProfileMenu illustration(ViewGroup screen, View anchor, String[] profiles, IllustrationChoice choice) {
+        ProfileMenu menu = new ProfileMenu(screen.getContext());
+        menu.illustrationAnchor = anchor;
+        menu.illustrationProfiles = profiles;
+        menu.illustrationChoice = choice;
+        screen.addView(menu, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        return menu;
+    }
+
+    /** In an illustration: the profile in use again none, without telling anyone. */
+    public void resetIllustration() {
+        illustrationActive = -1;
+    }
+
+    private boolean inIllustration() {
+        return illustrationAnchor != null;
+    }
 
     public static ProfileMenu of(Activity activity) {
         ViewGroup content = (ViewGroup) activity.getWindow().getDecorView();
@@ -80,6 +116,7 @@ public class ProfileMenu extends FrameLayout {
 
         ScrollView scroll = new ScrollView(context);
         scroll.setVerticalScrollBarEnabled(false);
+        ApolloUi.fadeEdges(scroll);
         panel.addView(scroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
         list = new LinearLayout(context);
         list.setOrientation(LinearLayout.VERTICAL);
@@ -89,6 +126,9 @@ public class ProfileMenu extends FrameLayout {
         hints.setPadding(dp(14), 0, dp(14), 0);
         panel.addView(hints, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(30)));
         hints.setScope(this);
+        // Opened by touch with a gamepad connected, before the focus is on a row
+        hints.setFallback(HintRow.hint(context, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_choose),
+                HintRow.hint(context, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_close));
     }
 
     private int dp(float value) {
@@ -107,13 +147,22 @@ public class ProfileMenu extends FrameLayout {
         header.setPadding(dp(12), dp(8), dp(12), dp(6));
         list.addView(header);
 
-        Profiles.Profile active = Profiles.active(context);
-        for (Profiles.Profile profile : Profiles.list(context)) {
-            addRow(profile.name, null, active != null && profile.id.equals(active.id),
-                    () -> Profiles.setSelection(context, profile.id));
+        if (inIllustration()) {
+            for (int i = 0; i < illustrationProfiles.length; i++) {
+                int index = i;
+                addRow(illustrationProfiles[i], null, illustrationActive == i, () -> chooseInIllustration(index));
+            }
+            addRow(context.getString(R.string.apollo_profile_none), context.getString(R.string.apollo_profile_none_detail),
+                    illustrationActive < 0, () -> chooseInIllustration(-1));
+        } else {
+            Profiles.Profile active = Profiles.active(context);
+            for (Profiles.Profile profile : Profiles.list(context)) {
+                addRow(profile.name, null, active != null && profile.id.equals(active.id),
+                        () -> Profiles.setSelection(context, profile.id));
+            }
+            addRow(context.getString(R.string.apollo_profile_none), context.getString(R.string.apollo_profile_none_detail),
+                    active == null, () -> Profiles.setSelection(context, Profiles.SELECTION_NONE));
         }
-        addRow(context.getString(R.string.apollo_profile_none), context.getString(R.string.apollo_profile_none_detail),
-                active == null, () -> Profiles.setSelection(context, Profiles.SELECTION_NONE));
 
         View divider = new View(context);
         divider.setBackgroundColor(colors.outlineVariant);
@@ -123,11 +172,17 @@ public class ProfileMenu extends FrameLayout {
 
         View manage = row(context.getString(R.string.apollo_profile_manage), null, false, R.drawable.ic_apollo_cat_menu);
         // The screen opens once the menu has folded away: both together would play over each other
-        manage.setOnClickListener(v -> dismiss(() -> context.startActivity(new Intent(context, ProfilesActivity.class))));
+        manage.setOnClickListener(v -> dismiss(inIllustration() ? null
+                : () -> context.startActivity(new Intent(context, ProfilesActivity.class))));
         HintRow.set(manage, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_open, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_close);
         list.addView(manage);
         rows.add(manage);
         linkFocus();
+    }
+
+    private void chooseInIllustration(int index) {
+        illustrationActive = index;
+        illustrationChoice.onChosen(index);
     }
 
     // D-pad paths from row to row: the divider in between would make the search skip or jump,
@@ -164,6 +219,8 @@ public class ProfileMenu extends FrameLayout {
         row.setMinimumHeight(dp(42));
         row.setPadding(dp(12), 0, dp(12), 0);
         row.setFocusable(true);
+        // An illustration moves the focus itself, also while the window is in touch mode
+        row.setFocusableInTouchMode(inIllustration());
         row.setClickable(true);
         row.setBackground(ApolloUi.stateLayer(colors.surfaceContainerHigh, Color.TRANSPARENT, dp(ApolloUi.ROW_RADIUS_DP)));
 
@@ -196,14 +253,20 @@ public class ProfileMenu extends FrameLayout {
     // --- Show and hide
 
     private View anchor() {
-        return ((Activity) getContext()).findViewById(R.id.apollo_profile_anchor);
+        return inIllustration() ? illustrationAnchor : ((Activity) getContext()).findViewById(R.id.apollo_profile_anchor);
     }
 
     // Right under the name in the top bar, its left edges lined up
     private void placeUnderAnchor() {
         int top = dp(56), left = dp(12);
         View anchor = anchor();
-        if (anchor != null && anchor.isShown()) {
+        if (inIllustration()) {
+            // From the layout, not the window: the screen of an illustration is drawn scaled down
+            Rect bounds = new Rect(0, 0, anchor.getWidth(), anchor.getHeight());
+            ((ViewGroup) getParent()).offsetDescendantRectToMyCoords(anchor, bounds);
+            top = bounds.bottom + dp(6);
+            left = Math.max(dp(8), bounds.left);
+        } else if (anchor != null && anchor.isShown()) {
             View frame = (View) getParent();
             int[] anchorLocation = new int[2];
             int[] frameLocation = new int[2];
@@ -217,6 +280,11 @@ public class ProfileMenu extends FrameLayout {
         params.leftMargin = left;
         params.bottomMargin = dp(12);
         panel.setLayoutParams(params);
+    }
+
+    /** The card of the menu, for an illustration that frames it. */
+    public View getPanel() {
+        return panel;
     }
 
     public boolean isShowing() {
@@ -235,13 +303,18 @@ public class ProfileMenu extends FrameLayout {
         if (showing) {
             return;
         }
-        QuickSettingsPanel.of((Activity) getContext()).dismiss();
-        buildRows();
         Activity activity = (Activity) getContext();
-        focusBeforeShow = activity.getCurrentFocus();
+        if (!inIllustration()) {
+            UiSounds.play(UiSounds.Sound.OPEN);
+            QuickSettingsPanel.of(activity).dismiss();
+        }
+        buildRows();
+        focusBeforeShow = inIllustration() ? ((View) getParent()).findFocus() : activity.getCurrentFocus();
         showing = true;
         // The D-pad stays in the panel and its menus, never reaching the screen behind
-        ScreenLayer.blockApp(this, true);
+        if (!inIllustration()) {
+            ScreenLayer.blockApp(this, true);
+        }
         bringToFront();
         placeUnderAnchor();
         setVisibility(VISIBLE);
@@ -262,6 +335,16 @@ public class ProfileMenu extends FrameLayout {
                 .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
 
         // A gamepad lands on the choice in use
+        if (inIllustration()) {
+            View row = rows.get(illustrationActive >= 0 ? illustrationActive : illustrationProfiles.length);
+            focusTarget = row;
+            post(() -> {
+                if (showing) {
+                    row.requestFocus();
+                }
+            });
+            return;
+        }
         Profiles.Profile active = Profiles.active(getContext());
         List<Profiles.Profile> profiles = Profiles.list(getContext());
         View target = rows.get(profiles.size());
@@ -278,8 +361,9 @@ public class ProfileMenu extends FrameLayout {
             first.setFocusedByDefault(true);
         }
         post(() -> {
-            if (showing && !first.isInTouchMode()) {
-                first.requestFocus();
+            if (showing && (!first.isInTouchMode() || InputMode.isGamepad())) {
+                // Opened with Select or Start, which leave the window in touch mode
+                first.requestFocusFromTouch();
             }
         });
         // The first time the menu is only just added to the window: ask again once it is laid out
@@ -287,8 +371,8 @@ public class ProfileMenu extends FrameLayout {
             @Override
             public void onGlobalLayout() {
                 panel.getViewTreeObserver().removeOnGlobalLayoutListener(this);
-                if (showing && focusTarget == first && !first.isInTouchMode() && !first.hasFocus()) {
-                    first.requestFocus();
+                if (showing && focusTarget == first && (!first.isInTouchMode() || InputMode.isGamepad()) && !first.hasFocus()) {
+                    first.requestFocusFromTouch();
                 }
             }
         });
@@ -311,7 +395,7 @@ public class ProfileMenu extends FrameLayout {
             return false;
         }
         showing = false;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && focusTarget != null) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && focusTarget != null && !inIllustration()) {
             // The screen's own default focus takes over again
             focusTarget.setFocusedByDefault(false);
         }
@@ -334,7 +418,9 @@ public class ProfileMenu extends FrameLayout {
         scrim.animate().alpha(0)
                 .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
 
-        ScreenLayer.blockApp(this, false);
+        if (!inIllustration()) {
+            ScreenLayer.blockApp(this, false);
+        }
         if (focusBeforeShow != null && focusBeforeShow.isAttachedToWindow()) {
             focusBeforeShow.requestFocus();
         }

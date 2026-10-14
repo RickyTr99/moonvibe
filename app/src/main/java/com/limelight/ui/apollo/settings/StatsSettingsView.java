@@ -8,9 +8,12 @@ import android.app.AlertDialog;
 import android.content.res.ColorStateList;
 import android.graphics.Point;
 import android.graphics.drawable.GradientDrawable;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
@@ -19,6 +22,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import com.limelight.ui.apollo.GamepadDialogs;
 import com.limelight.R;
 import com.limelight.ui.apollo.ApolloUi;
 import com.limelight.ui.apollo.ApolloWidgets;
@@ -45,6 +49,7 @@ public class StatsSettingsView extends FrameLayout {
     private final ApolloColors colors;
     private final LinearLayout column;
     private final OptionsPopup popup;
+    private final InfoPopup infoPopup;
     private final List<TextView> segments = new ArrayList<>();
     private final StatsOverlayView preview;
     private final LinearLayout itemRows;
@@ -69,6 +74,7 @@ public class StatsSettingsView extends FrameLayout {
         column.setOrientation(LinearLayout.VERTICAL);
         addView(column, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         popup = new OptionsPopup(this, column, colors);
+        infoPopup = new InfoPopup(this, column, colors);
 
         // Back and title
         LinearLayout header = new LinearLayout(activity);
@@ -114,6 +120,7 @@ public class StatsSettingsView extends FrameLayout {
         // Right: the settings
         ScrollView scroll = new ScrollView(activity);
         scroll.setVerticalScrollBarEnabled(false);
+        ApolloUi.fadeEdges(scroll);
         scroll.setClipToPadding(false);
         scroll.setPadding(0, 0, 0, dp(12));
         body.addView(scroll, new LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 0.53f));
@@ -155,7 +162,7 @@ public class StatsSettingsView extends FrameLayout {
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
 
-        row.addView(bumper("LB", -1), new LinearLayout.LayoutParams(dp(26), dp(19)));
+        row.addView(bumper(ButtonGlyph.bumperLabel(true), -1), new LinearLayout.LayoutParams(dp(26), dp(19)));
 
         LinearLayout group = new LinearLayout(activity);
         group.setOrientation(LinearLayout.HORIZONTAL);
@@ -184,7 +191,7 @@ public class StatsSettingsView extends FrameLayout {
             segments.add(segment);
         }
 
-        row.addView(bumper("RB", 1), new LinearLayout.LayoutParams(dp(26), dp(19)));
+        row.addView(bumper(ButtonGlyph.bumperLabel(false), 1), new LinearLayout.LayoutParams(dp(26), dp(19)));
         return row;
     }
 
@@ -378,7 +385,7 @@ public class StatsSettingsView extends FrameLayout {
         TextView label = ApolloUi.text(activity, activity.getString(R.string.apollo_settings_restore), 14, colors.primary, true);
         label.setPadding(dp(12), 0, 0, 0);
         row.addView(label);
-        row.setOnClickListener(v -> new AlertDialog.Builder(activity)
+        row.setOnClickListener(v -> GamepadDialogs.attach(new AlertDialog.Builder(activity)
                 .setTitle(activity.getString(R.string.apollo_settings_restore_title, activity.getString(R.string.apollo_section_stats)))
                 .setMessage(R.string.stats_restore_message)
                 .setNegativeButton(R.string.apollo_settings_restore_cancel, null)
@@ -386,7 +393,7 @@ public class StatsSettingsView extends FrameLayout {
                     StatsPrefs.restoreDefaults(activity);
                     onRestored.run();
                 })
-                .show());
+                .show()));
         HintRow.set(row, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_select, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_back);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         params.topMargin = dp(8);
@@ -430,7 +437,74 @@ public class StatsSettingsView extends FrameLayout {
         reorder.attachLongPress(row);
 
         row.setOnKeyListener((v, keyCode, event) -> onItemKey(row, keyCode, event));
+        if (needsHost(item)) {
+            addHostInfo(item, (LinearLayout) row);
+        }
         setItemHints(row, false);
+    }
+
+    // The values that only some hosts send
+    private static boolean needsHost(StatsPrefs.Item item) {
+        return item == StatsPrefs.Item.HOST_CPU || item == StatsPrefs.Item.HOST_GPU;
+    }
+
+    // An "i" after the name, as in the settings: a tap on it (or Y) says which host sends the value
+    @SuppressLint("ClickableViewAccessibility")
+    private void addHostInfo(StatsPrefs.Item item, LinearLayout row) {
+        TextView label = null;
+        for (int i = 0; i < row.getChildCount(); i++) {
+            if (row.getChildAt(i) instanceof TextView) {
+                label = (TextView) row.getChildAt(i);
+                break;
+            }
+        }
+        if (label == null) {
+            return;
+        }
+        InfoSpan span = new InfoSpan(colors.surfaceContainerHighest, colors.onSurfaceVariant, dp(16), dp(6));
+        SpannableStringBuilder text = new SpannableStringBuilder(label.getText());
+        text.append(' ');
+        text.setSpan(span, text.length() - 1, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        label.setText(text);
+        TextView name = label;
+        // Not the row's switch: a touch around the "i" (48 dp) opens the explanation
+        label.setOnTouchListener((v, event) -> {
+            float[] center = span.center(name);
+            if (center == null || Math.abs(event.getX() - center[0]) > dp(24) || Math.abs(event.getY() - center[1]) > dp(24)) {
+                return false;
+            }
+            if (event.getActionMasked() == MotionEvent.ACTION_UP) {
+                showHostInfo(item, row);
+            }
+            return true;
+        });
+    }
+
+    private void showHostInfo(StatsPrefs.Item item, View row) {
+        popup.dismiss(false);
+        infoPopup.show(row, activity.getString(item.labelRes), activity.getString(R.string.stats_info_host_metrics), null, null);
+    }
+
+    // Y on a value with an "i" opens its explanation, and closes it again
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getKeyCode() == KeyEvent.KEYCODE_BUTTON_Y && movingRow == null) {
+            boolean press = event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0;
+            if (infoPopup.isShowing()) {
+                if (press) {
+                    infoPopup.dismiss(true);
+                }
+                return true;
+            }
+            View focused = findFocus();
+            if (focused != null && focused.getTag() instanceof StatsPrefs.Item && needsHost((StatsPrefs.Item) focused.getTag())) {
+                if (press) {
+                    showHostInfo((StatsPrefs.Item) focused.getTag(), focused);
+                }
+                return true;
+            }
+        }
+        return super.dispatchKeyEvent(event);
     }
 
     private void setItemHints(View row, boolean moving) {
@@ -439,6 +513,12 @@ public class StatsSettingsView extends FrameLayout {
                     HintRow.hint(activity, ButtonGlyph.DPAD_UP_DOWN, R.string.apollo_hint_move),
                     HintRow.hint(activity, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_done),
                     HintRow.hint(activity, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_cancel)});
+        } else if (row.getTag() instanceof StatsPrefs.Item && needsHost((StatsPrefs.Item) row.getTag())) {
+            HintRow.set(row, new HintRow.Hint[]{
+                    HintRow.hint(activity, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_change),
+                    HintRow.hint(activity, KeyEvent.KEYCODE_BUTTON_X, R.string.apollo_hint_move),
+                    HintRow.hint(activity, KeyEvent.KEYCODE_BUTTON_Y, R.string.apollo_hint_info),
+                    HintRow.hint(activity, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_back)});
         } else {
             HintRow.set(row, new HintRow.Hint[]{
                     HintRow.hint(activity, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_change),
@@ -540,7 +620,7 @@ public class StatsSettingsView extends FrameLayout {
 
     /** B puts back a row being moved, then closes the menu of the position. */
     public boolean onButtonB() {
-        return cancelMove() || popup.dismiss(true);
+        return infoPopup.dismiss(true) || cancelMove() || popup.dismiss(true);
     }
 
     /**

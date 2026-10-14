@@ -102,6 +102,7 @@ public class CustomCommandsActivity extends Activity {
 
         ScrollView scroll = new ScrollView(this);
         scroll.setVerticalScrollBarEnabled(false);
+        ApolloUi.fadeEdges(scroll);
         rowsBox = new LinearLayout(this);
         rowsBox.setOrientation(LinearLayout.VERTICAL);
         scroll.addView(rowsBox);

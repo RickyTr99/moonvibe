@@ -157,6 +157,12 @@ Java_com_limelight_binding_video_VulkanRendererBridge_nativeTakePresentedFrames(
     return renderer ? static_cast<jint>(renderer->takePresentedFrames()) : 0;
 }
 
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_limelight_binding_video_VulkanRendererBridge_nativeTakePyrowaveDecodeNs(JNIEnv*, jclass, jlong handle) {
+    VulkanRenderer* renderer = fromHandle(handle);
+    return renderer ? static_cast<jlong>(renderer->takePyrowaveDecodeNs()) : 0;
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_limelight_binding_video_VulkanRendererBridge_nativeGetRendererText(JNIEnv* env, jclass, jlong handle) {
     VulkanRenderer* renderer = fromHandle(handle);

@@ -372,6 +372,44 @@
     </PreferenceCategory>
     <PreferenceCategory android:title="@string/category_ui_settings"
         android:key="category_ui_settings">
+        <ListPreference
+            android:key="list_theme_color"
+            android:title="@string/title_theme_color"
+            android:entries="@array/theme_color_names"
+            android:entryValues="@array/theme_color_values"
+            android:defaultValue="@string/theme_color_default" />
+        <ListPreference
+            android:key="list_app_background"
+            android:title="@string/title_app_background"
+            android:entries="@array/app_background_names"
+            android:entryValues="@array/app_background_values"
+            android:defaultValue="aurora" />
+        <CheckBoxPreference
+            android:key="checkbox_menu_music"
+            android:title="@string/title_checkbox_menu_music"
+            android:defaultValue="true" />
+        <com.limelight.preferences.SeekBarPreference
+            android:key="seekbar_menu_music_volume"
+            android:dependency="checkbox_menu_music"
+            android:defaultValue="80"
+            android:max="100"
+            android:text="@string/suffix_seekbar_vibrate_fallback_strength"
+            android:title="@string/title_seekbar_menu_music_volume" />
+        <CheckBoxPreference
+            android:key="checkbox_ui_sounds"
+            android:title="@string/title_checkbox_ui_sounds"
+            android:defaultValue="true" />
+        <com.limelight.preferences.SeekBarPreference
+            android:key="seekbar_ui_sounds_volume"
+            android:dependency="checkbox_ui_sounds"
+            android:defaultValue="80"
+            android:max="100"
+            android:text="@string/suffix_seekbar_vibrate_fallback_strength"
+            android:title="@string/title_seekbar_ui_sounds_volume" />
+        <CheckBoxPreference
+            android:key="checkbox_tint_app_icon"
+            android:title="@string/title_checkbox_tint_app_icon"
+            android:defaultValue="false" />
         <com.limelight.preferences.LanguagePreference
             android:key="list_languages"
             android:title="@string/title_language_list"
@@ -388,6 +426,9 @@
             android:title="@string/title_checkbox_fullscreen_ui"
             android:summary="@string/summary_checkbox_fullscreen_ui"
             android:defaultValue="true" />
+        <com.limelight.preferences.SetupWizardPreference
+            android:key="setup_wizard"
+            android:title="@string/title_setup_wizard" />
         <com.limelight.preferences.WebLauncherPreference
             android:title="@string/title_setup_guide"
             android:summary="@string/summary_setup_guide"

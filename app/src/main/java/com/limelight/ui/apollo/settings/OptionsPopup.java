@@ -18,6 +18,7 @@ import android.window.OnBackInvokedDispatcher;
 
 import com.limelight.R;
 import com.limelight.ui.apollo.ApolloUi;
+import com.limelight.ui.apollo.UiSounds;
 import com.limelight.ui.apollo.hints.HintRow;
 import com.limelight.ui.theme.ApolloColors;
 import com.limelight.ui.theme.ApolloMotion;
@@ -87,6 +88,7 @@ class OptionsPopup {
      */
     void show(View anchor, int rightEdge, CharSequence[] options, int selected, int defaultIndex, Listener listener) {
         dismiss(false);
+        UiSounds.play(UiSounds.Sound.OPEN);
         this.anchor = anchor;
         content.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
         registerBack();
@@ -101,6 +103,7 @@ class OptionsPopup {
         card.setBackground(ApolloUi.roundRect(colors.surfaceContainerHigh, dp(14)));
         card.setClipToOutline(true);
         card.setVerticalScrollBarEnabled(false);
+        ApolloUi.fadeEdges(card);
 
         LinearLayout list = new LinearLayout(host.getContext());
         list.setOrientation(LinearLayout.VERTICAL);

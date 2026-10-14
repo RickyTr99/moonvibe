@@ -28,6 +28,7 @@ public final class ApolloUi {
     private static final float PRESSED_SCALE = 0.96f;
     // Corners of the rows of lists (settings, sheets, menus) and of their focus tint: Material 3 medium shape
     public static final int ROW_RADIUS_DP = 12;
+    private static final int FADING_EDGE_DP = 24;
 
     private ApolloUi() {
     }
@@ -100,6 +101,14 @@ public final class ApolloUi {
             group.setClipToPadding(false);
             group = group.getParent() instanceof ViewGroup ? (ViewGroup) group.getParent() : null;
         }
+    }
+
+    /**
+     * The list fades out at the top and bottom edges where there is more to scroll, instead of being cut.
+     */
+    public static void fadeEdges(View list) {
+        list.setVerticalFadingEdgeEnabled(true);
+        list.setFadingEdgeLength(dp(list.getContext(), FADING_EDGE_DP));
     }
 
     /**

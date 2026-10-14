@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The theme colors of Settings > App; values-v31 adds the wallpaper colors -->
+    <string name="theme_color_default" translatable="false">blue</string>
+    <string-array name="theme_color_values" translatable="false">
+        <item>blue</item>
+        <item>purple</item>
+        <item>pink</item>
+        <item>red</item>
+        <item>orange</item>
+        <item>yellow</item>
+        <item>green</item>
+        <item>teal</item>
+        <item>gray</item>
+    </string-array>
+    <string-array name="theme_color_names">
+        <item>@string/theme_color_blue</item>
+        <item>@string/theme_color_purple</item>
+        <item>@string/theme_color_pink</item>
+        <item>@string/theme_color_red</item>
+        <item>@string/theme_color_orange</item>
+        <item>@string/theme_color_yellow</item>
+        <item>@string/theme_color_green</item>
+        <item>@string/theme_color_teal</item>
+        <item>@string/theme_color_gray</item>
+    </string-array>
+    <string-array name="app_background_values" translatable="false">
+        <item>space</item>
+        <item>symbols</item>
+        <item>aurora</item>
+        <item>glow</item>
+    </string-array>
+    <string-array name="app_background_names">
+        <item>@string/app_background_space</item>
+        <item>@string/app_background_symbols</item>
+        <item>@string/app_background_aurora</item>
+        <item>@string/app_background_glow</item>
+    </string-array>
+</resources>

@@ -1,0 +1,12 @@
+<!-- The Create button of a PlayStation controller (Select): three rays over a short bar -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:pathData="M8,19h8M12,15V5M8.5,15.5L5.5,9M15.5,15.5L18.5,9" />
+</vector>

@@ -3,11 +3,13 @@ package com.limelight.ui.theme;
 import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.res.Resources;
+import android.content.res.TypedArray;
 import android.os.Build;
 
 /**
  * Material 3 dark color roles for the MoonVibe UI, the same as Theme.Apollo. On Android 12+ they come from the system's
- * dynamic palette (Material You, derived from the wallpaper), otherwise from a fixed blue palette.
+ * dynamic palette (Material You, derived from the wallpaper), otherwise from a fixed blue palette, unless
+ * a fixed color is chosen in Settings > App (ThemeColors).
  */
 public final class ApolloColors {
     public final int primary;
@@ -50,10 +52,38 @@ public final class ApolloColors {
     }
 
     public static ApolloColors dark(Context context) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        String color = ThemeColors.color(context);
+        if (ThemeColors.DYNAMIC.equals(color) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             return fromSystemPalette(context.getResources());
         }
-        return FALLBACK;
+        int overlay = ThemeColors.overlay(color);
+        return overlay != 0 ? fromOverlay(context, overlay) : FALLBACK;
+    }
+
+    // A fixed color of Settings > App: the same roles, read from its theme overlay
+    private static ApolloColors fromOverlay(Context context, int overlay) {
+        int[] attrs = {
+                com.google.android.material.R.attr.colorPrimary,
+                com.google.android.material.R.attr.colorOnPrimary,
+                com.google.android.material.R.attr.colorSecondaryContainer,
+                com.google.android.material.R.attr.colorOnSecondaryContainer,
+                com.google.android.material.R.attr.colorSurfaceContainerLow,
+                com.google.android.material.R.attr.colorSurfaceContainer,
+                com.google.android.material.R.attr.colorSurfaceContainerHigh,
+                com.google.android.material.R.attr.colorSurfaceContainerHighest,
+                com.google.android.material.R.attr.colorOnSurface,
+                com.google.android.material.R.attr.colorOnSurfaceVariant,
+                com.google.android.material.R.attr.colorOutline,
+                com.google.android.material.R.attr.colorOutlineVariant};
+        int[] values = new int[attrs.length];
+        // One at a time: obtainStyledAttributes wants the attributes sorted
+        for (int i = 0; i < attrs.length; i++) {
+            TypedArray array = context.obtainStyledAttributes(overlay, new int[] {attrs[i]});
+            values[i] = array.getColor(0, 0);
+            array.recycle();
+        }
+        return new ApolloColors(values[0], values[1], values[2], values[3], values[4], values[5], values[6],
+                values[7], values[8], values[9], values[10], values[11], FALLBACK.error);
     }
 
     // The system palettes have tones 0, 10, 20 ... 100 (system_*_900 is tone 10, _800 tone 20 and so on).

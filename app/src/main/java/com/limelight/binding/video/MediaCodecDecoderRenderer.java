@@ -120,6 +120,7 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
     private PreferenceConfiguration prefs;
 
     private long lastNetDataNum = 0;
+    private long lastNetDataNs = 0;
     private float smoothedFpsVariance = 0;
     private boolean fpsVarianceInitialized = false;
     private static final float VARIANCE_SMOOTHING_FACTOR = 0.7f;
@@ -152,6 +153,8 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
     // record framing and sites chroma at the center
     private boolean pyrowaveRecordFraming;
     private long pyrowaveDecodeNs;
+    // What's left over a whole millisecond of MediaCodec decode time, carried to the next frame
+    private long mediaCodecDecodeNs;
 
     // Direct renderer in the host frame timing pacing mode
     private HostFrameTimeline hostFrameTimeline;
@@ -1627,12 +1630,14 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
         boolean codecRecovered;
 
         try {
+            // Decoding can start as soon as the buffer is handed over, so time it from before that
+            long enqueueNs = System.nanoTime();
             videoDecoder.queueInputBuffer(nextInputBufferIndex,
                     0, nextInputBuffer.position(),
                     timestampUs, codecFlags);
 
             // Track enqueue time for this PTS
-            try { enqueueNsByPtsUs.put(timestampUs, System.nanoTime()); } catch (Throwable ignored) {}
+            try { enqueueNsByPtsUs.put(timestampUs, enqueueNs); } catch (Throwable ignored) {}
 
             // We need a new buffer now
             nextInputBufferIndex = -1;
@@ -1797,11 +1802,14 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
                 stats.rttVarianceMs = (int)rttInfo;
 
                 long netData = TrafficStatsHelper.getPackageRxBytes(Process.myUid()) + TrafficStatsHelper.getPackageTxBytes(Process.myUid());
-                if(lastNetDataNum != 0){
-                    // Convert bytes per second to megabits per second (Mbps)
-                    stats.bandwidthMbps = (netData - lastNetDataNum) * 8 / 1000000f;
+                long netDataNs = System.nanoTime();
+                if (lastNetDataNum != 0 && netDataNs > lastNetDataNs) {
+                    // Bits over the time actually passed: the window flips on the first frame after
+                    // a second, so it runs a little longer than that
+                    stats.bandwidthMbps = (netData - lastNetDataNum) * 8 * 1000f / (netDataNs - lastNetDataNs);
                 }
                 lastNetDataNum = netData;
+                lastNetDataNs = netDataNs;
 
                 if (lastTwo.framesWithHostProcessingLatency > 0) {
                     stats.hostLatencyMin = (float)lastTwo.minHostProcessingLatency / 10;
@@ -2142,12 +2150,12 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
         }
         vulkan.noteFrameReceived(presentationTimeUs, receiveTimeUs, enqueueTimeUs);
 
-        // Decoding is queued on the GPU, so this is the CPU's share of it: parsing the frame
-        // and recording the decode. Kept in nanoseconds, since frames take well under 1 ms.
-        long startNs = System.nanoTime();
+        // Decoding finishes on the GPU after this returns, so the time counted is the renderer's,
+        // from submission until the GPU finished, for the frames done since the last one. Kept in
+        // nanoseconds, since frames can take under 1 ms.
         vulkan.submitPyrowaveFrame(decodeUnitData, decodeUnitLength, presentationTimeUs, enqueueTimeUs,
                 missingRanges, partialKind);
-        pyrowaveDecodeNs += System.nanoTime() - startNs;
+        pyrowaveDecodeNs += vulkan.takePyrowaveDecodeNs();
         long decodeMs = pyrowaveDecodeNs / 1_000_000L;
         pyrowaveDecodeNs -= decodeMs * 1_000_000L;
         activeWindowVideoStats.decoderTimeMs += decodeMs;
@@ -2237,8 +2245,13 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
         Long enqNs = enqueueNsByPtsUs.get(presentationTimeUs);
         if (enqNs != null) {
             enqueueNsByPtsUs.delete(presentationTimeUs);
-            long decMs = (System.nanoTime() - enqNs) / 1_000_000L;
-            if (decMs >= 0 && decMs < 1000) {
+            long decNs = System.nanoTime() - enqNs;
+            if (decNs >= 0 && decNs < 1_000_000_000L) {
+                // Counted in nanoseconds: rounding each frame down to a whole millisecond made
+                // a 1.9 ms decode count as 1 ms
+                mediaCodecDecodeNs += decNs;
+                long decMs = mediaCodecDecodeNs / 1_000_000L;
+                mediaCodecDecodeNs -= decMs * 1_000_000L;
                 activeWindowVideoStats.decoderTimeMs += decMs;
                 if (!USE_FRAME_RENDER_TIME) {
                     activeWindowVideoStats.totalTimeMs += decMs;

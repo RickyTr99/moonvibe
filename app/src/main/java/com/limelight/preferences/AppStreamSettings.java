@@ -21,6 +21,7 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 
+import com.limelight.ui.apollo.GamepadDialogs;
 import com.limelight.R;
 import com.limelight.ui.apollo.ApolloUi;
 import com.limelight.ui.apollo.hints.HintRow;
@@ -239,7 +240,7 @@ public class AppStreamSettings extends Activity {
                 }
             });
             
-            builder.show();
+            GamepadDialogs.attach(builder.show());
         }
         
         private boolean validateResolution(String width, String height) {
@@ -592,4 +593,4 @@ public class AppStreamSettings extends Activity {
             AppPreferences.saveAppSettings(getActivity(), activity.appKey, settings);
         }
     }
-}
+}

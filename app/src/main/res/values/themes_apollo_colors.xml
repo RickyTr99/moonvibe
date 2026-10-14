@@ -1,0 +1,277 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        The fixed theme colors of Settings > App, made by a generator from one hue each
+        (Material tonal palettes, the roles of Base.Apollo). Applied over the app theme, and read by ApolloColors.
+    -->
+
+    <style name="ThemeOverlay.Apollo.Blue" parent="">
+        <item name="colorPrimary">#8FACE3</item>
+        <item name="colorOnPrimary">#001B3F</item>
+        <item name="colorPrimaryContainer">#284777</item>
+        <item name="colorOnPrimaryContainer">#D7E3FF</item>
+        <item name="colorSecondary">#BEC6DC</item>
+        <item name="colorOnSecondary">#283141</item>
+        <item name="colorSecondaryContainer">#3E4759</item>
+        <item name="colorOnSecondaryContainer">#DAE2F9</item>
+        <item name="colorTertiary">#DDBCE0</item>
+        <item name="colorOnTertiary">#3F2844</item>
+        <item name="colorTertiaryContainer">#573E5C</item>
+        <item name="colorOnTertiaryContainer">#FAD8FD</item>
+        <item name="android:colorBackground">#121316</item>
+        <item name="colorOnBackground">#E3E2E6</item>
+        <item name="colorSurface">#121316</item>
+        <item name="colorOnSurface">#E3E2E6</item>
+        <item name="colorSurfaceVariant">#44474E</item>
+        <item name="colorOnSurfaceVariant">#C4C6D0</item>
+        <item name="colorSurfaceContainerLowest">#0D0E11</item>
+        <item name="colorSurfaceContainerLow">#1A1B1F</item>
+        <item name="colorSurfaceContainer">#1F1F23</item>
+        <item name="colorSurfaceContainerHigh">#292A2D</item>
+        <item name="colorSurfaceContainerHighest">#343538</item>
+        <item name="colorSurfaceBright">#38393C</item>
+        <item name="colorSurfaceDim">#121316</item>
+        <item name="colorOutline">#8E9099</item>
+        <item name="colorOutlineVariant">#44474E</item>
+    </style>
+
+    <style name="ThemeOverlay.Apollo.Purple" parent="">
+        <item name="colorPrimary">#C19CE3</item>
+        <item name="colorOnPrimary">#2A0848</item>
+        <item name="colorPrimaryContainer">#583877</item>
+        <item name="colorOnPrimaryContainer">#F0DBFF</item>
+        <item name="colorSecondary">#D0C1DA</item>
+        <item name="colorOnSecondary">#362C3F</item>
+        <item name="colorSecondaryContainer">#4D4356</item>
+        <item name="colorOnSecondaryContainer">#EDDDF6</item>
+        <item name="colorTertiary">#F3B7BE</item>
+        <item name="colorOnTertiary">#4B252B</item>
+        <item name="colorTertiaryContainer">#653A40</item>
+        <item name="colorOnTertiaryContainer">#FFD9DD</item>
+        <item name="android:colorBackground">#151316</item>
+        <item name="colorOnBackground">#E7E1E5</item>
+        <item name="colorSurface">#151316</item>
+        <item name="colorOnSurface">#E7E1E5</item>
+        <item name="colorSurfaceVariant">#4A454E</item>
+        <item name="colorOnSurfaceVariant">#CCC4CE</item>
+        <item name="colorSurfaceContainerLowest">#0F0D11</item>
+        <item name="colorSurfaceContainerLow">#1D1B1E</item>
+        <item name="colorSurfaceContainer">#211F22</item>
+        <item name="colorSurfaceContainerHigh">#2C292D</item>
+        <item name="colorSurfaceContainerHighest">#373437</item>
+        <item name="colorSurfaceBright">#3B383C</item>
+        <item name="colorSurfaceDim">#151316</item>
+        <item name="colorOutline">#968E98</item>
+        <item name="colorOutlineVariant">#4A454E</item>
+    </style>
+
+    <style name="ThemeOverlay.Apollo.Pink" parent="">
+        <item name="colorPrimary">#E492BB</item>
+        <item name="colorOnPrimary">#3B0327</item>
+        <item name="colorPrimaryContainer">#703054</item>
+        <item name="colorOnPrimaryContainer">#FFD8E8</item>
+        <item name="colorSecondary">#E0BDCB</item>
+        <item name="colorOnSecondary">#402A35</item>
+        <item name="colorSecondaryContainer">#59404B</item>
+        <item name="colorOnSecondaryContainer">#FDD9E7</item>
+        <item name="colorTertiary">#F2BB9A</item>
+        <item name="colorOnTertiary">#4A2811</item>
+        <item name="colorTertiaryContainer">#643E25</item>
+        <item name="colorOnTertiaryContainer">#FFDBC8</item>
+        <item name="android:colorBackground">#171214</item>
+        <item name="colorOnBackground">#EBE0E2</item>
+        <item name="colorSurface">#171214</item>
+        <item name="colorOnSurface">#EBE0E2</item>
+        <item name="colorSurfaceVariant">#504348</item>
+        <item name="colorOnSurfaceVariant">#D4C2C8</item>
+        <item name="colorSurfaceContainerLowest">#110D0F</item>
+        <item name="colorSurfaceContainerLow">#1F1A1C</item>
+        <item name="colorSurfaceContainer">#231E20</item>
+        <item name="colorSurfaceContainerHigh">#2E282A</item>
+        <item name="colorSurfaceContainerHighest">#393335</item>
+        <item name="colorSurfaceBright">#3E383A</item>
+        <item name="colorSurfaceDim">#171214</item>
+        <item name="colorOutline">#9D8D92</item>
+        <item name="colorOutlineVariant">#504348</item>
+    </style>
+
+    <style name="ThemeOverlay.Apollo.Red" parent="">
+        <item name="colorPrimary">#F68F80</item>
+        <item name="colorOnPrimary">#3F0302</item>
+        <item name="colorPrimaryContainer">#7A2E24</item>
+        <item name="colorOnPrimaryContainer">#FFDAD5</item>
+        <item name="colorSecondary">#E7BDB6</item>
+        <item name="colorOnSecondary">#442925</item>
+        <item name="colorSecondaryContainer">#5D3F3B</item>
+        <item name="colorOnSecondaryContainer">#FFDAD5</item>
+        <item name="colorTertiary">#DEC38C</item>
+        <item name="colorOnTertiary">#3E2E04</item>
+        <item name="colorTertiaryContainer">#564419</item>
+        <item name="colorOnTertiaryContainer">#FCDFA6</item>
+        <item name="android:colorBackground">#181211</item>
+        <item name="colorOnBackground">#EDE0DE</item>
+        <item name="colorSurface">#181211</item>
+        <item name="colorOnSurface">#EDE0DE</item>
+        <item name="colorSurfaceVariant">#534341</item>
+        <item name="colorOnSurfaceVariant">#D8C2BE</item>
+        <item name="colorSurfaceContainerLowest">#120D0C</item>
+        <item name="colorSurfaceContainerLow">#201A19</item>
+        <item name="colorSurfaceContainer">#251E1D</item>
+        <item name="colorSurfaceContainerHigh">#2F2827</item>
+        <item name="colorSurfaceContainerHighest">#3B3332</item>
+        <item name="colorSurfaceBright">#3F3736</item>
+        <item name="colorSurfaceDim">#181211</item>
+        <item name="colorOutline">#A08C89</item>
+        <item name="colorOutlineVariant">#534341</item>
+    </style>
+
+    <style name="ThemeOverlay.Apollo.Orange" parent="">
+        <item name="colorPrimary">#E69B48</item>
+        <item name="colorOnPrimary">#2C1600</item>
+        <item name="colorPrimaryContainer">#683C00</item>
+        <item name="colorOnPrimaryContainer">#FFDCBD</item>
+        <item name="colorSecondary">#E1C1A3</item>
+        <item name="colorOnSecondary">#402C18</item>
+        <item name="colorSecondaryContainer">#59422C</item>
+        <item name="colorOnSecondaryContainer">#FEDDBE</item>
+        <item name="colorTertiary">#BFCC9B</item>
+        <item name="colorOnTertiary">#2A3411</item>
+        <item name="colorTertiaryContainer">#404B25</item>
+        <item name="colorOnTertiaryContainer">#DBE8B5</item>
+        <item name="android:colorBackground">#17130E</item>
+        <item name="colorOnBackground">#EBE1D9</item>
+        <item name="colorSurface">#17130E</item>
+        <item name="colorOnSurface">#EBE1D9</item>
+        <item name="colorSurfaceVariant">#50453A</item>
+        <item name="colorOnSurfaceVariant">#D5C3B5</item>
+        <item name="colorSurfaceContainerLowest">#120D09</item>
+        <item name="colorSurfaceContainerLow">#201B16</item>
+        <item name="colorSurfaceContainer">#241F1A</item>
+        <item name="colorSurfaceContainerHigh">#2E2924</item>
+        <item name="colorSurfaceContainerHighest">#39342F</item>
+        <item name="colorSurfaceBright">#3E3833</item>
+        <item name="colorSurfaceDim">#17130E</item>
+        <item name="colorOutline">#9D8E81</item>
+        <item name="colorOutlineVariant">#50453A</item>
+    </style>
+
+    <style name="ThemeOverlay.Apollo.Yellow" parent="">
+        <item name="colorPrimary">#C5A93E</item>
+        <item name="colorOnPrimary">#221B00</item>
+        <item name="colorPrimaryContainer">#554500</item>
+        <item name="colorOnPrimaryContainer">#FFE174</item>
+        <item name="colorSecondary">#D3C6A1</item>
+        <item name="colorOnSecondary">#373016</item>
+        <item name="colorSecondaryContainer">#4F462A</item>
+        <item name="colorOnSecondaryContainer">#EFE2BB</item>
+        <item name="colorTertiary">#ABD0B1</item>
+        <item name="colorOnTertiary">#163721</item>
+        <item name="colorTertiaryContainer">#2D4E36</item>
+        <item name="colorOnTertiaryContainer">#C6ECCC</item>
+        <item name="android:colorBackground">#15130E</item>
+        <item name="colorOnBackground">#E8E2D9</item>
+        <item name="colorSurface">#15130E</item>
+        <item name="colorOnSurface">#E8E2D9</item>
+        <item name="colorSurfaceVariant">#4B4639</item>
+        <item name="colorOnSurfaceVariant">#CEC6B4</item>
+        <item name="colorSurfaceContainerLowest">#100E09</item>
+        <item name="colorSurfaceContainerLow">#1D1B16</item>
+        <item name="colorSurfaceContainer">#221F1A</item>
+        <item name="colorSurfaceContainerHigh">#2C2A24</item>
+        <item name="colorSurfaceContainerHighest">#37342E</item>
+        <item name="colorSurfaceBright">#3C3933</item>
+        <item name="colorSurfaceDim">#15130E</item>
+        <item name="colorOutline">#979080</item>
+        <item name="colorOutlineVariant">#4B4639</item>
+    </style>
+
+    <style name="ThemeOverlay.Apollo.Green" parent="">
+        <item name="colorPrimary">#78BA84</item>
+        <item name="colorOnPrimary">#00210B</item>
+        <item name="colorPrimaryContainer">#0C5226</item>
+        <item name="colorOnPrimaryContainer">#AEF3B8</item>
+        <item name="colorSecondary">#B7CCB7</item>
+        <item name="colorOnSecondary">#233425</item>
+        <item name="colorSecondaryContainer">#394B3B</item>
+        <item name="colorOnSecondaryContainer">#D3E8D2</item>
+        <item name="colorTertiary">#A1CED8</item>
+        <item name="colorOnTertiary">#00363E</item>
+        <item name="colorTertiaryContainer">#204D55</item>
+        <item name="colorOnTertiaryContainer">#BDEAF4</item>
+        <item name="android:colorBackground">#111411</item>
+        <item name="colorOnBackground">#E2E3DE</item>
+        <item name="colorSurface">#111411</item>
+        <item name="colorOnSurface">#E2E3DE</item>
+        <item name="colorSurfaceVariant">#414941</item>
+        <item name="colorOnSurfaceVariant">#C1C9BE</item>
+        <item name="colorSurfaceContainerLowest">#0C0F0C</item>
+        <item name="colorSurfaceContainerLow">#1A1C19</item>
+        <item name="colorSurfaceContainer">#1E201D</item>
+        <item name="colorSurfaceContainerHigh">#282B27</item>
+        <item name="colorSurfaceContainerHighest">#333532</item>
+        <item name="colorSurfaceBright">#373A36</item>
+        <item name="colorSurfaceDim">#111411</item>
+        <item name="colorOutline">#8B9389</item>
+        <item name="colorOutlineVariant">#414941</item>
+    </style>
+
+    <style name="ThemeOverlay.Apollo.Teal" parent="">
+        <item name="colorPrimary">#65B9B0</item>
+        <item name="colorOnPrimary">#00201D</item>
+        <item name="colorPrimaryContainer">#00504A</item>
+        <item name="colorOnPrimaryContainer">#9DF2E7</item>
+        <item name="colorSecondary">#B1CCC8</item>
+        <item name="colorOnSecondary">#1C3532</item>
+        <item name="colorSecondaryContainer">#324B48</item>
+        <item name="colorOnSecondaryContainer">#CCE8E3</item>
+        <item name="colorTertiary">#AEC9E6</item>
+        <item name="colorOnTertiary">#17324A</item>
+        <item name="colorTertiaryContainer">#2F4961</item>
+        <item name="colorOnTertiaryContainer">#CEE5FF</item>
+        <item name="android:colorBackground">#101413</item>
+        <item name="colorOnBackground">#E0E3E1</item>
+        <item name="colorSurface">#101413</item>
+        <item name="colorOnSurface">#E0E3E1</item>
+        <item name="colorSurfaceVariant">#3F4947</item>
+        <item name="colorOnSurfaceVariant">#BEC9C6</item>
+        <item name="colorSurfaceContainerLowest">#0B0F0E</item>
+        <item name="colorSurfaceContainerLow">#191C1C</item>
+        <item name="colorSurfaceContainer">#1D2020</item>
+        <item name="colorSurfaceContainerHigh">#272B2A</item>
+        <item name="colorSurfaceContainerHighest">#323535</item>
+        <item name="colorSurfaceBright">#363A39</item>
+        <item name="colorSurfaceDim">#101413</item>
+        <item name="colorOutline">#899391</item>
+        <item name="colorOutlineVariant">#3F4947</item>
+    </style>
+
+    <style name="ThemeOverlay.Apollo.Gray" parent="">
+        <item name="colorPrimary">#AAABB1</item>
+        <item name="colorOnPrimary">#1A1C20</item>
+        <item name="colorPrimaryContainer">#45474C</item>
+        <item name="colorOnPrimaryContainer">#E2E2E9</item>
+        <item name="colorSecondary">#C7C6CA</item>
+        <item name="colorOnSecondary">#2F3033</item>
+        <item name="colorSecondaryContainer">#46464A</item>
+        <item name="colorOnSecondaryContainer">#E3E2E6</item>
+        <item name="colorTertiary">#CCC4C9</item>
+        <item name="colorOnTertiary">#332F33</item>
+        <item name="colorTertiaryContainer">#4A4549</item>
+        <item name="colorOnTertiaryContainer">#E8E0E5</item>
+        <item name="android:colorBackground">#131315</item>
+        <item name="colorOnBackground">#E4E2E3</item>
+        <item name="colorSurface">#131315</item>
+        <item name="colorOnSurface">#E4E2E3</item>
+        <item name="colorSurfaceVariant">#464649</item>
+        <item name="colorOnSurfaceVariant">#C7C6C9</item>
+        <item name="colorSurfaceContainerLowest">#0E0E0F</item>
+        <item name="colorSurfaceContainerLow">#1B1B1D</item>
+        <item name="colorSurfaceContainer">#1F1F21</item>
+        <item name="colorSurfaceContainerHigh">#2A2A2B</item>
+        <item name="colorSurfaceContainerHighest">#353436</item>
+        <item name="colorSurfaceBright">#39393A</item>
+        <item name="colorSurfaceDim">#131315</item>
+        <item name="colorOutline">#919093</item>
+        <item name="colorOutlineVariant">#464649</item>
+    </style>
+</resources>

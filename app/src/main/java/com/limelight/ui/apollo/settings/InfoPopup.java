@@ -20,6 +20,7 @@ import android.window.OnBackInvokedDispatcher;
 import com.limelight.R;
 import com.limelight.ui.apollo.ApolloUi;
 import com.limelight.ui.apollo.ScreenLayer;
+import com.limelight.ui.apollo.UiSounds;
 import com.limelight.ui.apollo.hints.HintRow;
 import com.limelight.ui.theme.ApolloColors;
 import com.limelight.ui.theme.ApolloMotion;
@@ -93,6 +94,7 @@ class InfoPopup {
      */
     void show(View anchor, CharSequence title, CharSequence text, List<Option> options, Notice notice) {
         dismiss(false);
+        UiSounds.play(UiSounds.Sound.OPEN);
         this.anchor = anchor;
         content.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
         registerBack();
@@ -110,6 +112,7 @@ class InfoPopup {
         card.setBackground(ApolloUi.roundRect(colors.surfaceContainerHigh, dp(20)));
         card.setClipToOutline(true);
         card.setVerticalScrollBarEnabled(false);
+        ApolloUi.fadeEdges(card);
         // Takes the focus, so the gamepad hints and keys belong to the card while it is open
         card.setFocusable(true);
         card.setFocusableInTouchMode(true);

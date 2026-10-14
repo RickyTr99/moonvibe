@@ -38,6 +38,7 @@ import com.limelight.profiles.Profiles;
 import com.limelight.ui.BrightnessSliderView;
 import com.limelight.ui.GameGestures;
 import com.limelight.ui.StreamView;
+import com.limelight.ui.apollo.hints.InputMode;
 import com.limelight.ui.apollo.launch.LaunchOverlayView;
 import com.limelight.ui.overlay.CustomCommand;
 import com.limelight.ui.apollo.CompareSplitView;
@@ -45,7 +46,9 @@ import com.limelight.ui.apollo.MousePill;
 import com.limelight.ui.apollo.stats.StatsOverlayView;
 import com.limelight.ui.apollo.stats.StatsPrefs;
 import com.limelight.ui.gamemenu.GameMenuView;
+import com.limelight.nvstream.http.HostMetrics;
 import com.limelight.utils.Dialog;
+import com.limelight.utils.HostExtras;
 import com.limelight.utils.ServerHelper;
 import com.limelight.utils.SessionResumeManager;
 import com.limelight.utils.ShortcutHelper;
@@ -140,6 +143,9 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     private KeyBoardLayoutController fullKeyboard;
     private boolean virtualControllerHidden = false;
     private GameMenu gameMenu;
+    private HostExtras hostExtras;
+    // Resumed: the readings of the PC are asked for only then
+    private boolean streamInFront = true;
 
     private PreferenceConfiguration prefConfig;
     private SharedPreferences tombstonePrefs;
@@ -656,6 +662,21 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         controllerHandler = new ControllerHandler(this, conn, this, prefConfig);
         keyboardTranslator = new KeyboardTranslator();
 
+        // Bitrate during the stream and the PC's readings, on the hosts that have them
+        final X509Certificate hostCert = serverCert;
+        hostExtras = new HostExtras(() -> new NvHTTP(new ComputerDetails.AddressTuple(host, port), httpsPort, uniqueId,
+                hostCert, PlatformBinding.getCryptoProvider(this)), prefConfig.bitrate, capabilities -> {
+            if (gameMenu == null || !gameMenu.isOpen()) {
+                return;
+            }
+            // New rows when the host's extras are known; otherwise just the values, not to break a drag
+            if (capabilities) {
+                gameMenu.refresh();
+            } else {
+                gameMenu.refreshValues();
+            }
+        });
+
         // Setup overlay menu now that controllerHandler is initialized
         setupOverlayMenu();
 
@@ -791,9 +812,11 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
                 // Update GameManager state to indicate we're in PiP (still gaming, but interruptible)
                 UiHelper.notifyStreamEnteringPiP(this);
+                updateHostMetricsWanted();
             }
             else {
                 isHidingOverlays = false;
+                updateHostMetricsWanted();
 
                 // Restore overlays to previous state when leaving PiP
 
@@ -1224,6 +1247,10 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     protected void onDestroy() {
         super.onDestroy();
 
+        if (hostExtras != null) {
+            hostExtras.stop();
+        }
+
         // Unregister broadcast receiver
         try {
             unregisterReceiver(quitAppReceiver);
@@ -1293,6 +1320,9 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
         // Only needed while the stream is out of sight
         StreamKeepAliveService.stop(this);
+
+        streamInFront = true;
+        updateHostMetricsWanted();
     }
 
     @Override
@@ -1328,6 +1358,9 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             // Ungrab input to prevent further input device notifications
             setInputGrabState(false);
         }
+
+        streamInFront = false;
+        updateHostMetricsWanted();
 
         super.onPause();
     }
@@ -1598,6 +1631,8 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        // The controller in use picks the button symbols of the game menu
+        InputMode.noteDevice(event.getDevice());
         // While the launch screen shows, keys go to it and not to the host
         if (launchOverlay != null && launchOverlay.isShowing() && launchOverlay.handleKeyEvent(event)) {
             return true;
@@ -1619,7 +1654,10 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         // touch-only devices have no Select button, and the menu offers Disconnect/Quit
         if (gameMenu != null) {
             if (gameMenu.isOpen()) {
-                gameMenu.hide();
+                // A popup over the menu goes first
+                if (!gameMenu.dismissPopup()) {
+                    gameMenu.hide();
+                }
             } else {
                 showGameMenu(false);
             }
@@ -2766,6 +2804,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
             // Nothing left to keep running in the background
             StreamKeepAliveService.stop(this);
+            hostExtras.stop();
 
             controllerHandler.stop();
 
@@ -2994,6 +3033,10 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
                 // Show overlay menu hint toast
                 showOverlayMenuHint();
+
+                hostExtras.start((decoderRenderer.getActiveVideoFormat() & MoonBridge.VIDEO_FORMAT_MASK_PYROWAVE) != 0,
+                        prefConfig.audioConfiguration.channelCount);
+                updateHostMetricsWanted();
             }
         });
 
@@ -3304,9 +3347,39 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
+                // The PC's readings go with the stream's numbers
+                HostMetrics host = hostExtras != null ? hostExtras.getMetrics() : null;
+                if (host != null) {
+                    stats.hostCpuPercent = host.cpuPercent;
+                    stats.hostGpuPercent = host.gpuPercent;
+                    stats.hostGpuTempC = host.gpuTempC;
+                    stats.hostGpuPowerW = host.gpuPowerW;
+                    stats.hostVramUsedMb = host.vramUsedMb;
+                }
                 performanceOverlayView.update(stats);
             }
         });
+    }
+
+    private void updateHostMetricsWanted() {
+        if (hostExtras != null && prefConfig != null) {
+            hostExtras.setMetricsWanted(prefConfig.enablePerfOverlay && streamInFront && !isHidingOverlays);
+        }
+    }
+
+    // ---- The bitrate of this stream, on the hosts that can change it while it runs ----
+
+    public boolean canChangeStreamBitrate() {
+        return hostExtras != null && hostExtras.isBitrateAdjustable();
+    }
+
+    public int getStreamBitrateMbps() {
+        return Math.round(hostExtras.getBitrateKbps() / 1000f);
+    }
+
+    /** For this stream only: the profile keeps its bitrate. */
+    public void setStreamBitrateMbps(int mbps) {
+        hostExtras.requestBitrate(mbps * 1000);
     }
 
     @Override
@@ -3353,6 +3426,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     public void toggleStatsOverlay() {
         prefConfig.enablePerfOverlay = !prefConfig.enablePerfOverlay;
         performanceOverlayView.setShown(prefConfig.enablePerfOverlay, true);
+        updateHostMetricsWanted();
     }
 
     public boolean isStatsOverlayVisible() {
@@ -3377,6 +3451,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         }
         prefConfig.enablePerfOverlay = shown;
         performanceOverlayView.setShown(shown, true);
+        updateHostMetricsWanted();
     }
 
     public StatsPrefs.Position getStatsPosition() {

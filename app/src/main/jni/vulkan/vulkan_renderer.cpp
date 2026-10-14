@@ -730,6 +730,7 @@ void VulkanRenderer::pyrowaveWaiterMain() {
         }
 
         frame->timing.arrivalNs = nowNs();
+        pyrowaveDecodeNs_ += frame->timing.arrivalNs - frame->decodeStartNs;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             trace_.decoded(frame->timing.hostPtsNs, frame->decodeStartNs, frame->decodeQueuedNs,

@@ -6,6 +6,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
+import android.content.res.TypedArray;
 import android.database.DataSetObserver;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -44,6 +45,7 @@ import android.widget.ListAdapter;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import com.limelight.ui.apollo.GamepadDialogs;
 import com.limelight.R;
 import com.limelight.preferences.ConfirmDeleteOscPreference;
 import com.limelight.preferences.LanguagePreference;
@@ -52,12 +54,15 @@ import com.limelight.preferences.SeekBarPreference;
 import com.limelight.preferences.ShortcutPreference;
 import com.limelight.ui.apollo.ApolloTopBar;
 import com.limelight.ui.apollo.ApolloUi;
+import com.limelight.ui.apollo.UiSounds;
+import com.limelight.ui.apollo.ValuePopup;
 import com.limelight.ui.apollo.ApolloWidgets;
 import com.limelight.ui.apollo.hints.ButtonGlyph;
 import com.limelight.ui.apollo.hints.HintRow;
 import com.limelight.ui.apollo.stats.StatsPrefs;
 import com.limelight.ui.theme.ApolloColors;
 import com.limelight.ui.theme.ApolloMotion;
+import com.limelight.ui.theme.ThemeColors;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -80,6 +85,11 @@ public class SettingsView extends FrameLayout {
     // Labels set by the screen for titles and options, over the original ones
     private final Map<String, CharSequence> titleOverrides = new HashMap<>();
     private final Map<String, CharSequence> optionOverrides = new HashMap<>();
+    private boolean pageTitleShown = true;
+    // Settings shown without their rule, on a screen that takes care of what they depend on
+    private final Set<String> rulesOff = new HashSet<>();
+    // Where down from the last setting goes, on a screen with something under the page
+    private View exitDown;
     private final LinearLayout categoryList;
     private final LinearLayout content;
     private final LinearLayout rowList;
@@ -103,7 +113,16 @@ public class SettingsView extends FrameLayout {
             bindRows(true);
         }
     };
-    private final SharedPreferences.OnSharedPreferenceChangeListener prefsListener = (prefs, key) -> post(() -> {
+    private final SharedPreferences.OnSharedPreferenceChangeListener prefsListener = (prefs, key) -> {
+        if (!SettingsView.this.singlePage && (ThemeColors.PREF_COLOR.equals(key) || ThemeColors.PREF_BACKGROUND.equals(key))) {
+            reopenCategory = SettingsView.this.selectedCategory;
+            reopenKey = key;
+            reopenCategoryScroll = ((ScrollView) SettingsView.this.categoryList.getParent()).getScrollY();
+        }
+        post(() -> onPrefChanged(prefs, key));
+    };
+
+    private void onPrefChanged(SharedPreferences prefs, String key) {
         // A switch changed elsewhere, like auto resume in the quick settings: keep its preference in step
         Preference pref = screen != null && key != null ? screen.findPreference(key) : null;
         if (pref instanceof TwoStatePreference && prefs.contains(key)) {
@@ -119,7 +138,7 @@ public class SettingsView extends FrameLayout {
             }
         }
         bindRows(true);
-    });
+    }
 
     // What the selected category shows, rebuilt when it changes
     private final List<Row> rows = new ArrayList<>();
@@ -153,7 +172,15 @@ public class SettingsView extends FrameLayout {
         CharSequence shownHint;
         // The gamepad hints of the row; a row turned off by a rule shows "A Info" instead
         Object normalHints;
+        // The theme color: a dot for each color, and the one the D-pad is on
+        List<View> swatches;
+        int swatchCursor;
     }
+
+    // The theme color and the background build the screen again: it reopens on the same category and row
+    private static int reopenCategory = -1;
+    private static String reopenKey;
+    private static int reopenCategoryScroll;
 
     // A row that a rule turns off: A and taps open its explanation instead of changing it
     private static boolean blocked(Row row) {
@@ -285,6 +312,35 @@ public class SettingsView extends FrameLayout {
         return new SettingsView(activity, colors, page, true);
     }
 
+    /** Leaves out the title at the top of a single page, for a screen that shows its own above it. */
+    public void hidePageTitle() {
+        pageTitleShown = false;
+    }
+
+    /** These settings show without their rule: the screen sets what they depend on itself. */
+    public void ignoreRule(String... keys) {
+        rulesOff.addAll(java.util.Arrays.asList(keys));
+    }
+
+    /** Down from the last setting goes to this view, under the page, instead of stopping. */
+    public void setExitDown(View target) {
+        exitDown = target;
+        if (target.getId() == NO_ID) {
+            target.setId(generateViewId());
+        }
+        linkFocus();
+    }
+
+    /** The first setting takes the focus, also when the window is still in touch mode (opened with a gamepad). */
+    public boolean focusFirstRow(boolean fromTouch) {
+        View first = firstFocusableRow();
+        if (first == null) {
+            return false;
+        }
+        ApolloUi.focusByDefault(activity, first);
+        return fromTouch ? first.requestFocusFromTouch() : first.requestFocus();
+    }
+
     public void setTitleOverride(String key, CharSequence title) {
         titleOverrides.put(key, title);
     }
@@ -310,6 +366,7 @@ public class SettingsView extends FrameLayout {
 
         ScrollView categoryScroll = new ScrollView(activity);
         categoryScroll.setVerticalScrollBarEnabled(false);
+        ApolloUi.fadeEdges(categoryScroll);
         categoryScroll.setClipToPadding(false);
         categoryList = new LinearLayout(activity);
         categoryList.setOrientation(LinearLayout.VERTICAL);
@@ -364,6 +421,7 @@ public class SettingsView extends FrameLayout {
             }
         };
         rowScroll.setVerticalScrollBarEnabled(false);
+        ApolloUi.fadeEdges(rowScroll);
         rowScroll.setBackground(ApolloUi.roundRect(colors.surfaceContainerLow, dp(20)));
         rowScroll.setClipToOutline(true);
         rowList = new LinearLayout(activity);
@@ -426,6 +484,14 @@ public class SettingsView extends FrameLayout {
         boolean categoryFocused = categoryList.hasFocus();
 
         buildCategories();
+        String reopenRow = null;
+        if (!singlePage && reopenCategory >= 0) {
+            selectedCategory = reopenCategory;
+            reopenRow = reopenKey;
+            reopenCategory = -1;
+            reopenKey = null;
+            keepCategoryScroll(reopenCategoryScroll);
+        }
         selectedCategory = Math.max(0, Math.min(selectedCategory, shownCategories.size() - 1));
         if (searching()) {
             showSearch(false);
@@ -434,6 +500,15 @@ public class SettingsView extends FrameLayout {
         }
         if (categoryViews.isEmpty()) {
             return;
+        }
+        if (reopenRow != null) {
+            for (Row row : rows) {
+                if (reopenRow.equals(row.pref.getKey())) {
+                    ApolloUi.focusByDefault(activity, row.view);
+                    row.view.requestFocus();
+                    return;
+                }
+            }
         }
         View defaultFocus = categoryViews.get(selectedCategory);
         if (singlePage) {
@@ -461,6 +536,11 @@ public class SettingsView extends FrameLayout {
     public void focusFromGamepad() {
         gamepadFocusWanted = true;
         placeGamepadFocus();
+    }
+
+    /** The selected category on the left, where a gamepad lands; null before the settings are built. */
+    public View selectedCategoryView() {
+        return categoryViews.isEmpty() ? null : categoryViews.get(Math.max(0, selectedCategory));
     }
 
     // Also from setScreen, if the window was active before the settings were built
@@ -932,7 +1012,8 @@ public class SettingsView extends FrameLayout {
                 return true;
             });
             HintRow.set(button, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_open, KeyEvent.KEYCODE_BUTTON_X, R.string.apollo_hint_search,
-                    KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_home, KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings);
+                    KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_home, KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_profiles,
+                    KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings);
             // The D-pad selects a category just by moving on it, like tabs
             button.setOnFocusChangeListener((v, hasFocus) -> {
                 if (hasFocus && (index != selectedCategory || searching())) {
@@ -941,12 +1022,50 @@ public class SettingsView extends FrameLayout {
                     }
                     showCategory(index, true);
                 }
+                if (hasFocus) {
+                    // Coming from the search box to the last category the scroll view may not follow
+                    // (its layout is still being redone for the new category): bring it into view after
+                    v.post(() -> revealCategory(v));
+                }
             });
 
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(40));
             params.bottomMargin = dp(2);
             categoryList.addView(button, params);
             categoryViews.add(button);
+        }
+    }
+
+    // The categories made again stay where they were scrolled, once they have their height
+    private void keepCategoryScroll(int scrollY) {
+        ScrollView scroll = (ScrollView) categoryList.getParent();
+        if (scrollY <= 0) {
+            return;
+        }
+        categoryList.addOnLayoutChangeListener(new OnLayoutChangeListener() {
+            @Override
+            public void onLayoutChange(View v, int left, int top, int right, int bottom,
+                                       int oldLeft, int oldTop, int oldRight, int oldBottom) {
+                if (bottom - top <= 0) {
+                    return;
+                }
+                categoryList.removeOnLayoutChangeListener(this);
+                scroll.scrollTo(0, scrollY);
+            }
+        });
+    }
+
+    private void revealCategory(View category) {
+        if (!category.hasFocus()) {
+            return;
+        }
+        ScrollView scroll = (ScrollView) categoryList.getParent();
+        int top = category.getTop() - dp(4);
+        int bottom = category.getBottom() + categoryList.getPaddingBottom();
+        if (bottom > scroll.getScrollY() + scroll.getHeight()) {
+            scroll.smoothScrollTo(0, bottom - scroll.getHeight());
+        } else if (top < scroll.getScrollY()) {
+            scroll.smoothScrollTo(0, Math.max(0, top));
         }
     }
 
@@ -1046,8 +1165,11 @@ public class SettingsView extends FrameLayout {
             deleteParams.setMargins(0, dp(10), dp(6), dp(8));
             titleRow.addView(deleteProfileButton(), deleteParams);
             rowList.addView(titleRow);
-        } else {
+        } else if (pageTitleShown) {
             rowList.addView(header);
+        } else {
+            // The screen shows the title above the page: only a little room above the first row
+            rowList.addView(new View(getContext()), new LinearLayout.LayoutParams(1, dp(6)));
         }
         if (activeProfile != null && categoryHasProfileSetting(category, false)) {
             // Where the changes go: the profile icon that marks its values, then the profile
@@ -1146,12 +1268,12 @@ public class SettingsView extends FrameLayout {
     }
 
     private void confirmRestore(SettingsLayout.Category category) {
-        new AlertDialog.Builder(activity)
+        GamepadDialogs.attach(new AlertDialog.Builder(activity)
                 .setTitle(getContext().getString(R.string.apollo_settings_restore_title, category.title(getContext())))
                 .setMessage(R.string.apollo_settings_restore_message)
                 .setNegativeButton(R.string.apollo_settings_restore_cancel, null)
                 .setPositiveButton(R.string.apollo_settings_restore_confirm, (dialog, which) -> restore(category))
-                .show();
+                .show());
     }
 
     // Puts the changed settings back the way the original list would set them, change listeners included,
@@ -1381,7 +1503,9 @@ public class SettingsView extends FrameLayout {
             row.label.setText(text);
         }
         row.baseText = row.label.getText();
-        view.addView(row.label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        boolean colorRow = ThemeColors.PREF_COLOR.equals(pref.getKey()) && pref instanceof ListPreference;
+        view.addView(row.label, colorRow ? new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                : new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         if (isActiveProfileSetting(pref)) {
             // Right before the value it marks; it always takes its room, so the control never moves
             row.profileIcon = new ImageView(getContext());
@@ -1393,7 +1517,10 @@ public class SettingsView extends FrameLayout {
             view.addView(row.profileIcon, iconParams);
         }
 
-        if (pref instanceof TwoStatePreference) {
+        if (colorRow) {
+            addColorSwatches(row, (ListPreference) pref);
+        }
+        else if (pref instanceof TwoStatePreference) {
             row.toggle = new ApolloWidgets.SwitchView(getContext());
             row.toggle.setColors(colors.primary, colors.onPrimary, colors.surfaceContainerHighest, colors.outline);
             view.addView(row.toggle);
@@ -1402,6 +1529,7 @@ public class SettingsView extends FrameLayout {
                     showInfo(row);
                 } else {
                     performClick(pref);
+                    UiSounds.play(((TwoStatePreference) pref).isChecked() ? UiSounds.Sound.TOGGLE_ON : UiSounds.Sound.TOGGLE_OFF);
                 }
             });
             HintRow.set(view, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_change, KeyEvent.KEYCODE_BUTTON_B, backHint());
@@ -1430,6 +1558,12 @@ public class SettingsView extends FrameLayout {
             boolean custom = seekBar.isCustomAllowed();
             // Left and right move the slider while its row has the focus
             view.setOnKeyListener((v, keyCode, event) -> {
+                // A row that takes no click would still start its long press (back to the general value)
+                // with A, and Android never cancels it: a short press would reset the slider
+                if (!v.isClickable() && (keyCode == KeyEvent.KEYCODE_BUTTON_A
+                        || keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER)) {
+                    return true;
+                }
                 if (keyCode != KeyEvent.KEYCODE_DPAD_LEFT && keyCode != KeyEvent.KEYCODE_DPAD_RIGHT) {
                     return false;
                 }
@@ -1531,6 +1665,129 @@ public class SettingsView extends FrameLayout {
         rows.add(row);
         rowList.addView(view, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return view;
+    }
+
+    /**
+     * The theme color: under its name a dot for each color, the chosen one bigger and with a check.
+     * A tap picks a color; with a gamepad left and right move a grey veil over the dots and A picks.
+     */
+    private void addColorSwatches(Row row, ListPreference list) {
+        LinearLayout view = (LinearLayout) row.view;
+        view.setOrientation(LinearLayout.VERTICAL);
+        view.setGravity(Gravity.START);
+        view.setPadding(dp(14), dp(4), dp(14), dp(10));
+
+        LinearLayout strip = new LinearLayout(getContext());
+        strip.setOrientation(LinearLayout.HORIZONTAL);
+        CharSequence[] values = list.getEntryValues();
+        row.swatches = new ArrayList<>();
+        for (int i = 0; i < values.length; i++) {
+            int index = i;
+            FrameLayout slot = new FrameLayout(getContext());
+            View veil = new View(getContext());
+            // Clearly lighter than the veil of the row it sits on, which has the focus at the same time
+            veil.setBackground(ApolloUi.roundRect(ApolloColors.blend(colors.surfaceContainerHighest, colors.onSurface, 0.3f), dp(20)));
+            veil.setAlpha(0f);
+            slot.addView(veil, new FrameLayout.LayoutParams(dp(40), dp(40), Gravity.CENTER));
+            ImageView dot = new ImageView(getContext());
+            dot.setBackground(swatch(values[i].toString()));
+            dot.setImageResource(R.drawable.ic_menu_check);
+            dot.setImageTintList(ColorStateList.valueOf(colors.surfaceContainerLow));
+            dot.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            dot.setPadding(dp(5), dp(5), dp(5), dp(5));
+            slot.addView(dot, new FrameLayout.LayoutParams(dp(28), dp(28), Gravity.CENTER));
+            slot.setOnClickListener(v -> pickColor(row, list, index));
+            strip.addView(slot, new LinearLayout.LayoutParams(dp(40), dp(40)));
+            row.swatches.add(slot);
+        }
+        view.addView(strip, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        // The name of the color the veil is on (the chosen one without a gamepad)
+        row.value = ApolloUi.text(getContext(), "", 12, colors.onSurfaceVariant, false);
+        row.value.setPadding(dp(6), dp(2), 0, 0);
+        view.addView(row.value);
+
+        view.setOnKeyListener((v, keyCode, event) -> {
+            if (keyCode != KeyEvent.KEYCODE_DPAD_LEFT && keyCode != KeyEvent.KEYCODE_DPAD_RIGHT) {
+                return false;
+            }
+            if (event.getAction() == KeyEvent.ACTION_DOWN && !blocked(row)) {
+                int cursor = Math.max(0, Math.min(values.length - 1,
+                        row.swatchCursor + (keyCode == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1)));
+                if (cursor != row.swatchCursor) {
+                    UiSounds.play(UiSounds.Sound.MOVE);
+                    row.swatchCursor = cursor;
+                    row.value.setText(list.getEntries()[cursor]);
+                    showSwatches(row, list, true);
+                }
+            }
+            return true;
+        });
+        view.setOnFocusChangeListener((v, hasFocus) -> {
+            // Leaving the row, the veil goes back to the chosen color
+            row.swatchCursor = Math.max(0, list.findIndexOfValue(list.getValue()));
+            row.value.setText(list.getEntries()[row.swatchCursor]);
+            showSwatches(row, list, true);
+        });
+        view.setOnClickListener(v -> {
+            if (blocked(row)) {
+                showInfo(row);
+            } else {
+                pickColor(row, list, row.swatchCursor);
+            }
+        });
+        HintRow.set(view, new HintRow.Hint[]{
+                HintRow.hint(getContext(), ButtonGlyph.DPAD_LEFT_RIGHT, R.string.apollo_hint_choose),
+                HintRow.hint(getContext(), KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_set),
+                HintRow.hint(getContext(), KeyEvent.KEYCODE_BUTTON_B, backHint())});
+    }
+
+    // The dot of a color: its primary color, or the wallpaper colors around the circle
+    private Drawable swatch(String value) {
+        GradientDrawable dot = new GradientDrawable();
+        dot.setShape(GradientDrawable.OVAL);
+        if (ThemeColors.DYNAMIC.equals(value) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            int first = getResources().getColor(android.R.color.system_accent1_300, null);
+            dot.setGradientType(GradientDrawable.SWEEP_GRADIENT);
+            dot.setColors(new int[]{first, getResources().getColor(android.R.color.system_accent2_300, null),
+                    getResources().getColor(android.R.color.system_accent3_300, null), first});
+        } else {
+            TypedArray primary = getContext().obtainStyledAttributes(ThemeColors.overlay(value),
+                    new int[]{com.google.android.material.R.attr.colorPrimary});
+            dot.setColor(primary.getColor(0, colors.primary));
+            primary.recycle();
+        }
+        return dot;
+    }
+
+    private void pickColor(Row row, ListPreference list, int index) {
+        String value = list.getEntryValues()[index].toString();
+        row.swatchCursor = index;
+        if (!value.equals(list.getValue()) && callChangeListener(list, value)) {
+            // The screen is then made again in the new color (ApolloApplication)
+            list.setValue(value);
+        }
+        showSwatches(row, list, true);
+    }
+
+    private void showSwatches(Row row, ListPreference list, boolean animate) {
+        int chosen = list.findIndexOfValue(list.getValue());
+        boolean cursorShown = row.view.hasFocus() && !row.view.isInTouchMode();
+        for (int i = 0; i < row.swatches.size(); i++) {
+            ViewGroup slot = (ViewGroup) row.swatches.get(i);
+            View veil = slot.getChildAt(0);
+            ImageView dot = (ImageView) slot.getChildAt(1);
+            float veilAlpha = cursorShown && i == row.swatchCursor ? 1f : 0f;
+            float scale = i == chosen ? 1.15f : 1f;
+            dot.setImageAlpha(i == chosen ? 255 : 0);
+            if (animate) {
+                veil.animate().alpha(veilAlpha).setDuration(ApolloMotion.SHORT).start();
+                dot.animate().scaleX(scale).scaleY(scale).setDuration(ApolloMotion.SHORT).start();
+            } else {
+                veil.setAlpha(veilAlpha);
+                dot.setScaleX(scale);
+                dot.setScaleY(scale);
+            }
+        }
     }
 
     // "Y Info" and "X Search" go before the last hint of a row, which is always B
@@ -1721,7 +1978,11 @@ public class SettingsView extends FrameLayout {
 
     // Steps per D-pad press: one, then more while the button is held down
     static int sliderSpeed(KeyEvent event) {
-        int repeats = event.getRepeatCount();
+        return sliderSpeed(event.getRepeatCount());
+    }
+
+    /** Steps of a slider per key press, more the longer the key is held: the game menu's sliders do the same. */
+    public static int sliderSpeed(int repeats) {
         return repeats >= 25 ? 10 : repeats >= 8 ? 5 : 1;
     }
 
@@ -1830,7 +2091,8 @@ public class SettingsView extends FrameLayout {
         SharedPreferences prefs = screenPrefs();
         for (Row row : rows) {
             Preference pref = row.pref;
-            row.block = SettingsRules.check(getContext(), screen, pref, labels);
+            row.block = pref.getKey() != null && rulesOff.contains(pref.getKey()) ? null
+                    : SettingsRules.check(getContext(), screen, pref, labels);
             boolean enabled = pref.isEnabled() && !blocked(row);
             // A setting turned off for a known reason stays reachable, so A can tell why
             boolean explained = !enabled && row.block != null;
@@ -1877,7 +2139,8 @@ public class SettingsView extends FrameLayout {
                 // Read from the stored settings: the bitrate is rewritten when the resolution or frame rate change
                 row.sliderValue = prefs.getInt(pref.getKey(), seekBar.getDefaultValue());
                 row.slider.setEnabled(enabled);
-                row.slider.setValue(row.sliderValue);
+                // Moved here it already ticked; moved elsewhere (the quick settings over this screen) it is silent
+                row.slider.followValue(row.sliderValue);
                 showSliderValue(row, seekBar, row.sliderValue);
             }
             else if (pref instanceof ListPreference && !(pref instanceof LanguagePreference)) {
@@ -1888,6 +2151,10 @@ public class SettingsView extends FrameLayout {
                     index = list.findIndexOfValue(com.limelight.binding.input.Shortcuts.NONE);
                 }
                 row.value.setText(index >= 0 ? optionLabel(list, index) : "");
+                if (row.swatches != null) {
+                    row.swatchCursor = Math.max(0, index);
+                    showSwatches(row, list, animate);
+                }
             }
             else if (pref instanceof ListPreference) {
                 CharSequence entry = ((ListPreference) pref).getEntry();
@@ -1951,7 +2218,10 @@ public class SettingsView extends FrameLayout {
         }
         if (first != null) {
             first.setNextFocusUpId(first.getId());
-            last.setNextFocusDownId(last.getId());
+            last.setNextFocusDownId(exitDown != null ? exitDown.getId() : last.getId());
+            if (exitDown != null) {
+                exitDown.setNextFocusUpId(last.getId());
+            }
         }
 
         int count = categoryViews.size();

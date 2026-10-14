@@ -10,7 +10,7 @@
         android:scaleY="0.6667"
         android:translateX="20.667"
         android:translateY="20.667">
-        <path android:pathData="M47.245,18.119 A32,32 0 1,0 81.085,57.599 A26,26 0 1,1 47.245,18.119 Z">
+        <path android:pathData="M39.507,19.769 A32,32 0 1,0 78.270,64.993 A2.5,2.5 0 0,0 75.004,61.557 A26,26 0 0,1 42.403,23.523 A2.5,2.5 0 0,0 39.507,19.769 Z">
             <aapt:attr name="android:fillColor">
                 <gradient
                     android:type="linear"

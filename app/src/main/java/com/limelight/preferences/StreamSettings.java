@@ -54,7 +54,7 @@ import com.limelight.utils.UiHelper;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 
-public class StreamSettings extends Activity {
+public class StreamSettings extends Activity implements SettingsHost {
     /** MoonVibe: edit this profile instead of the general settings (see ProfileEditor). */
     public static final String EXTRA_PROFILE_ID = "ProfileId";
 
@@ -90,7 +90,8 @@ public class StreamSettings extends Activity {
     // HACK for Android 9
     static DisplayCutout displayCutoutP;
 
-    void reloadSettings() {
+    @Override
+    public void reloadSettings() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             Display.Mode mode = getWindowManager().getDefaultDisplay().getMode();
             previousDisplayPixelCount = mode.getPhysicalWidth() * mode.getPhysicalHeight();
@@ -207,7 +208,18 @@ public class StreamSettings extends Activity {
     }
 
 
-    void onPreferencesReady(PreferenceScreen screen) {
+    @Override
+    public ProfileEditor profileEditor() {
+        return profileEditor;
+    }
+
+    @Override
+    public ActiveProfileSettings withProfile() {
+        return withProfile;
+    }
+
+    @Override
+    public void onPreferencesReady(PreferenceScreen screen) {
         ActiveProfileSettings profile = withProfile;
         if (profile != null) {
             profile.setLoading(false);
@@ -301,6 +313,11 @@ public class StreamSettings extends Activity {
                 }
                 if (keyCode == KeyEvent.KEYCODE_BUTTON_B) {
                     ProfileMenu.of(this).dismiss();
+                    return true;
+                }
+                // LB/RB still change tab, as with the quick settings open
+                if (keyCode == KeyEvent.KEYCODE_BUTTON_L1 || keyCode == KeyEvent.KEYCODE_BUTTON_R1) {
+                    topBar.switchTab(keyCode == KeyEvent.KEYCODE_BUTTON_R1 ? 1 : -1);
                     return true;
                 }
                 return super.onKeyDown(keyCode, event);
@@ -398,6 +415,8 @@ public class StreamSettings extends Activity {
 
     // The Home tab leaves straight away, even from inside a category
     private void goHome() {
+        // The menus of the top bar close with the switch
+        ProfileMenu.of(this).dismiss();
         QuickSettingsPanel.of(this).dismiss();
         topBar.markLeaving();
         finish();
@@ -584,7 +603,7 @@ public class StreamSettings extends Activity {
             super.onActivityCreated(savedInstanceState);
 
             // MoonVibe: the settings view draws the preferences built here
-            ((StreamSettings) getActivity()).onPreferencesReady(getPreferenceScreen());
+            ((SettingsHost) getActivity()).onPreferencesReady(getPreferenceScreen());
         }
 
         @Override
@@ -592,12 +611,12 @@ public class StreamSettings extends Activity {
             super.onCreate(savedInstanceState);
 
             // MoonVibe: a profile is edited in a work file of its own (ProfileEditor), with its name and rule
-            ProfileEditor profileEditor = ((StreamSettings) getActivity()).profileEditor;
+            ProfileEditor profileEditor = ((SettingsHost) getActivity()).profileEditor();
             if (profileEditor != null) {
                 getPreferenceManager().setSharedPreferencesName(ProfileEditor.WORK_FILE);
             }
             // With a profile in use, the general settings with its values over them (ActiveProfileSettings)
-            ActiveProfileSettings withProfile = ((StreamSettings) getActivity()).withProfile;
+            ActiveProfileSettings withProfile = ((SettingsHost) getActivity()).withProfile();
             if (profileEditor == null && withProfile != null) {
                 getPreferenceManager().setSharedPreferencesName(ActiveProfileSettings.WORK_FILE);
                 withProfile.setLoading(true);
@@ -903,7 +922,7 @@ public class StreamSettings extends Activity {
                         @Override
                         public void run() {
                             // Ensure the activity is still open when this timeout expires
-                            StreamSettings settingsActivity = (StreamSettings) SettingsFragment.this.getActivity();
+                            SettingsHost settingsActivity = (SettingsHost) SettingsFragment.this.getActivity();
                             if (settingsActivity != null) {
                                 settingsActivity.reloadSettings();
                             }

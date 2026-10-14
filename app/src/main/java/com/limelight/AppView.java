@@ -24,6 +24,7 @@ import com.limelight.ui.apollo.GameCardView;
 import com.limelight.ui.apollo.settings.ProfileMenu;
 import com.limelight.ui.apollo.settings.QuickSettingsPanel;
 import com.limelight.ui.theme.ApolloColors;
+import com.limelight.ui.theme.ApolloMotion;
 import com.limelight.utils.QuickLaunchManager;
 import com.limelight.utils.CacheHelper;
 import com.limelight.utils.Dialog;
@@ -44,6 +45,7 @@ import android.database.DataSetObserver;
 import android.graphics.Bitmap;
 import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -53,6 +55,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -677,6 +680,24 @@ public class AppView extends Activity {
         topBar.setOnProfileClickListener(v -> ProfileMenu.of(this).toggle());
         ((FrameLayout) findViewById(R.id.topBarContainer)).addView(topBar);
 
+        // Back to the Home by touch, a round arrow before the name of the PC like the arrows of the setup;
+        // no focus, a gamepad has B
+        ImageView back = new ImageView(this);
+        back.setImageResource(R.drawable.ic_apollo_arrow_left);
+        back.setImageTintList(ColorStateList.valueOf(colors.onSurface));
+        back.setScaleType(ImageView.ScaleType.CENTER);
+        back.setFocusable(false);
+        back.setContentDescription(getString(R.string.apollo_hint_back));
+        StateListDrawable backFill = new StateListDrawable();
+        backFill.setExitFadeDuration((int) ApolloMotion.MEDIUM);
+        backFill.addState(new int[]{android.R.attr.state_pressed}, ApolloUi.roundRect(colors.surfaceContainerHighest, ApolloUi.dp(this, 20)));
+        backFill.addState(new int[]{}, ApolloUi.roundRect(colors.surfaceContainerHigh, ApolloUi.dp(this, 20)));
+        back.setBackground(backFill);
+        back.setOnClickListener(v -> onBackPressed());
+        LinearLayout.LayoutParams backParams = new LinearLayout.LayoutParams(ApolloUi.dp(this, 40), ApolloUi.dp(this, 40));
+        backParams.setMarginEnd(ApolloUi.dp(this, 12));
+        ((ViewGroup) findViewById(R.id.appListText).getParent()).addView(back, 0, backParams);
+
         findViewById(R.id.libraryStatus).setBackground(ApolloUi.roundRect(colors.surfaceContainerHigh, ApolloUi.dp(this, 14)));
         findViewById(R.id.libraryStatusDot).setBackground(ApolloUi.roundRect(COLOR_ONLINE, ApolloUi.dp(this, 4)));
         ((TextView) findViewById(R.id.libraryStatusText)).setText(showHiddenApps
@@ -693,6 +714,7 @@ public class AppView extends Activity {
                 HintRow.hint(this, KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings));
 
         libraryGrid = findViewById(R.id.libraryGrid);
+        ApolloUi.fadeEdges(libraryGrid);
         int side = ApolloUi.dp(this, 22) - gridRoom(this);
         libraryGrid.setPadding(side, ApolloUi.dp(this, 10), side, ApolloUi.dp(this, 16));
         libraryGrid.setClipToPadding(false);
@@ -807,7 +829,7 @@ public class AppView extends Activity {
             holder.card.setAlpha(app.isHidden ? 0.4f : 1f);
             HintRow.set(holder.card, KeyEvent.KEYCODE_BUTTON_A, app.isRunning ? R.string.apollo_hint_resume : R.string.apollo_hint_start,
                     KeyEvent.KEYCODE_BUTTON_Y, R.string.apollo_hint_options, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_back,
-                    KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings);
+                    KeyEvent.KEYCODE_BUTTON_SELECT, R.string.apollo_profiles, KeyEvent.KEYCODE_BUTTON_START, R.string.apollo_hint_quick_settings);
             appGridAdapter.populateCover(app, holder.card.getCover(), holder.card.getPlaceholderSignal());
 
             // A gamepad starts from the first game

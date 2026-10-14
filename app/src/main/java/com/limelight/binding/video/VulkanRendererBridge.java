@@ -153,6 +153,11 @@ public class VulkanRendererBridge {
         return handle != 0 ? nativeTakePresentedFrames(handle) : 0;
     }
 
+    /** Time PyroWave frames took from submission until the GPU finished decoding them, since the last call */
+    public long takePyrowaveDecodeNs() {
+        return handle != 0 ? nativeTakePyrowaveDecodeNs(handle) : 0;
+    }
+
     /** One line for the performance overlay */
     public String getRendererText() {
         return handle != 0 ? nativeGetRendererText(handle) : null;
@@ -204,6 +209,7 @@ public class VulkanRendererBridge {
     private static native void nativeSetHdrMode(long handle, boolean enabled, byte[] hdrMetadata);
     private static native void nativeSetSharpening(long handle, float strength, float split);
     private static native int nativeTakePresentedFrames(long handle);
+    private static native long nativeTakePyrowaveDecodeNs(long handle);
     private static native String nativeGetRendererText(long handle);
     private static native String nativeGetPacingText(long handle);
     private static native void nativeStop(long handle);

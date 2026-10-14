@@ -158,8 +158,11 @@ final class SettingsLayout {
                 k("checkbox_auto_resume_stream"), k("list_leave_app"), k("checkbox_background_audio"),
                 k("checkbox_enable_sops")));
         categories.add(new Category(R.string.apollo_settings_app, R.drawable.ic_apollo_info,
+                k("list_theme_color"), k("list_app_background"), k("checkbox_menu_music"), k("seekbar_menu_music_volume"),
+                k("checkbox_ui_sounds"), k("seekbar_ui_sounds_volume"),
+                k("checkbox_tint_app_icon"),
                 k("checkbox_fullscreen_ui"), k("list_languages"), k("checkbox_small_icon_mode"),
-                new Item(WebLauncherPreference.class)));
+                k("setup_wizard"), new Item(WebLauncherPreference.class)));
         return categories;
     }
 
@@ -275,6 +278,9 @@ final class SettingsLayout {
         INFO.put("checkbox_enable_sops", new Info(R.string.apollo_info_sops));
         INFO.put("checkbox_fullscreen_ui", new Info(R.string.apollo_info_fullscreen_ui));
         INFO.put("checkbox_small_icon_mode", new Info(R.string.apollo_info_small_icon_mode));
+        INFO.put("checkbox_tint_app_icon", new Info(R.string.apollo_info_tint_app_icon));
+        INFO.put("checkbox_menu_music", new Info(R.string.apollo_info_menu_music));
+        INFO.put("checkbox_ui_sounds", new Info(R.string.apollo_info_ui_sounds));
     }
 
     /** Shorter labels for a few options, by preference key and option value. */

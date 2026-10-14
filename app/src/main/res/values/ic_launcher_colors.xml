@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Before Android 8 the launcher icon has no colors: every entry shows the blue one -->
+    <item name="ic_launcher_purple" type="mipmap">@mipmap/ic_launcher</item>
+    <item name="ic_launcher_pink" type="mipmap">@mipmap/ic_launcher</item>
+    <item name="ic_launcher_red" type="mipmap">@mipmap/ic_launcher</item>
+    <item name="ic_launcher_orange" type="mipmap">@mipmap/ic_launcher</item>
+    <item name="ic_launcher_yellow" type="mipmap">@mipmap/ic_launcher</item>
+    <item name="ic_launcher_green" type="mipmap">@mipmap/ic_launcher</item>
+    <item name="ic_launcher_teal" type="mipmap">@mipmap/ic_launcher</item>
+    <item name="ic_launcher_gray" type="mipmap">@mipmap/ic_launcher</item>
+</resources>

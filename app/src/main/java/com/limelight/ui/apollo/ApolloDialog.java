@@ -41,6 +41,7 @@ public class ApolloDialog {
         this.colors = ApolloColors.dark(context);
         dialog = new Dialog(context);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        UiSounds.attach(dialog.getWindow());
 
         card = new LinearLayout(context);
         card.setOrientation(LinearLayout.VERTICAL);
@@ -72,6 +73,7 @@ public class ApolloDialog {
     }
 
     public void show() {
+        UiSounds.play(UiSounds.Sound.OPEN);
         card.setAlpha(0f);
         card.setScaleX(0.94f);
         card.setScaleY(0.94f);
@@ -142,6 +144,7 @@ public class ApolloDialog {
         params.setMarginStart(dp(8));
         bar.addView(confirmButton, params);
         card.addView(bar);
+        GamepadDialogs.bind(dialog, confirmButton, cancelButton);
     }
 
     /** One choice among options, with a check on the current one; it closes when one is picked. */
@@ -216,6 +219,7 @@ public class ApolloDialog {
             }
         };
         scroll.setVerticalScrollBarEnabled(false);
+        ApolloUi.fadeEdges(scroll);
         scroll.addView(content);
         return scroll;
     }

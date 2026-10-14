@@ -42,6 +42,9 @@ import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509KeyManager;
 import javax.net.ssl.X509TrustManager;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 import org.xmlpull.v1.XmlPullParserFactory;
@@ -410,12 +413,36 @@ public class NvHTTP {
     }
 
     private HttpUrl getCompleteUrl(HttpUrl baseUrl, String path, String query) {
-        return baseUrl.newBuilder()
-                .addPathSegment(path)
+        HttpUrl.Builder builder = baseUrl.newBuilder()
+                // Segments, so a path like api/hardware-metrics keeps its slash
+                .addPathSegments(path)
                 .query(query)
                 .addQueryParameter("uniqueid", uniqueId)
-                .addQueryParameter("uuid", UUID.randomUUID().toString())
-                .build();
+                .addQueryParameter("uuid", UUID.randomUUID().toString());
+        if (path.equals("pair")) {
+            // Encoded once here: encoded in the query too, a space would reach the host as a plus sign
+            builder.addQueryParameter("devicename", getDeviceName());
+        }
+        return builder.build();
+    }
+
+    /**
+     * The name the host lists this device under: its model. Rubylight takes only letters, numbers, spaces and
+     * - _ . ' (1 to 128 of them), so anything else is left out.
+     */
+    static String getDeviceName() {
+        String model = Build.MODEL != null ? Build.MODEL : "";
+        StringBuilder name = new StringBuilder();
+        model.codePoints().forEach(c -> {
+            if (Character.isLetterOrDigit(c) || c == ' ' || c == '-' || c == '_' || c == '.' || c == '\'') {
+                name.appendCodePoint(c);
+            }
+        });
+        String trimmed = name.toString().trim().replaceAll(" +", " ");
+        if (trimmed.isEmpty()) {
+            return "MoonVibe";
+        }
+        return trimmed.length() > 64 ? trimmed.substring(0, 64).trim() : trimmed;
     }
 
     private ResponseBody openHttpConnection(OkHttpClient client, HttpUrl baseUrl, String path) throws IOException {
@@ -705,12 +732,12 @@ public class NvHTTP {
 
     String executePairingCommand(String additionalArguments, boolean enableReadTimeout) throws HostHttpResponseException, IOException {
         return openHttpConnectionToString(enableReadTimeout ? httpClientLongConnectTimeout : httpClientLongConnectNoReadTimeout,
-                baseUrlHttp, "pair", "devicename=roth&updateState=1&" + additionalArguments);
+                baseUrlHttp, "pair", "updateState=1&" + additionalArguments);
     }
 
     String executePairingChallenge() throws HostHttpResponseException, IOException {
         return openHttpConnectionToString(httpClientLongConnectTimeout, getHttpsUrl(true),
-                "pair", "devicename=roth&updateState=1&phrase=pairchallenge");
+                "pair", "updateState=1&phrase=pairchallenge");
     }
 
     public void unpair() throws IOException {
@@ -818,5 +845,61 @@ public class NvHTTP {
         }
 
         return true;
+    }
+
+    // ---- Extras of some hosts, asked for during a stream ----
+
+    /**
+     * Whether the host can change the bitrate of a stream while it runs (Vibepollo, Rubylight): their
+     * capabilities list it, the API of Foundation Sunshine.
+     */
+    public boolean supportsRuntimeBitrate() throws IOException {
+        try {
+            JSONObject capabilities = new JSONObject(openHttpConnectionToString(httpClientShortConnectTimeout,
+                    getHttpsUrl(true), "api/abr/capabilities"));
+            JSONArray features = capabilities.optJSONArray("features");
+            if (features != null) {
+                for (int i = 0; i < features.length(); i++) {
+                    if ("runtime_bitrate".equals(features.optString(i))) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        } catch (JSONException | HostHttpResponseException | FileNotFoundException e) {
+            // Sunshine and Apollo don't know the path
+            return false;
+        }
+    }
+
+    /** Sets the bitrate of this client's stream and returns the one the host applied, in kbps. */
+    public int setStreamBitrate(int kbps) throws IOException, XmlPullParserException {
+        String response = openHttpConnectionToString(httpClientShortConnectTimeout, getHttpsUrl(true),
+                "bitrate", "bitrate=" + kbps);
+        int applied = Integer.parseInt(getXmlString(response, "bitrate", true).trim());
+        if (applied <= 0) {
+            throw new IOException("The host did not apply the bitrate");
+        }
+        return applied;
+    }
+
+    /** Version of the hardware readings the host sends this client (Rubylight), 0 for none. */
+    public static int getHardwareMetricsVersion(String serverInfo) throws XmlPullParserException, IOException {
+        return "1".equals(getXmlString(serverInfo, "HardwareMetricsVersion", false)) ? 1 : 0;
+    }
+
+    /** The encoder bitrate Rubylight chose for this client's stream when it started, in kbps; 0 on other hosts. */
+    public static int getInitialEncoderBitrateKbps(String serverInfo) throws XmlPullParserException, IOException {
+        String value = getXmlString(serverInfo, "RustHostInitialEncoderBitrateKbps", false);
+        try {
+            return value != null ? Math.max(0, Integer.parseInt(value.trim())) : 0;
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /** The host's CPU and GPU readings, as the JSON it sends. Only during this client's video stream. */
+    public String getHardwareMetrics() throws IOException {
+        return openHttpConnectionToString(httpClientShortConnectTimeout, getHttpsUrl(true), "api/hardware-metrics");
     }
 }

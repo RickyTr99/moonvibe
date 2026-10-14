@@ -3,8 +3,10 @@ package com.limelight.ui.apollo.settings;
 import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.os.Build;
 import android.preference.PreferenceManager;
 import android.text.TextUtils;
@@ -27,9 +29,12 @@ import com.limelight.R;
 import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.profiles.Profiles;
 import com.limelight.ui.apollo.ApolloUi;
+import com.limelight.ui.apollo.UiSounds;
+import com.limelight.ui.apollo.ValuePopup;
 import com.limelight.ui.apollo.ScreenLayer;
 import com.limelight.ui.apollo.hints.ButtonGlyph;
 import com.limelight.ui.apollo.hints.HintRow;
+import com.limelight.ui.apollo.hints.InputMode;
 import com.limelight.ui.apollo.stats.StatsPrefs;
 import com.limelight.ui.theme.ApolloColors;
 import com.limelight.ui.theme.ApolloMotion;
@@ -71,6 +76,8 @@ public class QuickSettingsPanel extends FrameLayout {
     private TextView statsValue;
     private SliderView bitrateSlider;
     private TextView resolutionValue, fpsValue, bitrateValue, codecValue;
+    // In an illustration of the app: the top bar in its screen, under whose status the panel opens
+    private final com.limelight.ui.apollo.ApolloTopBar illustrationBar;
 
     // The panel of the activity, added the first time over the whole window: the content area stops
     // under the status bar zone, which the dimming has to cover too
@@ -81,13 +88,24 @@ public class QuickSettingsPanel extends FrameLayout {
                 return (QuickSettingsPanel) content.getChildAt(i);
             }
         }
-        QuickSettingsPanel panel = new QuickSettingsPanel(activity);
+        QuickSettingsPanel panel = new QuickSettingsPanel(activity, null);
         content.addView(panel, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         return panel;
     }
 
-    private QuickSettingsPanel(Context context) {
+    /**
+     * The panel inside an illustration of the app: over its screen, under the status of the given top bar.
+     * It shows the settings in use; opening and closing it leaves the window's focus and back alone.
+     */
+    public static QuickSettingsPanel illustration(ViewGroup screen, com.limelight.ui.apollo.ApolloTopBar bar) {
+        QuickSettingsPanel panel = new QuickSettingsPanel(screen.getContext(), bar);
+        screen.addView(panel, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        return panel;
+    }
+
+    private QuickSettingsPanel(Context context, com.limelight.ui.apollo.ApolloTopBar illustrationBar) {
         super(context);
+        this.illustrationBar = illustrationBar;
         colors = ApolloColors.dark(context);
         // The settings of the profile in use, whichever it is at each read and write
         prefs = Profiles.live(context);
@@ -109,6 +127,7 @@ public class QuickSettingsPanel extends FrameLayout {
         // Shrinks to fit a short screen, then scrolls
         ScrollView scroll = new ScrollView(context);
         scroll.setVerticalScrollBarEnabled(false);
+        ApolloUi.fadeEdges(scroll);
         panel.addView(scroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
         list = new LinearLayout(context);
         list.setOrientation(LinearLayout.VERTICAL);
@@ -123,6 +142,9 @@ public class QuickSettingsPanel extends FrameLayout {
         panel.addView(hints, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(30)));
         // The whole overlay, so the options menu over the panel shows its own hints here
         hints.setScope(this);
+        // Opened by touch with a gamepad connected, before the focus is on a row
+        hints.setFallback(HintRow.hint(context, KeyEvent.KEYCODE_BUTTON_A, R.string.apollo_hint_open),
+                HintRow.hint(context, KeyEvent.KEYCODE_BUTTON_B, R.string.apollo_hint_close));
         buildRows();
     }
 
@@ -247,6 +269,8 @@ public class QuickSettingsPanel extends FrameLayout {
         row.setMinimumHeight(dp(46));
         row.setPadding(dp(14), 0, dp(14), 0);
         row.setFocusable(true);
+        // An illustration moves the focus itself, also while the window is in touch mode
+        row.setFocusableInTouchMode(illustrationBar != null);
         row.setClickable(true);
         // The panel is surfaceContainerLow like the settings, so its option menus (surfaceContainerHigh) stand out
         row.setBackground(ApolloUi.stateLayer(colors.surfaceContainerHigh, Color.TRANSPARENT, dp(ApolloUi.ROW_RADIUS_DP)));
@@ -406,8 +430,21 @@ public class QuickSettingsPanel extends FrameLayout {
                 hasInsets = true;
             }
         }
-        choices.add(nativeName(hasInsets ? R.string.resolution_prefix_native_fullscreen : R.string.resolution_prefix_native,
-                width, height), width + "x" + height, true);
+        int nativePrefix = hasInsets ? R.string.resolution_prefix_native_fullscreen : R.string.resolution_prefix_native;
+        choices.add(nativeName(nativePrefix, width, height), width + "x" + height, true);
+
+        // Every mode the screen supports, like the settings (e.g. WQHD+/FHD+/HD+ on Samsung phones)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            boolean isTv = getContext().getPackageManager().hasSystemFeature(PackageManager.FEATURE_TELEVISION);
+            for (Display.Mode mode : display.getSupportedModes()) {
+                int modeWidth = Math.max(mode.getPhysicalWidth(), mode.getPhysicalHeight());
+                int modeHeight = Math.min(mode.getPhysicalWidth(), mode.getPhysicalHeight());
+                // TVs report odd modes: the settings only trust them above 4K
+                if (!isTv || modeWidth > 3840 || modeHeight > 2160) {
+                    choices.add(nativeName(nativePrefix, modeWidth, modeHeight), modeWidth + "x" + modeHeight, true);
+                }
+            }
+        }
         return choices;
     }
 
@@ -468,14 +505,22 @@ public class QuickSettingsPanel extends FrameLayout {
     // --- Show and hide
 
     private View anchor() {
-        return ((Activity) getContext()).findViewById(R.id.apollo_quick_settings_anchor);
+        return illustrationBar != null ? illustrationBar.getQuickSettingsButton()
+                : ((Activity) getContext()).findViewById(R.id.apollo_quick_settings_anchor);
     }
 
     // Right under the status in the top bar, its right edges lined up
     private void placeUnderAnchor() {
         int top = dp(56), right = dp(16);
         View anchor = anchor();
-        if (anchor != null && anchor.isShown()) {
+        if (illustrationBar != null) {
+            // From the layout, not the window: the screen of an illustration is drawn scaled down
+            View frame = (View) getParent();
+            Rect bounds = new Rect(0, 0, anchor.getWidth(), anchor.getHeight());
+            ((ViewGroup) frame).offsetDescendantRectToMyCoords(anchor, bounds);
+            top = bounds.bottom + dp(6);
+            right = Math.max(dp(8), frame.getWidth() - bounds.right);
+        } else if (anchor != null && anchor.isShown()) {
             // Measured against the content frame: this panel may not be laid out yet
             View frame = (View) getParent();
             int[] anchorLocation = new int[2];
@@ -499,6 +544,11 @@ public class QuickSettingsPanel extends FrameLayout {
         }
     }
 
+    /** The card of the panel, for an illustration that frames it. */
+    public View getPanel() {
+        return panel;
+    }
+
     public boolean isShowing() {
         return showing;
     }
@@ -515,13 +565,18 @@ public class QuickSettingsPanel extends FrameLayout {
         if (showing) {
             return;
         }
-        ProfileMenu.of((Activity) getContext()).dismiss();
-        bind(false);
         Activity activity = (Activity) getContext();
-        focusBeforeShow = activity.getCurrentFocus();
+        if (illustrationBar == null) {
+            UiSounds.play(UiSounds.Sound.OPEN);
+            ProfileMenu.of(activity).dismiss();
+        }
+        bind(false);
+        focusBeforeShow = illustrationBar != null ? ((View) getParent()).findFocus() : activity.getCurrentFocus();
         showing = true;
         // The D-pad stays in the panel and its menus, never reaching the screen behind
-        ScreenLayer.blockApp(this, true);
+        if (illustrationBar == null) {
+            ScreenLayer.blockApp(this, true);
+        }
         bringToFront();
         placeUnderAnchor();
         setVisibility(VISIBLE);
@@ -544,12 +599,21 @@ public class QuickSettingsPanel extends FrameLayout {
         // A gamepad lands in the panel, also when it was opened by touch; the focus is taken once the
         // panel is laid out, a request made before that may be dropped
         View first = rows.get(0);
+        if (illustrationBar != null) {
+            post(() -> {
+                if (showing) {
+                    first.requestFocus();
+                }
+            });
+            return;
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             first.setFocusedByDefault(true);
         }
         post(() -> {
-            if (showing && !first.isInTouchMode()) {
-                first.requestFocus();
+            if (showing && (!first.isInTouchMode() || InputMode.isGamepad())) {
+                // Opened with Select or Start, which leave the window in touch mode
+                first.requestFocusFromTouch();
             }
         });
 
@@ -574,7 +638,7 @@ public class QuickSettingsPanel extends FrameLayout {
             backCallback = null;
         }
         setAnchorOpen(false);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && illustrationBar == null) {
             // The screen's own default focus takes over again
             rows.get(0).setFocusedByDefault(false);
         }
@@ -589,7 +653,9 @@ public class QuickSettingsPanel extends FrameLayout {
         scrim.animate().alpha(0)
                 .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
 
-        ScreenLayer.blockApp(this, false);
+        if (illustrationBar == null) {
+            ScreenLayer.blockApp(this, false);
+        }
         if (focusBeforeShow != null && focusBeforeShow.isAttachedToWindow()) {
             focusBeforeShow.requestFocus();
         }

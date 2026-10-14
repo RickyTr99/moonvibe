@@ -121,6 +121,10 @@ public:
     // Frames presented since the last call
     uint32_t takePresentedFrames() { return presentedFrames_.exchange(0); }
 
+    // Time PyroWave frames took from submission until the GPU finished decoding them,
+    // summed since the last call
+    int64_t takePyrowaveDecodeNs() { return pyrowaveDecodeNs_.exchange(0); }
+
     // For the performance overlay: what the renderer outputs, which only changes with HDR, and
     // its pacing numbers as a headline (the buffer) and details (lock state, skipped frames),
     // separated by a newline. Either part may be empty.
@@ -400,6 +404,7 @@ private:
     std::atomic<float> sharpenSplit_ {0.0f};
 
     std::atomic<uint32_t> presentedFrames_ {0};
+    std::atomic<int64_t> pyrowaveDecodeNs_ {0};
 };
 
 }  // namespace vkr

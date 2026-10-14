@@ -5,8 +5,8 @@ import java.util.ArrayList;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
-import android.widget.Button;
 
+import com.limelight.ui.apollo.GamepadDialogs;
 import com.limelight.R;
 
 public class Dialog implements Runnable {
@@ -92,21 +92,19 @@ public class Dialog implements Runnable {
                 HelpLauncher.launchTroubleshooting(activity);
             }
         });
-        alert.setOnShowListener(new DialogInterface.OnShowListener(){
-
-            @Override
-            public void onShow(DialogInterface dialog) {
-                // Set focus to the OK button by default
-                Button button = alert.getButton(AlertDialog.BUTTON_POSITIVE);
-                button.setFocusable(true);
-                button.setFocusableInTouchMode(true);
-                button.requestFocus();
+        // B of a gamepad closes it as OK does (A is OK, Y Help: GamepadDialogs)
+        alert.setOnCancelListener(dialog -> {
+            synchronized (rundownDialogs) {
+                rundownDialogs.remove(Dialog.this);
             }
+
+            runOnDismiss.run();
         });
 
         synchronized (rundownDialogs) {
             rundownDialogs.add(this);
             alert.show();
+            GamepadDialogs.attach(alert);
         }
     }
 

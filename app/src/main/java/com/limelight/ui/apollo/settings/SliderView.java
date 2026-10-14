@@ -8,6 +8,7 @@ import android.graphics.Typeface;
 import android.view.MotionEvent;
 import android.view.View;
 
+import com.limelight.ui.apollo.UiSounds;
 import com.limelight.ui.theme.ApolloColors;
 
 /**
@@ -38,6 +39,8 @@ public class SliderView extends View {
     private Listener listener;
     private String stickLetter;
     private boolean overRange;
+    private boolean valueSet;
+    private boolean ticks = true;
 
     public SliderView(Context context, ApolloColors colors) {
         super(context);
@@ -59,8 +62,28 @@ public class SliderView extends View {
     }
 
     public void setValue(int value) {
-        this.value = Math.max(min, Math.min(max, value));
+        setValue(value, true);
+    }
+
+    /** A value changed somewhere else (another panel over this one), followed here without its tick. */
+    public void followValue(int value) {
+        setValue(value, false);
+    }
+
+    private void setValue(int value, boolean tick) {
+        int newValue = Math.max(min, Math.min(max, value));
+        // A tick when it moves on screen, not when it is first set
+        if (tick && ticks && valueSet && newValue != this.value && isShown()) {
+            UiSounds.tick((newValue - min) / (float) (max - min));
+        }
+        valueSet = true;
+        this.value = newValue;
         invalidate();
+    }
+
+    /** Without the tick when the value moves (the game menu). */
+    public void setTicks(boolean ticks) {
+        this.ticks = ticks;
     }
 
     public void setListener(Listener listener) {

@@ -2,6 +2,8 @@
 <resources>
     <!-- Tag with the gamepad hints of a focusable view -->
     <item name="apollo_hints" type="id" />
+    <!-- On a group whose focus gives no hints to the rows around it (an illustration of a screen) -->
+    <item name="apollo_hints_ignored" type="id" />
     <!-- The status pill of the top bar, which opens the quick settings under itself -->
     <item name="apollo_quick_settings_anchor" type="id" />
     <item name="apollo_profile_anchor" type="id" />

@@ -1,4 +1,4 @@
-package com.limelight.ui.apollo.settings;
+package com.limelight.ui.apollo;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -30,8 +30,7 @@ import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
 
 import com.limelight.R;
-import com.limelight.ui.apollo.ApolloUi;
-import com.limelight.ui.apollo.ScreenLayer;
+import com.limelight.ui.apollo.settings.SliderView;
 import com.limelight.ui.apollo.hints.ButtonGlyph;
 import com.limelight.ui.apollo.hints.HintRow;
 import com.limelight.ui.apollo.hints.InputMode;
@@ -47,7 +46,7 @@ import java.util.function.IntConsumer;
  * (LB and RB), a row of shortcuts (left and right), the number itself for the keyboard (X), A to set it.
  * B, back or a tap outside close it without a change. The bumpers show only with a gamepad connected.
  */
-class ValuePopup {
+public class ValuePopup {
     private static final int WIDTH_DP = 480;
     // The number field holds up to this many digits
     private static final int MAX_DIGITS = 4;
@@ -74,6 +73,8 @@ class ValuePopup {
     private final List<View> bumpers = new ArrayList<>();
     // Set while the field is written to from here, so its watcher leaves the value alone
     private boolean writingField;
+    // A was pressed down while the popup was open
+    private boolean confirmPressed;
 
     private final InputManager.InputDeviceListener deviceListener = new InputManager.InputDeviceListener() {
         @Override
@@ -92,7 +93,7 @@ class ValuePopup {
         }
     };
 
-    ValuePopup(FrameLayout host, ViewGroup content, ApolloColors colors) {
+    public ValuePopup(FrameLayout host, ViewGroup content, ApolloColors colors) {
         this.host = host;
         this.content = content;
         this.colors = colors;
@@ -106,7 +107,7 @@ class ValuePopup {
         return ApolloUi.dp(context(), value);
     }
 
-    boolean isShowing() {
+    public boolean isShowing() {
         return scrim != null;
     }
 
@@ -115,9 +116,10 @@ class ValuePopup {
      * @param sliderMax where the slider ends: above it the value shows in red
      * @param shortcuts values in the setting's units
      */
-    void show(View anchor, CharSequence title, String suffix, int value, int min, int sliderMax, int unit,
+    public void show(View anchor, CharSequence title, String suffix, int value, int min, int sliderMax, int unit,
               int[] shortcuts, IntConsumer onSet) {
         dismiss(false);
+        UiSounds.play(UiSounds.Sound.OPEN);
         this.anchor = anchor;
         this.value = value;
         this.min = min;
@@ -125,6 +127,7 @@ class ValuePopup {
         this.unit = Math.max(1, unit);
         this.shortcuts = shortcuts;
         this.onSet = onSet;
+        confirmPressed = false;
         shortcutViews.clear();
         bumpers.clear();
         content.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
@@ -485,6 +488,26 @@ class ValuePopup {
 
     // --- Keys
 
+    /**
+     * For a screen that hands its keys on itself rather than through the focus (the game menu): every key
+     * goes to the popup while it is open, B and back close it.
+     */
+    public boolean handleKey(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_BUTTON_B || keyCode == KeyEvent.KEYCODE_BACK
+                || keyCode == KeyEvent.KEYCODE_ESCAPE) {
+            if (event.getAction() == KeyEvent.ACTION_UP) {
+                back();
+            }
+            return true;
+        }
+        if (keyboardOpen()) {
+            // Typing goes to the field
+            return false;
+        }
+        onKey(keyCode, event);
+        return true;
+    }
+
     private boolean onKey(int keyCode, KeyEvent event) {
         boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
         switch (keyCode) {
@@ -511,7 +534,10 @@ class ValuePopup {
             case KeyEvent.KEYCODE_BUTTON_A:
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
-                if (event.getAction() == KeyEvent.ACTION_UP) {
+                // Only a press made in here: the release of the A that opened the popup is not one
+                if (down) {
+                    confirmPressed = true;
+                } else if (event.getAction() == KeyEvent.ACTION_UP && confirmPressed) {
                     confirm();
                 }
                 return true;
@@ -532,7 +558,7 @@ class ValuePopup {
     }
 
     /** @return whether the popup was open */
-    boolean dismiss(boolean animate) {
+    public boolean dismiss(boolean animate) {
         if (scrim == null) {
             return false;
         }
@@ -564,7 +590,7 @@ class ValuePopup {
     }
 
     /** B of a gamepad or back: closes the keyboard first, then the popup. */
-    boolean back() {
+    public boolean back() {
         if (keyboardOpen()) {
             closeKeyboard();
             return true;

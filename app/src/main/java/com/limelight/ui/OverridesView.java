@@ -15,6 +15,7 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.limelight.ui.apollo.GamepadDialogs;
 import com.limelight.R;
 
 public class OverridesView {
@@ -319,7 +320,7 @@ public class OverridesView {
             }
         });
 
-        builder.show();
+        GamepadDialogs.attach(builder.show());
     }
 
     /**

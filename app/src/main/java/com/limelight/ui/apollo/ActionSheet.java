@@ -9,6 +9,7 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -103,6 +104,7 @@ public class ActionSheet extends FrameLayout {
 
         ScrollView scroll = new ScrollView(context);
         scroll.setVerticalScrollBarEnabled(false);
+        ApolloUi.fadeEdges(scroll);
         panel.addView(scroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
 
         list = new LinearLayout(context);
@@ -128,6 +130,7 @@ public class ActionSheet extends FrameLayout {
         title.setText(titleText);
         subtitle.setText(subtitleText);
         subtitle.setVisibility(subtitleText == null || subtitleText.isEmpty() ? GONE : VISIBLE);
+        UiSounds.play(UiSounds.Sound.OPEN);
 
         list.removeAllViews();
         List<View> rows = new ArrayList<>();
@@ -173,8 +176,21 @@ public class ActionSheet extends FrameLayout {
         scrim.animate().alpha(1)
                 .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.STANDARD).start();
 
-        if (!rows.isEmpty()) {
-            rows.get(0).requestFocus();
+        firstRow = rows.isEmpty() ? null : rows.get(0);
+        if (firstRow != null) {
+            firstRow.requestFocus();
+        }
+        getViewTreeObserver().addOnTouchModeChangeListener(touchModeListener);
+    }
+
+    // Opened with a touch the rows can't take the focus: the first gamepad key leaves touch mode and Android
+    // gives the focus back to the view behind the sheet, so it comes to the first row instead
+    private View firstRow;
+    private final ViewTreeObserver.OnTouchModeChangeListener touchModeListener = this::onTouchModeChanged;
+
+    private void onTouchModeChanged(boolean inTouchMode) {
+        if (!inTouchMode && showing && firstRow != null && panel.findFocus() == null) {
+            firstRow.requestFocus();
         }
     }
 
@@ -184,6 +200,8 @@ public class ActionSheet extends FrameLayout {
             return false;
         }
         showing = false;
+        getViewTreeObserver().removeOnTouchModeChangeListener(touchModeListener);
+        firstRow = null;
         panel.animate().translationX(panel.getWidth())
                 .setDuration(ApolloMotion.MEDIUM).setInterpolator(ApolloMotion.EMPHASIZED_ACCELERATE)
                 .withEndAction(() -> {

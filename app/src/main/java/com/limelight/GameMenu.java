@@ -42,6 +42,13 @@ public class GameMenu implements GameMenuView.Listener {
     // The Windows key alone: the Start menu
     private static final KeyCombination START_MENU = new KeyCombination(KeyEvent.KEYCODE_META_LEFT);
 
+    // The bitrate during the stream: the hosts take up to 500 Mbps while it runs. Steps as in the settings,
+    // 1 Mbps and faster while held
+    private static final int BITRATE_MIN_MBPS = 1;
+    private static final int BITRATE_MAX_MBPS = 500;
+    private static final int BITRATE_STEP_MBPS = 1;
+    private static final int[] BITRATE_SHORTCUTS_MBPS = {50, 100, 150, 300, 500};
+
     private final Game game;
     private final GameMenuView view;
     private final CustomCommandsManager commandsManager;
@@ -78,6 +85,16 @@ public class GameMenu implements GameMenuView.Listener {
 
     public void refresh() {
         view.refresh();
+    }
+
+    /** The values of the sliders again, without rebuilding the rows. */
+    public void refreshValues() {
+        view.refreshValues();
+    }
+
+    /** Back closes the popup over the menu first: whether there was one. */
+    public boolean dismissPopup() {
+        return view.dismissPopup();
     }
 
     public boolean dispatchKeyEvent(KeyEvent event) {
@@ -208,6 +225,25 @@ public class GameMenu implements GameMenuView.Listener {
 
     private List<Item> buildInputItems() {
         List<Item> items = new ArrayList<>();
+
+        // The bitrate for this stream, on the hosts that change it while it runs. A tap or A types it in.
+        if (game.canChangeStreamBitrate()) {
+            items.add(Item.header(getString(R.string.game_menu_section_stream)));
+            items.add(Item.slider(R.drawable.ic_apollo_cat_speed, getString(R.string.game_menu_bitrate),
+                    BITRATE_MIN_MBPS, BITRATE_MAX_MBPS, BITRATE_STEP_MBPS,
+                    " " + getString(R.string.suffix_seekbar_bitrate_mbps), new GameMenuView.QuickSlider.Value() {
+                        @Override
+                        public int get() {
+                            return game.getStreamBitrateMbps();
+                        }
+
+                        @Override
+                        public void set(int value) {
+                            game.setStreamBitrateMbps(value);
+                        }
+                    }).valueWidth(68).withPopup(getString(R.string.game_menu_bitrate),
+                    getString(R.string.suffix_seekbar_bitrate_mbps), BITRATE_SHORTCUTS_MBPS));
+        }
 
         // Sharpening is done by the Vulkan renderer only
         if (game.canSharpen()) {

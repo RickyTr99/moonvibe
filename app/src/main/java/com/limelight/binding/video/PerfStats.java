@@ -29,6 +29,11 @@ public class PerfStats {
     // From the Vulkan renderer: the buffer and refresh rate, then lock state and skipped frames
     public String pacingHeadline, pacingDetails;
 
+    // The PC's readings, from hosts that send them (Rubylight); -1 when not known
+    public float hostCpuPercent = -1;
+    public float hostGpuPercent = -1, hostGpuTempC = -1, hostGpuPowerW = -1;
+    public float hostVramUsedMb = -1;
+
     /**
      * From a button press to its frame ready on the device: the input goes to the host and the frame comes back
      * (the whole round trip), plus the host's processing and the decoding. The display adds its own on top.

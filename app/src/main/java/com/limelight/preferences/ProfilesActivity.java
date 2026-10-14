@@ -88,6 +88,7 @@ public class ProfilesActivity extends Activity {
         // The list in a column in the middle, scrolling when long
         ScrollView scroll = new ScrollView(this);
         scroll.setVerticalScrollBarEnabled(false);
+        ApolloUi.fadeEdges(scroll);
         scroll.setClipToPadding(false);
         FrameLayout center = new FrameLayout(this);
         center.setPadding(dp(16), 0, dp(16), dp(16));

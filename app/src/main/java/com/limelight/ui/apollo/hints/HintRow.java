@@ -48,6 +48,9 @@ public class HintRow extends LinearLayout implements InputMode.Listener {
     private final ApolloColors colors;
     private ViewGroup scope;
     private List<Hint> fallback = Collections.emptyList();
+    // Always first, whatever has the focus in the scope
+    private List<Hint> leading = Collections.emptyList();
+    private final List<Hint> hidden = new ArrayList<>();
     private List<Hint> shown;
     private boolean visible;
 
@@ -94,6 +97,14 @@ public class HintRow extends LinearLayout implements InputMode.Listener {
         set(view, hints);
     }
 
+    /**
+     * The focus inside this group gives no hints to the rows whose scope holds it, they show their own:
+     * a screen of the app shown as an illustration, whose focus moves by itself.
+     */
+    public static void ignoreFocusIn(View group) {
+        group.setTag(R.id.apollo_hints_ignored, Boolean.TRUE);
+    }
+
     public static Hint hint(Context context, int key, int labelRes) {
         return new Hint(key, context.getString(labelRes));
     }
@@ -107,7 +118,31 @@ public class HintRow extends LinearLayout implements InputMode.Listener {
     /** Shown when the focused view has no hints of its own, or nothing has the focus. */
     public void setFallback(Hint... hints) {
         this.fallback = Arrays.asList(hints);
+        refresh(true);
+    }
+
+    /**
+     * Hints before those of the focused view, shown whatever has the focus in the scope (LB/RB moving
+     * between pages). A hint with an empty label sits close to the next one, as a pair of buttons.
+     */
+    public void setLeading(Hint... hints) {
+        this.leading = Arrays.asList(hints);
+        refresh(true);
+    }
+
+    /** Leaves out a hint the focused views give, by its button and text: what the screen does another way. */
+    public void hide(int key, String label) {
+        hidden.add(new Hint(key, label));
         refresh();
+    }
+
+    private boolean isHidden(Hint hint) {
+        for (Hint other : hidden) {
+            if (other.key == hint.key && other.label.equals(hint.label)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // Android leaves touch mode on the first key and keeps that key to itself, so the mode is the signal
@@ -140,17 +175,26 @@ public class HintRow extends LinearLayout implements InputMode.Listener {
 
     @Override
     public void onInputModeChanged(boolean gamepad) {
+        // Drawn again, for the button symbols of another controller
+        shown = null;
         refresh();
         updateVisibility(true);
     }
 
+    // The hints of the focused view, or the fallback; null while the focus is in something over the scope
     @SuppressWarnings("unchecked")
     private List<Hint> currentHints() {
         View root = scope != null ? scope : getRootView();
         View focused = root.findFocus();
         if (focused == null && scope != null && getRootView().findFocus() != null) {
             // The focus is in something over this scope, like a side panel with its own hints
-            return Collections.emptyList();
+            return null;
+        }
+        for (View view = focused; view != null && view != root; ) {
+            if (view.getTag(R.id.apollo_hints_ignored) != null) {
+                return fallback;
+            }
+            view = view.getParent() instanceof View ? (View) view.getParent() : null;
         }
         for (View view = focused; view != null; ) {
             Object tag = view.getTag(R.id.apollo_hints);
@@ -167,30 +211,48 @@ public class HintRow extends LinearLayout implements InputMode.Listener {
 
     /** Rereads the hints of the focused view, after something changed what a button does. */
     public void refresh() {
+        refresh(false);
+    }
+
+    // Forced when the screen gives other hints (a new page): those of the last focused view no longer apply
+    private void refresh(boolean force) {
         // A touch takes the focus away: keep the hints of the last focused view instead of emptying the row
-        if (!InputMode.isGamepad() && getRootView().findFocus() == null && shown != null && !shown.isEmpty()) {
+        if (!force && !InputMode.isGamepad() && getRootView().findFocus() == null && shown != null && !shown.isEmpty()) {
             return;
         }
-        List<Hint> hints = currentHints();
+        List<Hint> current = currentHints();
+        List<Hint> hints = new ArrayList<>();
+        if (current != null) {
+            hints.addAll(leading);
+            for (Hint hint : current) {
+                if (!isHidden(hint)) {
+                    hints.add(hint);
+                }
+            }
+        }
         if (hints.equals(shown)) {
             return;
         }
         shown = new ArrayList<>(hints);
         removeAllViews();
+        boolean pairWithNext = false;
         for (Hint hint : hints) {
             LinearLayout item = new LinearLayout(getContext());
             item.setOrientation(HORIZONTAL);
             item.setGravity(Gravity.CENTER_VERTICAL);
             item.addView(ButtonGlyph.create(getContext(), colors, hint.key));
-            TextView label = ApolloUi.text(getContext(), hint.label, 12, colors.onSurfaceVariant, false);
-            label.setPadding(ApolloUi.dp(getContext(), 6), 0, 0, 0);
-            item.addView(label);
+            if (!hint.label.isEmpty()) {
+                TextView label = ApolloUi.text(getContext(), hint.label, 12, colors.onSurfaceVariant, false);
+                label.setPadding(ApolloUi.dp(getContext(), 6), 0, 0, 0);
+                item.addView(label);
+            }
 
             LayoutParams params = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
             if (getChildCount() > 0) {
-                params.leftMargin = ApolloUi.dp(getContext(), 16);
+                params.leftMargin = ApolloUi.dp(getContext(), pairWithNext ? 4 : 16);
             }
             addView(item, params);
+            pairWithNext = hint.label.isEmpty();
         }
         updateVisibility(true);
     }

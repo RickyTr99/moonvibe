@@ -39,7 +39,7 @@ public final class StatsPrefs {
                 Item.FPS, Item.NETWORK, Item.DECODE, Item.LOSS, Item.BANDWIDTH),
         PANEL("panel", R.string.stats_style_panel, Position.TOP_LEFT,
                 Item.DECODER, Item.FPS, Item.NETWORK, Item.BANDWIDTH, Item.LOSS, Item.HOST, Item.DECODE,
-                Item.PACING, Item.TOTAL),
+                Item.PACING, Item.HOST_CPU, Item.HOST_GPU, Item.TOTAL),
         MINI("mini", R.string.stats_style_mini, Position.TOP_RIGHT,
                 Item.FPS, Item.TOTAL);
 
@@ -110,6 +110,9 @@ public final class StatsPrefs {
         LOSS("loss", R.string.stats_item_loss),
         BANDWIDTH("bandwidth", R.string.stats_item_bandwidth),
         PACING("pacing", R.string.stats_item_pacing),
+        // The PC's readings, from the hosts that send them (Rubylight)
+        HOST_CPU("host_cpu", R.string.stats_item_host_cpu),
+        HOST_GPU("host_gpu", R.string.stats_item_host_gpu),
         BATTERY("battery", R.string.stats_item_battery),
         CLOCK("clock", R.string.stats_item_clock);
 
@@ -131,9 +134,12 @@ public final class StatsPrefs {
         }
     }
 
-    // The panel groups them: the stream, the network, the processing, the device
+    // The panel puts together the stream, the network, the processing, the host's PC, the device
     private static final Item[] PANEL_ORDER = {Item.DECODER, Item.FPS, Item.NETWORK, Item.BANDWIDTH, Item.LOSS,
-            Item.HOST, Item.DECODE, Item.PACING, Item.TOTAL, Item.BATTERY, Item.CLOCK};
+            Item.HOST, Item.DECODE, Item.PACING, Item.HOST_CPU, Item.HOST_GPU, Item.TOTAL, Item.BATTERY, Item.CLOCK};
+
+    // Set once the host's readings were added to a panel chosen before they existed
+    private static final String KEY_HOST_ITEMS_ADDED = "stats_host_items_added";
 
     private static SharedPreferences prefs(Context context) {
         return PreferenceManager.getDefaultSharedPreferences(context);
@@ -169,7 +175,7 @@ public final class StatsPrefs {
         prefs(context).edit().putString(KEY_POSITION + style.value, position.value).apply();
     }
 
-    /** Every item in the order the user gave the style, shown or not; new ones at the end. */
+    /** Every item in the order the user gave the style, shown or not; new ones after the item they follow by default. */
     public static List<Item> order(Context context, Style style) {
         List<Item> order = new ArrayList<>();
         String stored = prefs(context).getString(KEY_ORDER + style.value, "");
@@ -179,10 +185,13 @@ public final class StatsPrefs {
                 order.add(item);
             }
         }
+        Item previous = null;
         for (Item item : style.order()) {
             if (!order.contains(item)) {
-                order.add(item);
+                int after = previous != null ? order.indexOf(previous) : -1;
+                order.add(after + 1, item);
             }
+            previous = item;
         }
         return order;
     }
@@ -194,6 +203,15 @@ public final class StatsPrefs {
     /** The items the style shows, in its order. */
     public static List<Item> items(Context context, Style style) {
         String stored = prefs(context).getString(KEY_ITEMS + style.value, null);
+        // A panel set up before the host's readings existed shows them too, once; they appear only with a host that sends them
+        if (style == Style.PANEL && !prefs(context).getBoolean(KEY_HOST_ITEMS_ADDED, false)) {
+            SharedPreferences.Editor editor = prefs(context).edit().putBoolean(KEY_HOST_ITEMS_ADDED, true);
+            if (stored != null) {
+                stored = stored + (stored.isEmpty() ? "" : ",") + Item.HOST_CPU.value + "," + Item.HOST_GPU.value;
+                editor.putString(KEY_ITEMS + style.value, stored);
+            }
+            editor.apply();
+        }
         List<String> values = new ArrayList<>();
         if (stored == null) {
             for (Item item : style.defaultItems) {
