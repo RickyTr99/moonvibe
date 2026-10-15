@@ -151,7 +151,7 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
     private boolean pyrowave;
     // The PyroWave host advertised its bitstream revision, which the nonary host does: it sends
     // record framing and sites chroma at the center
-    private boolean pyrowaveRecordFraming;
+    private boolean pyrowaveCenterChroma;
     private long pyrowaveDecodeNs;
     // What's left over a whole millisecond of MediaCodec decode time, carried to the next frame
     private long mediaCodecDecodeNs;
@@ -612,7 +612,7 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
                 getPreferredColorSpace(),
                 getPreferredColorRange() == MoonBridge.COLOR_RANGE_FULL,
                 (videoFormat & MoonBridge.VIDEO_FORMAT_MASK_10BIT) != 0,
-                pyrowave, pyrowaveRecordFraming, prefs.pyrowaveLateFrames, getDisplayRefreshRate(),
+                pyrowave, pyrowaveCenterChroma, prefs.pyrowaveLateFrames, getDisplayRefreshRate(),
                 getPacerTraceDirectory());
         if (renderer != null) {
             LimeLog.info("Using Vulkan renderer");
@@ -880,9 +880,11 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
     private int setupPyrowave() {
         pyrowave = true;
 
+        // Only the nonary host says which PyroWave it encodes with, and it sites 4:2:0 chroma at
+        // the center
         String bitstreamId = MoonBridge.getHostPyroWaveBitstreamId();
-        pyrowaveRecordFraming = bitstreamId != null && !bitstreamId.isEmpty();
-        if (pyrowaveRecordFraming) {
+        pyrowaveCenterChroma = bitstreamId != null && !bitstreamId.isEmpty();
+        if (pyrowaveCenterChroma) {
             LimeLog.info("PyroWave host bitstream revision: " + bitstreamId);
         }
 
@@ -1685,7 +1687,7 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
             sps.constraintSet4Flag = true;
             sps.constraintSet5Flag = true;
         }
-        else {
+        else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             // Force the constraints unset otherwise (some may be set by default)
             sps.constraintSet4Flag = false;
             sps.constraintSet5Flag = false;
@@ -1696,7 +1698,7 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
     public int submitDecodeUnit(byte[] decodeUnitData, int decodeUnitLength, int decodeUnitType,
                                 int frameNumber, int frameType, char frameHostProcessingLatency,
                                 long receiveTimeUs, long enqueueTimeUs, long presentationTimeUs,
-                                int[] missingRanges, int partialKind) {
+                                int[] missingRanges, int[] recordStarts, int partialKind) {
         // The decoder may be torn down or rebuilt for the background while a frame comes in
         synchronized (backgroundLock) {
             if (backgrounded) {
@@ -1708,7 +1710,7 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
                 return MoonBridge.DR_NEED_IDR;
             }
             return submitDecodeUnitNow(decodeUnitData, decodeUnitLength, decodeUnitType, frameNumber, frameType,
-                    frameHostProcessingLatency, receiveTimeUs, enqueueTimeUs, presentationTimeUs, missingRanges, partialKind);
+                    frameHostProcessingLatency, receiveTimeUs, enqueueTimeUs, presentationTimeUs, missingRanges, recordStarts, partialKind);
         }
     }
 
@@ -1716,7 +1718,7 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
     private int submitDecodeUnitNow(byte[] decodeUnitData, int decodeUnitLength, int decodeUnitType,
                                     int frameNumber, int frameType, char frameHostProcessingLatency,
                                     long receiveTimeUs, long enqueueTimeUs, long presentationTimeUs,
-                                    int[] missingRanges, int partialKind) {
+                                    int[] missingRanges, int[] recordStarts, int partialKind) {
         if (stopping) {
             // Don't bother if we're stopping
             return MoonBridge.DR_OK;
@@ -1836,7 +1838,7 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
 
         if (pyrowave) {
             return submitPyrowaveFrame(decodeUnitData, decodeUnitLength, frameHostProcessingLatency,
-                    receiveTimeUs, enqueueTimeUs, presentationTimeUs, missingRanges, partialKind);
+                    receiveTimeUs, enqueueTimeUs, presentationTimeUs, missingRanges, recordStarts, partialKind);
         }
 
         boolean csdSubmittedForThisFrame = false;
@@ -1861,7 +1863,7 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
                 // Since we only need one frame buffered, we'll set the level as low as we can
                 // for known resolution combinations. Reference frame invalidation may need
                 // these, so leave them be for those decoders.
-                if (!refFrameInvalidationActive) {
+                if (!refFrameInvalidationActive && Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
                     if (initialWidth <= 720 && initialHeight <= 480 && refreshRate <= 60) {
                         // Max 5 buffered frames at 720x480x60
                         LimeLog.info("Patching level_idc to 31");
@@ -2134,7 +2136,7 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
 
     private int submitPyrowaveFrame(byte[] decodeUnitData, int decodeUnitLength, char frameHostProcessingLatency,
                                     long receiveTimeUs, long enqueueTimeUs, long presentationTimeUs,
-                                    int[] missingRanges, int partialKind) {
+                                    int[] missingRanges, int[] recordStarts, int partialKind) {
         recordFrameReceived(frameHostProcessingLatency, receiveTimeUs, enqueueTimeUs);
         numFramesIn++;
 
@@ -2154,7 +2156,7 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
         // from submission until the GPU finished, for the frames done since the last one. Kept in
         // nanoseconds, since frames can take under 1 ms.
         vulkan.submitPyrowaveFrame(decodeUnitData, decodeUnitLength, presentationTimeUs, enqueueTimeUs,
-                missingRanges, partialKind);
+                missingRanges, recordStarts, partialKind);
         pyrowaveDecodeNs += vulkan.takePyrowaveDecodeNs();
         long decodeMs = pyrowaveDecodeNs / 1_000_000L;
         pyrowaveDecodeNs -= decodeMs * 1_000_000L;

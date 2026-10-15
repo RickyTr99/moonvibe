@@ -206,7 +206,14 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         }
 
         this.overlayMenuOpenMs = prefConfig.overlayHoldDurationMs;
-        this.deviceVibrator = (Vibrator) activityContext.getSystemService(Context.VIBRATOR_SERVICE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            this.deviceVibratorManager = (VibratorManager) activityContext.getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
+            this.deviceVibrator = this.deviceVibratorManager.getDefaultVibrator();
+        }
+        else {
+            this.deviceVibratorManager = null;
+            this.deviceVibrator = (Vibrator) activityContext.getSystemService(Context.VIBRATOR_SERVICE);
+        }
         this.deviceSensorManager = (SensorManager) activityContext.getSystemService(Context.SENSOR_SERVICE);
         this.inputManager = (InputManager) activityContext.getSystemService(Context.INPUT_SERVICE);
         this.mainThreadHandler = new Handler(Looper.getMainLooper());
@@ -216,13 +223,6 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         this.backgroundHandlerThread = new HandlerThread("ControllerHandler");
         this.backgroundHandlerThread.start();
         this.backgroundThreadHandler = new Handler(backgroundHandlerThread.getLooper());
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            this.deviceVibratorManager = (VibratorManager) activityContext.getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
-        }
-        else {
-            this.deviceVibratorManager = null;
-        }
 
         this.sceManager = new SceManager(activityContext);
         this.sceManager.start();
@@ -938,6 +938,13 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
                     context.hasRgbLed = true;
                     break;
                 }
+            }
+
+            // Light.hasRgbControl() was totally broken prior to Android 14.
+            // It always returned true because LIGHT_CAPABILITY_RGB was defined as 0,
+            // so we will just guess RGB is supported if it's a PlayStation controller.
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE && context.vendorId != 0x054c) {
+                context.hasRgbLed = false;
             }
         }
 
@@ -2511,25 +2518,11 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
 
                 // Ignore input devices without an RGB LED
                 if (deviceContext.controllerNumber == controllerNumber && deviceContext.hasRgbLed) {
-                    // Create a new light session if one doesn't already exist
-                    if (deviceContext.lightsSession == null) {
-                        deviceContext.lightsSession = deviceContext.inputDevice.getLightsManager().openSession();
-                    }
-
                     // Convert the RGB components into the integer value that LightState uses
-                    int argbValue = 0xFF000000 | ((r << 16) & 0xFF0000) | ((g << 8) & 0xFF00) | (b & 0xFF);
-                    LightState lightState = new LightState.Builder().setColor(argbValue).build();
+                    deviceContext.ledArgbValue = 0xFF000000 | ((r << 16) & 0xFF0000) | ((g << 8) & 0xFF00) | (b & 0xFF);
 
-                    // Set the RGB value for each RGB-controllable LED on the device
-                    LightsRequest.Builder lightsRequestBuilder = new LightsRequest.Builder();
-                    for (Light light : deviceContext.inputDevice.getLightsManager().getLights()) {
-                        if (light.hasRgbControl()) {
-                            lightsRequestBuilder.addLight(light, lightState);
-                        }
-                    }
-
-                    // Apply the LED changes
-                    deviceContext.lightsSession.requestLights(lightsRequestBuilder.build());
+                    backgroundThreadHandler.removeCallbacks(deviceContext.setLedStateRunnable);
+                    backgroundThreadHandler.post(deviceContext.setLedStateRunnable);
                 }
             }
         }
@@ -3577,6 +3570,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
 
         public boolean hasRgbLed;
         public LightsManager.LightsSession lightsSession;
+        public int ledArgbValue;
 
         // These are BatteryState values, not Moonlight values
         public int lastReportedBatteryStatus;
@@ -3658,6 +3652,34 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
             }
         };
 
+        public final Runnable setLedStateRunnable = new Runnable() {
+            @TargetApi(Build.VERSION_CODES.S)
+            @Override
+            public void run() {
+                LightState lightState = new LightState.Builder().setColor(ledArgbValue).build();
+
+                // Set the RGB value for each RGB-controllable LED on the device
+                boolean hasRgbLight = false;
+                LightsRequest.Builder lightsRequestBuilder = new LightsRequest.Builder();
+                for (Light light : inputDevice.getLightsManager().getLights()) {
+                    if (light.hasRgbControl()) {
+                        lightsRequestBuilder.addLight(light, lightState);
+                        hasRgbLight = true;
+                    }
+                }
+
+                if (hasRgbLight) {
+                    // Create a new light session if one doesn't already exist
+                    if (lightsSession == null) {
+                        lightsSession = inputDevice.getLightsManager().openSession();
+                    }
+
+                    // Apply the LED changes
+                    lightsSession.requestLights(lightsRequestBuilder.build());
+                }
+            }
+        };
+
         @Override
         public void destroy() {
             super.destroy();
@@ -3670,6 +3692,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
             }
 
             backgroundThreadHandler.removeCallbacks(enableSensorRunnable);
+            backgroundThreadHandler.removeCallbacks(setLedStateRunnable);
 
             if (gyroListener != null) {
                 sensorManager.unregisterListener(gyroListener);
@@ -3680,7 +3703,11 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 if (lightsSession != null) {
-                    lightsSession.close();
+                    try {
+                        lightsSession.close();
+                    } catch (RuntimeException e) {
+                        LimeLog.warning("Error closing LightsSession: " + e.getMessage());
+                    }
                 }
             }
 
@@ -3753,10 +3780,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
                     capabilities |= MoonBridge.LI_CCAP_BATTERY_STATE;
                 }
 
-                // Light.hasRgbControl() was totally broken prior to Android 14.
-                // It always returned true because LIGHT_CAPABILITY_RGB was defined as 0,
-                // so we will just guess RGB is supported if it's a PlayStation controller.
-                if (hasRgbLed && (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE || type == MoonBridge.LI_CTYPE_PS)) {
+                if (hasRgbLed) {
                     capabilities |= MoonBridge.LI_CCAP_RGB_LED;
                 }
             }
@@ -3820,6 +3844,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
                 this.lightsSession = oldContext.lightsSession;
                 oldContext.lightsSession = null;
             }
+            this.ledArgbValue = oldContext.ledArgbValue;
             this.gyroReportRateHz = oldContext.gyroReportRateHz;
             this.accelReportRateHz = oldContext.accelReportRateHz;
 
@@ -3843,6 +3868,12 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
 
             // Re-enable sensors on the new context
             enableSensors();
+
+            // Refresh the LED state if it's set. We don't know if there was a pending LED state
+            // callback when the context was migrated, so we'll reset it just to be safe.
+            if (this.lightsSession != null) {
+                backgroundThreadHandler.post(setLedStateRunnable);
+            }
 
             // Refresh battery state and start the battery state polling again
             backgroundThreadHandler.post(batteryStateUpdateRunnable);

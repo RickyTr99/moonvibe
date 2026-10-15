@@ -457,12 +457,6 @@ VulkanRenderer::VulkanRenderer(const NdkApi* ndk, const RendererConfig& config)
     if (__system_property_get("debug.moonlight.partial_lost_pct", value) > 0) {
         lostFrameMinPercent_ = std::clamp(atoi(value), 0, 100);
     }
-    // Record framing (Vibeshine-family hosts such as Vibepollo) can't decode a partial frame, so a
-    // frame cut short would be dropped rather than shown a refresh late: never cut with these hosts.
-    if (config.pyrowaveRecordFraming && partialEnabled_) {
-        partialEnabled_ = false;
-        ALOGI("Host sends PyroWave record framing: late frames are shown late, not cut short");
-    }
     ALOGI("PyroWave frames that lost packets shown with at least %d%% of their blocks", lostFrameMinPercent_);
     ALOGI("Late PyroWave frames cut short: %s", partialEnabled_ ? "on" : "off");
     if (partialEnabled_) {
@@ -676,11 +670,7 @@ bool VulkanRenderer::createPyrowaveDecoder() {
     if (!pyrowave_) {
         return false;
     }
-    pyrowave_->setRecordFraming(config_.pyrowaveRecordFraming);
     pyrowave_->setLostFrameMinBlocks(lostFrameMinPercent_ / 100.0f);
-    if (config_.pyrowaveRecordFraming) {
-        ALOGI("PyroWave host uses record framing");
-    }
 
     if (!vk_.vkWaitSemaphores) {
         ALOGE("vkWaitSemaphores not available");
@@ -1019,8 +1009,8 @@ void VulkanRenderer::onImageAvailable() {
 }
 
 bool VulkanRenderer::submitPyrowaveFrame(const uint8_t* data, size_t size, const PyrowaveDecoder::Gap* gaps,
-                                         size_t gapCount, PyrowaveDecoder::Partial partial, int64_t hostPtsNs,
-                                         int64_t lastPacketUs) {
+                                         size_t gapCount, const std::vector<size_t>* recordStarts,
+                                         PyrowaveDecoder::Partial partial, int64_t hostPtsNs, int64_t lastPacketUs) {
     // Frames queue up behind this thread, so it gets the render thread's priority
     static thread_local bool prioritized = false;
     if (!prioritized) {
@@ -1038,6 +1028,18 @@ bool VulkanRenderer::submitPyrowaveFrame(const uint8_t* data, size_t size, const
         if (closing_) {
             return false;
         }
+        // The hosts that advertise their bitstream (Vibepollo, Rubylight) use record framing, where
+        // a partial frame can only be parsed with the critical packets and record starts the host
+        // announces. Without them (Vibepollo before 2.0.0, Rubylight with critical FEC off) its
+        // blocks would be read as if in order: drop it, and stop cutting late frames short.
+        if (partial != PyrowaveDecoder::Partial::None && !recordStarts && config_.pyrowaveCenterChroma) {
+            if (partialEnabled_) {
+                partialEnabled_ = false;
+                partialDeadlineEnabled_ = false;
+                ALOGI("Host doesn't announce PyroWave record starts: late frames are shown late, not cut short");
+            }
+            return false;
+        }
         deadlineEnabled = partialDeadlineEnabled_;
         deadlineOffsetUs = partialDeadlineOffsetUs_;
         if (partial != PyrowaveDecoder::Partial::None) {
@@ -1051,7 +1053,8 @@ bool VulkanRenderer::submitPyrowaveFrame(const uint8_t* data, size_t size, const
     }
 
     uint64_t readyValue = 0;
-    PyrowavePlanes* planes = pyrowave_->decode(data, size, gaps, gapCount, partial, &readyValue);
+    PyrowavePlanes* planes = pyrowave_->decode(data, size, gaps, gapCount, recordStarts, partial,
+                                               &readyValue);
     if (!planes) {
         return false;
     }
@@ -1462,7 +1465,7 @@ bool VulkanRenderer::renderFrame(const FramePtr& frame, uint64_t presentId, int6
         pc.ycbcr[2] = pyrowave_->tenBit() ? 0.5f : 128.0f / 255.0f;
         // This fork's Sunshine sites chroma with the left luma sample of each pair (MPEG-2
         // style); the nonary host sites it at the center of each 2x2 quad
-        pc.ycbcr[3] = pyrowave_->recordFraming() ? 0.0f : 0.5f / bufferWidth;
+        pc.ycbcr[3] = config_.pyrowaveCenterChroma ? 0.0f : 0.5f / bufferWidth;
     }
     pc.sharpen[0] = sharpenStrength_.load();
     pc.sharpen[1] = pc.uvRect[0] + pc.uvRect[2] * std::max(sharpenSplit_.load(), 0.0f);

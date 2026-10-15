@@ -36,6 +36,7 @@ public class GameCardView extends LinearLayout {
     private final CoverImageView cover;
     private final TextView placeholderSignal;
     private final LinearLayout runningBadge;
+    private final TextView runningText;
     private final ImageView settingsBadge;
     private final TextView titleView;
     private final TextView subtitleView;
@@ -112,7 +113,10 @@ public class GameCardView extends LinearLayout {
         play.setImageResource(R.drawable.ic_apollo_play);
         play.setImageTintList(ColorStateList.valueOf(colors.onPrimary));
         runningBadge.addView(play, new LayoutParams(dp(11), dp(11)));
-        TextView runningText = ApolloUi.text(context, context.getString(R.string.apollo_running), 10, colors.onPrimary, true);
+        runningText = ApolloUi.text(context, context.getString(R.string.apollo_running), 10, colors.onPrimary, true);
+        // Without the font's extra space the text sits in the middle of the pill, beside the icon
+        runningText.setIncludeFontPadding(false);
+        runningText.setSingleLine(true);
         runningText.setPadding(dp(3), 0, 0, 0);
         runningBadge.addView(runningText);
         FrameLayout.LayoutParams badgeParams = new FrameLayout.LayoutParams(
@@ -198,6 +202,12 @@ public class GameCardView extends LinearLayout {
         subtitleView.setLayoutParams(new LayoutParams(widthPx, LayoutParams.WRAP_CONTENT));
         setPivotX(widthPx / 2f);
         setPivotY(coverHeight);
+
+        // On a card too narrow for the whole pill only the play icon shows, never the text on two lines
+        float textWidth = runningText.getPaint().measureText(runningText.getText().toString());
+        boolean fits = dp(8) + dp(7) + dp(11) + dp(3) + textWidth + dp(8) + dp(8) <= widthPx;
+        runningText.setVisibility(fits ? VISIBLE : GONE);
+        runningBadge.setPadding(fits ? dp(7) : dp(5), dp(3), fits ? dp(8) : dp(5), dp(3));
     }
 
     // The color behind the initial of a game without box art, the same wherever the game shows

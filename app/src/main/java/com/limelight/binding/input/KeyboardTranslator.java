@@ -34,6 +34,13 @@ public class KeyboardTranslator implements InputManager.InputDeviceListener {
     public static final int VK_EQUALS = 61;
     public static final int VK_ESCAPE = 27;
     public static final int VK_F1 = 112;
+    public static final int VK_F13 = 0x7C;
+
+    // Keycodes from Android 15 and 16, newer than the SDK we compile against
+    private static final int KEYCODE_SCREENSHOT = 318;
+    private static final int KEYCODE_PRINT = 323;
+    private static final int KEYCODE_F13 = 326;
+    private static final int KEYCODE_F24 = 337;
     public static final int VK_END = 35;
     public static final int VK_HOME = 36;
     public static final int VK_NUM_LOCK = 144;
@@ -160,6 +167,10 @@ public class KeyboardTranslator implements InputManager.InputDeviceListener {
         else if (keycode >= KeyEvent.KEYCODE_F1 &&
                  keycode <= KeyEvent.KEYCODE_F12) {
             translated = (keycode - KeyEvent.KEYCODE_F1) + VK_F1;
+        }
+        else if (keycode >= KEYCODE_F13 &&
+                 keycode <= KEYCODE_F24) {
+            translated = (keycode - KEYCODE_F13) + VK_F13;
         }
         else {
             switch (keycode) {
@@ -347,6 +358,14 @@ public class KeyboardTranslator implements InputManager.InputDeviceListener {
 
             case KeyEvent.KEYCODE_NUMPAD_DOT:
                 translated = 0x6E;
+                break;
+
+            case KEYCODE_PRINT:
+                translated = 0x2A;
+                break;
+
+            case KEYCODE_SCREENSHOT:
+                translated = 0x2C;
                 break;
 
             default:

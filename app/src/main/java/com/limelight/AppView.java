@@ -382,7 +382,7 @@ public class AppView extends Activity {
         super.onDestroy();
 
         SpinnerDialog.closeDialogs(this);
-        Dialog.closeDialogs();
+        Dialog.closeDialogs(this);
 
         if (managerBinder != null) {
             unbindService(serviceConnection);

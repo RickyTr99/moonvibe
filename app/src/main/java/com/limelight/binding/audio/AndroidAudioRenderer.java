@@ -8,6 +8,7 @@ import android.media.AudioManager;
 import android.media.AudioTrack;
 import android.media.audiofx.AudioEffect;
 import android.os.Build;
+import android.os.SystemClock;
 
 import com.limelight.LimeLog;
 import com.limelight.nvstream.av.audio.AudioRenderer;
@@ -18,8 +19,19 @@ public class AndroidAudioRenderer implements AudioRenderer {
     private final Context context;
     private final boolean enableAudioFx;
 
-    private AudioTrack track;
+    // A dead track is rebuilt at most this often, so a broken output can't spin the audio thread
+    private static final long RECREATE_INTERVAL_MS = 1000;
+    // Before Android 7.0 a dead track reports the native status rather than ERROR_DEAD_OBJECT,
+    // so this many failed writes in a row count as a dead track too
+    private static final int FAILED_WRITES_BEFORE_RECREATE = 5;
+
+    private volatile AudioTrack track;
     private volatile boolean muted;
+    private boolean released;
+    private boolean audioFxSessionOpen;
+    private int channelConfig, sampleRate, bytesPerFrame;
+    private int failedWrites;
+    private long lastRecreateMs;
 
     public AndroidAudioRenderer(Context context, boolean enableAudioFx) {
         this.context = context;
@@ -67,9 +79,6 @@ public class AndroidAudioRenderer implements AudioRenderer {
 
     @Override
     public int setup(MoonBridge.AudioConfiguration audioConfiguration, int sampleRate, int samplesPerFrame) {
-        int channelConfig;
-        int bytesPerFrame;
-
         switch (audioConfiguration.channelCount)
         {
             case 2:
@@ -94,7 +103,20 @@ public class AndroidAudioRenderer implements AudioRenderer {
 
         LimeLog.info("Audio channel config: "+String.format("0x%X", channelConfig));
 
+        this.sampleRate = sampleRate;
         bytesPerFrame = audioConfiguration.channelCount * samplesPerFrame * 2;
+
+        track = openAudioTrack();
+        if (track == null) {
+            // Couldn't create any audio track for playback
+            return -2;
+        }
+
+        return 0;
+    }
+
+    private AudioTrack openAudioTrack() {
+        AudioTrack track = null;
 
         // We're not supposed to request less than the minimum
         // buffer size for our buffer, but it appears that we can
@@ -178,12 +200,7 @@ public class AndroidAudioRenderer implements AudioRenderer {
             }
         }
 
-        if (track == null) {
-            // Couldn't create any audio track for playback
-            return -2;
-        }
-
-        return 0;
+        return track;
     }
 
     /** While muted the stream's audio is dropped, for a stream kept going in the background. */
@@ -202,42 +219,102 @@ public class AndroidAudioRenderer implements AudioRenderer {
             // This will block until the write is completed. That can cause a backlog
             // of pending audio data, so we do the above check to be able to bound
             // latency at 40 ms in that situation.
-            track.write(audioData, 0, audioData.length);
+            AudioTrack track = this.track;
+            if (track == null) {
+                return;
+            }
+            int written = track.write(audioData, 0, audioData.length);
+            if (written >= 0) {
+                failedWrites = 0;
+                return;
+            }
+
+            // A route change (headphones, Bluetooth, a dock) can kill the track, which then stays
+            // silent until the stream ends. Rebuild it and give this buffer one more try.
+            failedWrites++;
+            if ((written == AudioTrack.ERROR_DEAD_OBJECT || failedWrites >= FAILED_WRITES_BEFORE_RECREATE) &&
+                    recreateAudioTrack()) {
+                track = this.track;
+                if (track != null) {
+                    track.write(audioData, 0, audioData.length);
+                }
+            }
         }
         else {
             LimeLog.info("Too much pending audio data: " + MoonBridge.getPendingAudioDuration() +" ms");
         }
     }
 
-    @Override
-    public void start() {
-        if (enableAudioFx) {
-            // Open an audio effect control session to allow equalizers to apply audio effects
-            Intent i = new Intent(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION);
-            i.putExtra(AudioEffect.EXTRA_AUDIO_SESSION, track.getAudioSessionId());
-            i.putExtra(AudioEffect.EXTRA_PACKAGE_NAME, context.getPackageName());
+    private synchronized boolean recreateAudioTrack() {
+        long now = SystemClock.uptimeMillis();
+        if (released || now - lastRecreateMs < RECREATE_INTERVAL_MS) {
+            return false;
+        }
+        lastRecreateMs = now;
+        failedWrites = 0;
+
+        LimeLog.warning("AudioTrack stopped working; recreating audio output");
+        boolean reopenAudioFx = audioFxSessionOpen;
+        releaseAudioTrack();
+        track = openAudioTrack();
+        if (track == null) {
+            LimeLog.warning("Unable to recreate AudioTrack");
+            return false;
+        }
+        if (reopenAudioFx) {
+            setAudioFxSession(true);
+        }
+        return true;
+    }
+
+    private void setAudioFxSession(boolean open) {
+        if (!enableAudioFx || track == null || audioFxSessionOpen == open) {
+            return;
+        }
+
+        // An audio effect control session allows equalizers to apply audio effects
+        Intent i = new Intent(open ? AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION :
+                AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION);
+        i.putExtra(AudioEffect.EXTRA_AUDIO_SESSION, track.getAudioSessionId());
+        i.putExtra(AudioEffect.EXTRA_PACKAGE_NAME, context.getPackageName());
+        if (open) {
             i.putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_GAME);
-            context.sendBroadcast(i);
         }
+        context.sendBroadcast(i);
+        audioFxSessionOpen = open;
     }
 
     @Override
-    public void stop() {
-        if (enableAudioFx) {
-            // Close our audio effect control session when we're stopping
-            Intent i = new Intent(AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION);
-            i.putExtra(AudioEffect.EXTRA_AUDIO_SESSION, track.getAudioSessionId());
-            i.putExtra(AudioEffect.EXTRA_PACKAGE_NAME, context.getPackageName());
-            context.sendBroadcast(i);
-        }
+    public synchronized void start() {
+        setAudioFxSession(true);
     }
 
     @Override
-    public void cleanup() {
-        // Immediately drop all pending data
-        track.pause();
-        track.flush();
+    public synchronized void stop() {
+        setAudioFxSession(false);
+    }
 
-        track.release();
+    @Override
+    public synchronized void cleanup() {
+        released = true;
+        releaseAudioTrack();
+    }
+
+    private void releaseAudioTrack() {
+        setAudioFxSession(false);
+        AudioTrack oldTrack = track;
+        track = null;
+        if (oldTrack == null) {
+            return;
+        }
+        try {
+            // Immediately drop all pending data, but still release a track that already died
+            oldTrack.pause();
+            oldTrack.flush();
+        } catch (IllegalStateException e) {
+            LimeLog.warning("AudioTrack was already stopped during release");
+        } finally {
+            oldTrack.release();
+        }
     }
 }

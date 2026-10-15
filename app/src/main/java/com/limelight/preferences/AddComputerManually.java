@@ -256,7 +256,7 @@ public class AddComputerManually extends Activity {
     protected void onStop() {
         super.onStop();
 
-        Dialog.closeDialogs();
+        Dialog.closeDialogs(this);
         SpinnerDialog.closeDialogs(this);
     }
 

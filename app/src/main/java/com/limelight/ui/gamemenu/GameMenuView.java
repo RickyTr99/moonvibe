@@ -66,6 +66,8 @@ public class GameMenuView extends FrameLayout {
     private static final int PANEL_MIN_WIDTH_DP = 300;
     private static final int PANEL_MAX_WIDTH_DP = 360;
     private static final float PANEL_SCREEN_FRACTION = 0.42f;
+    // The camera cutout on the left side, which the panel content stays clear of
+    private int cutoutLeft;
     private static final long HOLD_TO_CONFIRM_MS = 1000;
     private static final float ANALOG_STICK_THRESHOLD = 0.5f;
     private static final long ANALOG_NAV_THROTTLE_MS = 200;
@@ -841,10 +843,7 @@ public class GameMenuView extends FrameLayout {
             return;
         }
 
-        int screenWidth = getResources().getDisplayMetrics().widthPixels;
-        int width = Math.min(dp(PANEL_MAX_WIDTH_DP),
-                Math.max(dp(PANEL_MIN_WIDTH_DP), (int) (screenWidth * PANEL_SCREEN_FRACTION)));
-        width = Math.min(width, screenWidth);
+        int width = panelWidth();
         panelFrame.getLayoutParams().width = width;
 
         closing = false;
@@ -1389,6 +1388,15 @@ public class GameMenuView extends FrameLayout {
         releaseSolo();
     }
 
+    // A camera cutout on the left pads the content in: the panel grows by as much, so the tiles keep
+    // their width and their names fit as they do on a screen without one
+    private int panelWidth() {
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        int width = Math.min(dp(PANEL_MAX_WIDTH_DP),
+                Math.max(dp(PANEL_MIN_WIDTH_DP), (int) (screenWidth * PANEL_SCREEN_FRACTION)));
+        return Math.min(width + cutoutLeft, screenWidth);
+    }
+
     // ---- Quick action buttons ----
 
     // One row of connected buttons, like a Material 3 button group
@@ -1451,11 +1459,23 @@ public class GameMenuView extends FrameLayout {
 
         TextView label = text(action.shortLabel != null ? action.shortLabel : action.label, 11.5f,
                 tileLabelColor(action, active), true);
-        label.setSingleLine(true);
         label.setEllipsize(TextUtils.TruncateAt.END);
         label.setGravity(Gravity.CENTER);
-        view.addView(label, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        label.setIncludeFontPadding(false);
+        int labelHeight = LinearLayout.LayoutParams.WRAP_CONTENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // A name a little too long for the tile gets a little smaller rather than cut. Autosizing
+            // needs one line without horizontal scrolling (so not setSingleLine) and a fixed height.
+            label.setMaxLines(1);
+            float sp = getResources().getDisplayMetrics().scaledDensity;
+            label.setAutoSizeTextTypeUniformWithPresetSizes(new int[]{
+                    Math.round(9.5f * sp), Math.round(10f * sp), Math.round(10.5f * sp),
+                    Math.round(11f * sp), Math.round(11.5f * sp)}, TypedValue.COMPLEX_UNIT_PX);
+            labelHeight = Math.round(11.5f * sp * 1.35f);
+        } else {
+            label.setSingleLine(true);
+        }
+        view.addView(label, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, labelHeight));
 
         Tile tile = new Tile(action, view, background, label, active);
         if (action.holdToConfirm) {
@@ -2357,7 +2377,12 @@ public class GameMenuView extends FrameLayout {
                 left = cutout.getSafeInsetLeft();
             }
         }
+        cutoutLeft = left;
         setPanelPadding(dp(10) + left);
+        if (panelFrame.getLayoutParams() != null && getVisibility() == VISIBLE) {
+            panelFrame.getLayoutParams().width = panelWidth();
+            panelFrame.requestLayout();
+        }
         return super.onApplyWindowInsets(insets);
     }
 

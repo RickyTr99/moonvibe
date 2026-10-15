@@ -37,6 +37,7 @@ import com.limelight.ui.apollo.ApolloUi;
 import com.limelight.ui.apollo.hints.HintRow;
 import com.limelight.ui.apollo.hints.ScreenHints;
 import com.limelight.ui.apollo.PcCardRow;
+import com.limelight.ui.apollo.PairingPinDialog;
 import com.limelight.ui.theme.ApolloColors;
 import com.limelight.ui.theme.ApolloMotion;
 import com.limelight.utils.Dialog;
@@ -83,6 +84,9 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
     private ShortcutHelper shortcutHelper;
     private ComputerManagerService.ComputerManagerBinder managerBinder;
     private boolean freezeUpdates, runningPolling, inForeground, completeOnCreateCalled;
+    // The PIN shown while pairing; a newer token means the pairing that showed it was cancelled
+    private PairingPinDialog pairingPin;
+    private int pairToken;
     private int autoResumeNoGamePollCount = 0;
     private QuickLaunchView quickLaunchView;
     // Not a screen rebuilt after a change (like the theme color): only then the first-run setup may open
@@ -429,6 +433,10 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
     public void onDestroy() {
         super.onDestroy();
 
+        // A pairing still waiting has nothing to show anymore
+        pairToken++;
+        dismissPairingPin();
+
         // Notify QuickLaunchView of destroy
         if (quickLaunchView != null) {
             quickLaunchView.onDestroy();
@@ -492,7 +500,7 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
     protected void onStop() {
         super.onStop();
 
-        Dialog.closeDialogs();
+        Dialog.closeDialogs(this);
     }
 
     // Options of a PC, in the side sheet opened with Y or a long press
@@ -570,6 +578,7 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
         }
 
         Toast.makeText(PcView.this, getResources().getString(R.string.pairing), Toast.LENGTH_SHORT).show();
+        final int token = ++pairToken;
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -591,10 +600,8 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
                     else {
                         final String pinStr = PairingManager.generatePinString();
 
-                        // Spin the dialog off in a thread because it blocks
-                        Dialog.displayDialog(PcView.this, getResources().getString(R.string.pair_pairing_title),
-                                getResources().getString(R.string.pair_pairing_msg)+" "+pinStr+"\n\n"+
-                                getResources().getString(R.string.pair_pairing_help), false);
+                        // The PIN on a card like the setup's; Cancel stops waiting for the result
+                        runOnUiThread(() -> showPairingPin(computer, pinStr, token));
 
                         PairingManager pm = httpConn.getPairingManager();
 
@@ -639,13 +646,17 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
                     message = e.getMessage();
                 }
 
-                Dialog.closeDialogs();
-
                 final String toastMessage = message;
                 final boolean toastSuccess = success;
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
+                        if (token != pairToken) {
+                            // Cancelled: the Home already went back to polling
+                            return;
+                        }
+                        dismissPairingPin();
+
                         if (toastMessage != null) {
                             Toast.makeText(PcView.this, toastMessage, Toast.LENGTH_LONG).show();
                         }
@@ -662,6 +673,28 @@ public class PcView extends Activity implements QuickLaunchView.QuickLaunchCallb
                 });
             }
         }).start();
+    }
+
+    private void showPairingPin(ComputerDetails computer, String pin, int token) {
+        if (token != pairToken || isFinishing()) {
+            return;
+        }
+        dismissPairingPin();
+        String address = computer.activeAddress != null ? computer.activeAddress.address : "";
+        pairingPin = new PairingPinDialog(this, computer.name, address, pin, () -> {
+            // The pairing request keeps waiting on the PC until it times out; its result is ignored
+            pairToken++;
+            pairingPin = null;
+            startComputerUpdates();
+        });
+        pairingPin.show();
+    }
+
+    private void dismissPairingPin() {
+        if (pairingPin != null) {
+            pairingPin.dismiss();
+            pairingPin = null;
+        }
     }
 
     // Sent whatever the state looks like: a sleeping PC can still show up as online for a while

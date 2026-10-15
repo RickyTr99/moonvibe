@@ -1,12 +1,13 @@
 package com.limelight.utils;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 
 import android.app.Activity;
-import android.app.AlertDialog;
-import android.content.DialogInterface;
+import android.widget.TextView;
 
-import com.limelight.ui.apollo.GamepadDialogs;
+import com.limelight.ui.apollo.ApolloDialog;
+import com.limelight.ui.apollo.ApolloUi;
 import com.limelight.R;
 
 public class Dialog implements Runnable {
@@ -15,7 +16,7 @@ public class Dialog implements Runnable {
     private final Activity activity;
     private final Runnable runOnDismiss;
 
-    private AlertDialog alert;
+    private ApolloDialog alert;
 
     private static final ArrayList<Dialog> rundownDialogs = new ArrayList<>();
 
@@ -27,16 +28,21 @@ public class Dialog implements Runnable {
         this.runOnDismiss = runOnDismiss;
     }
 
-    public static void closeDialogs()
+    // Only closes the given activity's dialogs, so one activity stopping doesn't
+    // dismiss a dialog another activity has just shown
+    public static void closeDialogs(Activity activity)
     {
         synchronized (rundownDialogs) {
-            for (Dialog d : rundownDialogs) {
-                if (d.alert.isShowing()) {
-                    d.alert.dismiss();
+            Iterator<Dialog> i = rundownDialogs.iterator();
+            while (i.hasNext()) {
+                Dialog d = i.next();
+                if (d.activity == activity) {
+                    i.remove();
+                    if (d.alert.dialog.isShowing()) {
+                        d.alert.dismiss();
+                    }
                 }
             }
-
-            rundownDialogs.clear();
         }
     }
 
@@ -63,49 +69,38 @@ public class Dialog implements Runnable {
         if (activity.isFinishing())
             return;
 
-        alert = new AlertDialog.Builder(activity).create();
+        // In the look of the app: a card over a dark veil, OK filled and Help beside it
+        alert = new ApolloDialog(activity, title, 460);
+        TextView text = ApolloUi.text(activity, message, 14, alert.colors.onSurfaceVariant, false);
+        text.setPadding(alert.dp(14), 0, alert.dp(14), 0);
+        text.setLineSpacing(0, 1.25f);
+        alert.body.addView(text);
+        alert.dialog.setCancelable(false);
+        alert.dialog.setCanceledOnTouchOutside(false);
 
-        alert.setTitle(title);
-        alert.setMessage(message);
-        alert.setCancelable(false);
-        alert.setCanceledOnTouchOutside(false);
- 
-        alert.setButton(AlertDialog.BUTTON_POSITIVE, activity.getResources().getText(android.R.string.ok), new DialogInterface.OnClickListener() {
-              public void onClick(DialogInterface dialog, int which) {
-                  synchronized (rundownDialogs) {
-                      rundownDialogs.remove(Dialog.this);
-                      alert.dismiss();
-                  }
-
-                  runOnDismiss.run();
-              }
-        });
-        alert.setButton(AlertDialog.BUTTON_NEUTRAL, activity.getResources().getText(R.string.help), new DialogInterface.OnClickListener() {
-            public void onClick(DialogInterface dialog, int which) {
-                synchronized (rundownDialogs) {
-                    rundownDialogs.remove(Dialog.this);
-                    alert.dismiss();
-                }
-
-                runOnDismiss.run();
-
-                HelpLauncher.launchTroubleshooting(activity);
-            }
-        });
-        // B of a gamepad closes it as OK does (A is OK, Y Help: GamepadDialogs)
-        alert.setOnCancelListener(dialog -> {
-            synchronized (rundownDialogs) {
-                rundownDialogs.remove(Dialog.this);
-            }
-
-            runOnDismiss.run();
-        });
+        // A is OK, Y Help, and B closes it as OK does
+        alert.buttons(activity.getString(R.string.help), () -> {
+            close();
+            HelpLauncher.launchTroubleshooting(activity);
+        }, activity.getString(android.R.string.ok), this::close);
+        alert.dialog.setOnCancelListener(dialog -> close());
 
         synchronized (rundownDialogs) {
             rundownDialogs.add(this);
             alert.show();
-            GamepadDialogs.attach(alert);
         }
+    }
+
+    private void close() {
+        synchronized (rundownDialogs) {
+            if (!rundownDialogs.remove(this)) {
+                // Already closed
+                return;
+            }
+            alert.dismiss();
+        }
+
+        runOnDismiss.run();
     }
 
 }

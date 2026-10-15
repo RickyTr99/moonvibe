@@ -884,6 +884,20 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     }
 
     public void setMetaKeyCaptureState(boolean enabled) {
+        // Android has native keyboard capture support starting in API 36.1 (called by reflection
+        // while we compile against an older SDK)
+        if (Build.VERSION.SDK_INT >= 36) {
+            try {
+                WindowManager.LayoutParams windowLayoutParams = getWindow().getAttributes();
+                WindowManager.LayoutParams.class.getMethod("setKeyboardCaptureEnabled", boolean.class)
+                        .invoke(windowLayoutParams, enabled);
+                getWindow().setAttributes(windowLayoutParams);
+                return;
+            } catch (ReflectiveOperationException ignored) {
+                // Android 16 before QPR2: fall back to Samsung's API below
+            }
+        }
+
         // This uses custom APIs present on some Samsung devices to allow capture of
         // meta key events while streaming.
         try {
@@ -901,8 +915,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             else {
                 LimeLog.warning("SemWindowManager.getInstance() returned null");
             }
-        } catch (ClassNotFoundException e) {
-            e.printStackTrace();
+        } catch (ClassNotFoundException ignored) {
         } catch (NoSuchMethodException e) {
             e.printStackTrace();
         } catch (InvocationTargetException e) {
@@ -1370,7 +1383,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         super.onStop();
 
         SpinnerDialog.closeDialogs(this);
-        Dialog.closeDialogs();
+        Dialog.closeDialogs(this);
 
         if (gameMenu != null) {
             gameMenu.hide();
@@ -1621,6 +1634,18 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         }
         if (event.isMetaPressed()) {
             modifier |= KeyboardPacket.MODIFIER_META;
+        }
+        return applyKeySpecificModifiers(event.getKeyCode(), modifier);
+    }
+
+    private byte getModifierState(int keyCode) {
+        return applyKeySpecificModifiers(keyCode, getModifierState());
+    }
+
+    private byte applyKeySpecificModifiers(int keyCode, byte modifier) {
+        if (keyCode == KeyEvent.KEYCODE_PLUS) {
+            // The host protocol has a single US =/+ virtual key, so Android's semantic plus key needs Shift.
+            modifier |= KeyboardPacket.MODIFIER_SHIFT;
         }
         return modifier;
     }
@@ -3227,6 +3252,17 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             holder.getSurface().setFrameRate(desiredFrameRate,
                     Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE);
         }
+
+        // Disable producer throttling on the underlying surface for reduced latency (Android 17,
+        // called by reflection while we compile against an older SDK)
+        if (Build.VERSION.SDK_INT >= 37) {
+            try {
+                Surface.class.getMethod("setProducerThrottlingEnabled", boolean.class)
+                        .invoke(holder.getSurface(), false);
+            } catch (ReflectiveOperationException e) {
+                LimeLog.warning("Unable to disable producer throttling: " + e);
+            }
+        }
     }
 
     @Override
@@ -3318,10 +3354,10 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             }
 
             if (buttonDown) {
-                conn.sendKeyboardInput(keyMap, KeyboardPacket.KEY_DOWN, getModifierState(), (byte)0);
+                conn.sendKeyboardInput(keyMap, KeyboardPacket.KEY_DOWN, getModifierState(keyCode), (byte)0);
             }
             else {
-                conn.sendKeyboardInput(keyMap, KeyboardPacket.KEY_UP, getModifierState(), (byte)0);
+                conn.sendKeyboardInput(keyMap, KeyboardPacket.KEY_UP, getModifierState(keyCode), (byte)0);
             }
         }
     }

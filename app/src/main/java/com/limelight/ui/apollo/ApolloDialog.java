@@ -114,6 +114,18 @@ public class ApolloDialog {
 
     /** Cancel and the main action at the bottom right. */
     public void buttons(CharSequence cancel, CharSequence confirm, Runnable onConfirm) {
+        addButtons(cancel, null, confirm, onConfirm);
+    }
+
+    /**
+     * Another action and the main one at the bottom right, as Help and OK of a message: with a gamepad
+     * Y presses the other one and B cancels the dialog.
+     */
+    public void buttons(CharSequence other, Runnable onOther, CharSequence confirm, Runnable onConfirm) {
+        addButtons(other, onOther, confirm, onConfirm);
+    }
+
+    private void addButtons(CharSequence cancel, Runnable onOther, CharSequence confirm, Runnable onConfirm) {
         LinearLayout bar = new LinearLayout(context);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
@@ -125,7 +137,13 @@ public class ApolloDialog {
         cancelButton.setFocusable(true);
         cancelButton.setClickable(true);
         cancelButton.setBackground(ApolloUi.stateLayer(colors.surfaceContainerHighest, Color.TRANSPARENT, dp(20)));
-        cancelButton.setOnClickListener(v -> dismiss());
+        cancelButton.setOnClickListener(v -> {
+            if (onOther != null) {
+                onOther.run();
+            } else {
+                dismiss();
+            }
+        });
         bar.addView(cancelButton, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)));
 
         TextView confirmButton = ApolloUi.text(context, confirm, 14, colors.onPrimary, true);
@@ -144,7 +162,11 @@ public class ApolloDialog {
         params.setMarginStart(dp(8));
         bar.addView(confirmButton, params);
         card.addView(bar);
-        GamepadDialogs.bind(dialog, confirmButton, cancelButton);
+        if (onOther != null) {
+            GamepadDialogs.bind(dialog, confirmButton, null, cancelButton);
+        } else {
+            GamepadDialogs.bind(dialog, confirmButton, cancelButton);
+        }
     }
 
     /** One choice among options, with a check on the current one; it closes when one is picked. */

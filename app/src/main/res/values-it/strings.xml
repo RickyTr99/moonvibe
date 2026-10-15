@@ -651,7 +651,7 @@
     </string-array>
     <string name="apollo_info_hdr">Trasmette in HDR (o SDR a 10 bit) quando il gioco e la scheda video del PC lo supportano. Serve una GPU in grado di codificare HEVC Main 10.</string>
     <string name="apollo_info_stretch_video">Allarga l\'immagine fino a riempire tutto lo schermo, anche se le proporzioni non coincidono. Da spento, il resto dello schermo resta nero.</string>
-    <string name="apollo_info_pyrowave_late_frames">Solo con PyroWave e «Sincronizza con il timing dell\'host». Quando un frame arriva in ritardo o perde dei pacchetti, invece di saltarlo lo mostra con i dati arrivati, un po\' sfocato. Più si taglia, meno scatti sulla rete carica, ma più sfocatura. Con Vibepollo e gli altri host basati su Vibeshine è sempre su Off: non possono mostrare un frame a cui mancano dei dati.</string>
+    <string name="apollo_info_pyrowave_late_frames">Solo con PyroWave e «Sincronizza con il timing dell\'host». Quando un frame arriva in ritardo o perde dei pacchetti, invece di saltarlo lo mostra con i dati arrivati, un po\' sfocato. Più si taglia, meno scatti sulla rete carica, ma più sfocatura. Con gli host basati su Vibeshine serve Vibepollo 2.0.0 o successivo (su Rubylight, critical FEC attiva): con quelli più vecchi resta su Off.</string>
     <string-array name="apollo_info_pyrowave_late_frames_names">
         <item>Off</item>
         <item>Sharper</item>

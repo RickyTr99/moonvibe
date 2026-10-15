@@ -1710,6 +1710,10 @@ public class SettingsView extends FrameLayout {
             if (keyCode != KeyEvent.KEYCODE_DPAD_LEFT && keyCode != KeyEvent.KEYCODE_DPAD_RIGHT) {
                 return false;
             }
+            // Left past the first color goes back to the category, as from any other setting
+            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT && row.swatchCursor == 0 && !singlePage) {
+                return false;
+            }
             if (event.getAction() == KeyEvent.ACTION_DOWN && !blocked(row)) {
                 int cursor = Math.max(0, Math.min(values.length - 1,
                         row.swatchCursor + (keyCode == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1)));

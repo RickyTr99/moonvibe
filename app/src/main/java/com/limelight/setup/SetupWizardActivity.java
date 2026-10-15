@@ -460,7 +460,10 @@ public class SetupWizardActivity extends Activity implements SettingsHost {
      */
     private void updateHeader() {
         finishButton.setVisibility(step == STEP_DONE ? View.INVISIBLE : View.VISIBLE);
-        finishGlyph.setVisibility(InputMode.isGamepadConnected() ? View.VISIBLE : View.GONE);
+        // Without a gamepad only the label shows, with the same margin on both sides
+        boolean gamepad = InputMode.isGamepadConnected();
+        finishGlyph.setVisibility(gamepad ? View.VISIBLE : View.GONE);
+        finishButton.setPadding(gamepad ? dp(8) : dp(16), 0, dp(16), 0);
         showArrow(backArrow, step != STEP_WELCOME);
         showArrow(nextArrow, step != STEP_WELCOME && step != STEP_PIN && step != STEP_DONE);
         boolean shown = step != STEP_WELCOME && step != STEP_DONE;
@@ -1559,11 +1562,13 @@ public class SetupWizardActivity extends Activity implements SettingsHost {
         FrameLayout badge = new FrameLayout(this);
         finishRing = new ApolloWidgets.RingView(this, colors.primary);
         badge.addView(finishRing, new FrameLayout.LayoutParams(dp(28), dp(28), Gravity.CENTER));
-        finishGlyph = ButtonGlyph.create(this, colors, KeyEvent.KEYCODE_BUTTON_X);
-        badge.addView(finishGlyph, new FrameLayout.LayoutParams(dp(18), dp(18), Gravity.CENTER));
+        badge.addView(ButtonGlyph.create(this, colors, KeyEvent.KEYCODE_BUTTON_X),
+                new FrameLayout.LayoutParams(dp(18), dp(18), Gravity.CENTER));
         LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(dp(28), dp(28));
         badgeParams.rightMargin = dp(6);
         button.addView(badge, badgeParams);
+        // The whole badge goes without a gamepad, so no empty space is left before the label
+        finishGlyph = badge;
         button.addView(text(getString(R.string.apollo_setup_skip), 14, colors.onSurface, true));
         return button;
     }
