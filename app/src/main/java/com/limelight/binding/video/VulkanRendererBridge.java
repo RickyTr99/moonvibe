@@ -126,12 +126,14 @@ public class VulkanRendererBridge {
     }
 
     /**
-     * Records a frame's network timing in the frame pacing trace, if one is being recorded.
-     * All times in microseconds; receive and enqueue times are moonlight-common-c's.
+     * Records a frame's network timing in the frame pacing trace, if one is being recorded, as
+     * it's handed to the decoder. All times in microseconds; receive and enqueue times are
+     * moonlight-common-c's. hostProcessingLatency is the host's, in tenths of a millisecond
+     * (0 if the host doesn't report it).
      */
-    public void noteFrameReceived(long hostPtsUs, long receiveTimeUs, long enqueueTimeUs) {
+    public void noteFrameReceived(long hostPtsUs, long receiveTimeUs, long enqueueTimeUs, char hostProcessingLatency) {
         if (tracing && handle != 0) {
-            nativeNoteReceived(handle, hostPtsUs, receiveTimeUs, enqueueTimeUs);
+            nativeNoteReceived(handle, hostPtsUs, receiveTimeUs, enqueueTimeUs, hostProcessingLatency);
         }
     }
 
@@ -156,9 +158,13 @@ public class VulkanRendererBridge {
         return handle != 0 ? nativeTakePresentedFrames(handle) : 0;
     }
 
-    /** Time PyroWave frames took from submission until the GPU finished decoding them, since the last call */
-    public long takePyrowaveDecodeNs() {
-        return handle != 0 ? nativeTakePyrowaveDecodeNs(handle) : 0;
+    /**
+     * Total PyroWave decode time since the last call, in nanoseconds, leaving out waits: each
+     * frame's CPU work, then its run on the GPU. Where the GPU can't time it, from handing the
+     * frame to the renderer until the GPU was done with it.
+     */
+    public long takeDecodedNs() {
+        return handle != 0 ? nativeTakeDecodedNs(handle) : 0;
     }
 
     /** One line for the performance overlay */
@@ -208,11 +214,12 @@ public class VulkanRendererBridge {
                                                             int[] recordStarts, int partialKind);
     private static native Surface nativeGetDecoderSurface(long handle);
     private static native boolean nativeIsTracing(long handle);
-    private static native void nativeNoteReceived(long handle, long hostPtsUs, long receiveTimeUs, long enqueueTimeUs);
+    private static native void nativeNoteReceived(long handle, long hostPtsUs, long receiveTimeUs, long enqueueTimeUs,
+                                                  char hostProcessingLatency);
     private static native void nativeSetHdrMode(long handle, boolean enabled, byte[] hdrMetadata);
     private static native void nativeSetSharpening(long handle, float strength, float split);
     private static native int nativeTakePresentedFrames(long handle);
-    private static native long nativeTakePyrowaveDecodeNs(long handle);
+    private static native long nativeTakeDecodedNs(long handle);
     private static native String nativeGetRendererText(long handle);
     private static native String nativeGetPacingText(long handle);
     private static native void nativeStop(long handle);

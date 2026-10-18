@@ -3188,7 +3188,17 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             return;
         }
 
-        if (!manualRefreshRateX100) {
+        // The direct renderer sets the stream's frame rate on the surface, and the display drops to
+        // it (120 Hz to 60 Hz for 60 FPS) once frames come: only then, so the rate measured here is
+        // the old one's. A host paced to 120.22 / 2 = 60.11 FPS on a 60.04 Hz display kept a frame
+        // too many queued, dropped one by one; at the plain frame rate it runs a hair slower and
+        // the queue stays short, as on Artemis
+        boolean displayWillSwitch = !"Vulkan".equals(decoderRenderer.getRendererName())
+                && measuredRefreshHz > streamConfig.getRefreshRate() * 1.5;
+        if (!manualRefreshRateX100 && displayWillSwitch) {
+            LimeLog.info("Not matching the host to " + measuredRefreshHz + " Hz: the display switches to the stream's rate");
+        }
+        else if (!manualRefreshRateX100) {
             double hostRate = DisplayRefreshMeter.streamMatchedRate(measuredRefreshHz, streamConfig.getRefreshRate());
             if (hostRate > 0) {
                 streamConfig.setClientRefreshRateX100((int) Math.round(hostRate * 100));

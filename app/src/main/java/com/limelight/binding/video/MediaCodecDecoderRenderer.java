@@ -1219,7 +1219,8 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
         }
 
         // We use a separate thread to avoid any main thread delays from delaying rendering
-        choreographerHandlerThread = new HandlerThread("Video - Choreographer", Process.THREAD_PRIORITY_DEFAULT + Process.THREAD_PRIORITY_MORE_FAVORABLE);
+        // At the system's display priority: a frame released a vsync late is a frame dropped
+        choreographerHandlerThread = new HandlerThread("Video - Choreographer", Process.THREAD_PRIORITY_URGENT_DISPLAY);
         choreographerHandlerThread.start();
 
         // Start the frame callbacks
@@ -1747,6 +1748,9 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
         if (SystemClock.uptimeMillis() >= activeWindowVideoStats.measurementStartTimestamp + 1000) {
             if (vulkanRenderer != null) {
                 activeWindowVideoStats.totalFramesRendered += vulkanRenderer.takePresentedFrames();
+                if (pyrowave) {
+                    addPyrowaveDecodeTime(vulkanRenderer.takeDecodedNs());
+                }
             }
 
             if (prefs.enablePerfOverlay) {
@@ -2101,7 +2105,7 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
 
         VulkanRendererBridge vulkan = vulkanRenderer;
         if (vulkan != null) {
-            vulkan.noteFrameReceived(timestampUs, receiveTimeUs, enqueueTimeUs);
+            vulkan.noteFrameReceived(timestampUs, receiveTimeUs, enqueueTimeUs, frameHostProcessingLatency);
         }
 
         if (!queueNextInputBuffer(timestampUs, codecFlags)) {
@@ -2150,24 +2154,28 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
         if (vulkan == null) {
             return MoonBridge.DR_OK;
         }
-        vulkan.noteFrameReceived(presentationTimeUs, receiveTimeUs, enqueueTimeUs);
+        vulkan.noteFrameReceived(presentationTimeUs, receiveTimeUs, enqueueTimeUs, frameHostProcessingLatency);
 
-        // Decoding finishes on the GPU after this returns, so the time counted is the renderer's,
-        // from submission until the GPU finished, for the frames done since the last one. Kept in
-        // nanoseconds, since frames can take under 1 ms.
+        // Decoding finishes on the GPU later, so its time is taken from the renderer as the stats
+        // window flips
         vulkan.submitPyrowaveFrame(decodeUnitData, decodeUnitLength, presentationTimeUs, enqueueTimeUs,
                 missingRanges, recordStarts, partialKind);
-        pyrowaveDecodeNs += vulkan.takePyrowaveDecodeNs();
+
+        // Every frame decodes on its own, so a frame that couldn't be decoded needs no IDR
+        // frame to recover from
+        return MoonBridge.DR_OK;
+    }
+
+    // What decoding frames took, without waits (see VulkanRendererBridge.takeDecodedNs()). Kept in
+    // nanoseconds, so the remainder under 1 ms carries over to the next window.
+    private void addPyrowaveDecodeTime(long decodedNs) {
+        pyrowaveDecodeNs += decodedNs;
         long decodeMs = pyrowaveDecodeNs / 1_000_000L;
         pyrowaveDecodeNs -= decodeMs * 1_000_000L;
         activeWindowVideoStats.decoderTimeMs += decodeMs;
         if (!USE_FRAME_RENDER_TIME) {
             activeWindowVideoStats.totalTimeMs += decodeMs;
         }
-
-        // Every frame decodes on its own, so a frame that couldn't be decoded needs no IDR
-        // frame to recover from
-        return MoonBridge.DR_OK;
     }
 
     private boolean replaySps() {

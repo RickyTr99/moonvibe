@@ -107,9 +107,17 @@ void PacerTrace::immediate(int64_t nowNs) {
 }
 
 void PacerTrace::rendered(uint64_t presentId, int64_t startNs, int64_t fencedNs, int64_t acquiredNs,
-                          int64_t queuedNs) {
-    write("Q,%llu,%lld,%lld,%lld,%lld\n", static_cast<unsigned long long>(presentId), static_cast<long long>(startNs),
-          static_cast<long long>(fencedNs), static_cast<long long>(acquiredNs), static_cast<long long>(queuedNs));
+                          int64_t queuedNs, uint32_t imageIndex, bool fenceWaited, int64_t releasedNs) {
+    write("Q,%llu,%lld,%lld,%lld,%lld,%u,%d,%lld\n", static_cast<unsigned long long>(presentId),
+          static_cast<long long>(startNs), static_cast<long long>(fencedNs), static_cast<long long>(acquiredNs),
+          static_cast<long long>(queuedNs), imageIndex, fenceWaited ? 1 : 0, static_cast<long long>(releasedNs));
+}
+
+void PacerTrace::gpuTimes(uint64_t presentId, int64_t gpuStartNs, int64_t gpuEndNs, int64_t acquiredNs,
+                          int64_t drawnNs) {
+    write("G,%llu,%lld,%lld,%lld,%lld\n", static_cast<unsigned long long>(presentId),
+          static_cast<long long>(gpuStartNs), static_cast<long long>(gpuEndNs), static_cast<long long>(acquiredNs),
+          static_cast<long long>(drawnNs));
 }
 
 void PacerTrace::presented(uint64_t presentId, int64_t actualNs, int64_t earliestNs, int64_t marginNs) {
@@ -130,9 +138,14 @@ void PacerTrace::presented(uint64_t presentId, int64_t actualNs, int64_t earlies
     lastActualNs_ = actualNs;
 }
 
-void PacerTrace::decoded(int64_t hostPtsNs, int64_t startNs, int64_t queuedNs, int64_t doneNs) {
-    write("D,%lld,%lld,%lld,%lld\n", static_cast<long long>(hostPtsNs), static_cast<long long>(startNs),
-          static_cast<long long>(queuedNs), static_cast<long long>(doneNs));
+void PacerTrace::decoded(int64_t hostPtsNs, int64_t startNs, int64_t queuedNs, int64_t doneNs,
+                         const PyrowaveDecoder::DecodeTimes& times, int64_t gpuStartNs, int64_t gpuEndNs) {
+    write("D,%lld,%lld,%lld,%lld,%lld,%lld,%lld,%lld,%lld,%lld,%lld,%d\n", static_cast<long long>(hostPtsNs),
+          static_cast<long long>(startNs), static_cast<long long>(queuedNs), static_cast<long long>(doneNs),
+          static_cast<long long>(times.waitedNs), static_cast<long long>(gpuStartNs),
+          static_cast<long long>(gpuEndNs), static_cast<long long>(times.pushNs),
+          static_cast<long long>(times.recordNs), static_cast<long long>(times.submitNs),
+          static_cast<long long>(times.pyrowaveSubmitNs), times.pyrowaveSubmits);
 }
 
 void PacerTrace::partial(int64_t hostPtsNs, int kind) {
@@ -146,9 +159,11 @@ void PacerTrace::partialDeadline(int64_t hostPtsNs, int64_t readyByNs, int64_t r
           static_cast<long long>(offsetUs));
 }
 
-void PacerTrace::received(int64_t hostPtsNs, int64_t receiveNs, int64_t enqueueNs) {
-    write("N,%lld,%lld,%lld\n", static_cast<long long>(hostPtsNs), static_cast<long long>(receiveNs),
-          static_cast<long long>(enqueueNs));
+void PacerTrace::received(int64_t hostPtsNs, int64_t receiveNs, int64_t enqueueNs, int64_t queuedNs,
+                          int64_t commonToLocalNs, int64_t hostProcessingNs, uint32_t rttMs) {
+    write("N,%lld,%lld,%lld,%lld,%lld,%lld,%u\n", static_cast<long long>(hostPtsNs),
+          static_cast<long long>(receiveNs), static_cast<long long>(enqueueNs), static_cast<long long>(queuedNs),
+          static_cast<long long>(commonToLocalNs), static_cast<long long>(hostProcessingNs), rttMs);
 }
 
 void PacerTrace::vsync(int64_t vsyncNs, size_t queued, int choice, int64_t shownPtsNs, const FramePacer& pacer,

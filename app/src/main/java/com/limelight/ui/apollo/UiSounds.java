@@ -395,6 +395,10 @@ public final class UiSounds {
         private Equalizer equalizer;
         private Thread writer;
         private volatile boolean writing;
+        // A paused track doesn't make write() wait, it takes nothing at once: the writer sleeps on this
+        // instead, or it would spin a core through the whole stream
+        private final Object writerLock = new Object();
+        private volatile boolean writerPaused;
 
         private final Runnable retry = this::update;
         private final Runnable tick = this::tick;
@@ -548,6 +552,7 @@ public final class UiSounds {
                 }
                 playing = true;
                 track.play();
+                resumeWriter();
                 startWriter();
                 fadeTo(volume, FADE_IN_MS);
             } catch (IllegalStateException e) {
@@ -676,7 +681,7 @@ public final class UiSounds {
             return created;
         }
 
-        // Writes the music round and round; while the track is paused, write() waits
+        // Writes the music round and round; while the track is paused, it waits for resumeWriter()
         private void startWriter() {
             if (writer != null) {
                 return;
@@ -692,6 +697,18 @@ public final class UiSounds {
                 short[] out = new short[chunkFrames * channelCount];
                 float from = 0f;
                 while (writing) {
+                    if (writerPaused) {
+                        try {
+                            synchronized (writerLock) {
+                                while (writerPaused && writing) {
+                                    writerLock.wait();
+                                }
+                            }
+                        } catch (InterruptedException e) {
+                            break;
+                        }
+                        continue;
+                    }
                     // The rest may still be decoding: wait for it (it never really happens, the decoder is quicker)
                     boolean done = pcmDone;
                     int decodedFrames = pcmLength / channelCount;
@@ -726,10 +743,28 @@ public final class UiSounds {
                     if (written < 0) {
                         break;
                     }
-                    position += count;
+                    if (written == 0) {
+                        // Paused before writerPaused was set: the chunk goes again once it plays
+                        try {
+                            Thread.sleep(10);
+                        } catch (InterruptedException e) {
+                            break;
+                        }
+                        continue;
+                    }
+                    // A partial write leaves the rest of the chunk for the next turn; the gain goes on from there
+                    position += written / channelCount;
                 }
             }, "MenuMusic");
             writer.start();
+        }
+
+        // Wakes the writer: the track plays again, or the writer is to end
+        private void resumeWriter() {
+            synchronized (writerLock) {
+                writerPaused = false;
+                writerLock.notifyAll();
+            }
         }
 
         private void fadeTo(float target, long ms) {
@@ -766,6 +801,7 @@ public final class UiSounds {
                 return;
             }
             playing = false;
+            writerPaused = true;
             try {
                 if (track != null) {
                     track.pause();
@@ -780,6 +816,7 @@ public final class UiSounds {
             master = 0f;
             handler.removeCallbacks(tick);
             writing = false;
+            resumeWriter();
             if (track != null) {
                 try {
                     track.pause();

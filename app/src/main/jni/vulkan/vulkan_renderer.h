@@ -62,6 +62,7 @@ struct VideoFrame {
     uint64_t readyValue = 0;  // Timeline value the decode into the planes signals
     int64_t decodeStartNs = 0;   // Handed to the renderer
     int64_t decodeQueuedNs = 0;  // Decode queued on the GPU
+    PyrowaveDecoder::DecodeTimes decodeTimes;  // Where the time until then went
     int64_t lastPacketUs = 0;    // When its last packet arrived, on moonlight-common-c's clock
 
     AImageCropRect crop {};
@@ -114,7 +115,7 @@ public:
 
     // Network timing of a frame, for pacer traces
     bool tracing();
-    void noteReceived(int64_t hostPtsNs, int64_t receiveNs, int64_t enqueueNs);
+    void noteReceived(int64_t hostPtsNs, int64_t receiveNs, int64_t enqueueNs, int64_t hostProcessingNs);
 
     // Stops presenting and lets go of the output surface. Safe to call more than once.
     void stop();
@@ -122,9 +123,10 @@ public:
     // Frames presented since the last call
     uint32_t takePresentedFrames() { return presentedFrames_.exchange(0); }
 
-    // Time PyroWave frames took from submission until the GPU finished decoding them,
-    // summed since the last call
-    int64_t takePyrowaveDecodeNs() { return pyrowaveDecodeNs_.exchange(0); }
+    // Total PyroWave decode time since the last call, leaving out waits: each frame's CPU work,
+    // then its run on the GPU. Where the GPU can't time it, from handing the frame to the renderer
+    // until the GPU was done with it.
+    int64_t takeDecodedNs() { return decodedNs_.exchange(0); }
 
     // For the performance overlay: what the renderer outputs, which only changes with HDR, and
     // its pacing numbers as a headline (the buffer) and details (lock state, skipped frames),
@@ -333,6 +335,16 @@ private:
     VkSemaphore imageAcquired_[kFramesInFlight] {};
     FramePtr slotFrames_[kFramesInFlight];
     uint64_t frameCounter_ = 0;
+
+    // While tracing, timestamps of each frame's rendering on the GPU: its start, after taking
+    // the decoder's buffer, after drawing, and its end (after handing the buffer back). Also the
+    // present each frame in flight belongs to (0 if none).
+    static constexpr uint32_t kTimestampsPerFrame = 4;
+    VkQueryPool timestampPool_ = VK_NULL_HANDLE;
+    bool gpuTiming_ = false;
+    uint32_t timestampValidBits_ = 0;
+    double timestampPeriodNs_ = 0;
+    uint64_t slotPresentIds_[kFramesInFlight] {};
     FramePtr current_;
 
     // Decoder side
@@ -405,7 +417,13 @@ private:
     std::atomic<float> sharpenSplit_ {0.0f};
 
     std::atomic<uint32_t> presentedFrames_ {0};
-    std::atomic<int64_t> pyrowaveDecodeNs_ {0};
+    std::atomic<int64_t> decodedNs_ {0};
+
+    // The PyroWave waiting thread's: when the last decode it timed ended on the GPU
+    int64_t lastDecodeGpuEndNs_ = 0;
+
+    // Whether trace_ is recording, read without mutex_. Writes are still made under it.
+    std::atomic<bool> traceRecording_ {false};
 };
 
 }  // namespace vkr

@@ -1,11 +1,13 @@
 #include "vulkan_renderer.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cinttypes>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <poll.h>
 #include <sys/eventfd.h>
 #include <sys/resource.h>
 #include <unistd.h>
@@ -477,6 +479,26 @@ bool VulkanRenderer::init(ANativeWindow* output) {
         return false;
     }
 
+    // To try a present delay or guard rather than the ones learned (PresentScheduler):
+    // adb shell setprop debug.moonlight.present_delay 1 (vsyncs), and
+    // adb shell setprop debug.moonlight.present_guard_us 6000. Empty or 0 delay learns as usual.
+    {
+        char value[PROP_VALUE_MAX] = {};
+        int fixedDelay = 0;
+        int64_t fixedGuardNs = -1;
+        if (__system_property_get("debug.moonlight.present_delay", value) > 0) {
+            fixedDelay = atoi(value);
+        }
+        if (__system_property_get("debug.moonlight.present_guard_us", value) > 0) {
+            fixedGuardNs = static_cast<int64_t>(std::clamp(atoi(value), 0, 20000)) * 1000;
+        }
+        presentScheduler_.fix(fixedDelay, fixedGuardNs);
+        if (fixedDelay > 0 || fixedGuardNs >= 0) {
+            ALOGI("Present delay %s, guard %s", fixedDelay > 0 ? std::to_string(presentScheduler_.delayVsyncs()).c_str() : "learned",
+                  fixedGuardNs >= 0 ? (std::to_string(fixedGuardNs / 1000) + " us").c_str() : "learned");
+        }
+    }
+
     presentAhead_ = hasDisplayTimingExt_ && pacer_.mode() == PacingMode::HostTimed;
     pacer_.setPresentAhead(presentAhead_);
     pacer_.setPresentGuardNs(presentScheduler_.guardNs());
@@ -488,6 +510,15 @@ bool VulkanRenderer::init(ANativeWindow* output) {
              static_cast<long long>(pacer_.vsyncPeriodNs()), config_.displayRefreshHz, config_.tenBit ? 1 : 0,
              config_.ditherMode);
     trace_.start(config_.traceDirectory, configuration);
+    traceRecording_ = trace_.recording();
+
+    if (trace_.recording() && timestampValidBits_ > 0 && timestampPeriodNs_ > 0 && vk_.vkCreateQueryPool &&
+            vk_.vkDestroyQueryPool && vk_.vkGetQueryPoolResults && vk_.vkCmdResetQueryPool && vk_.vkCmdWriteTimestamp) {
+        VkQueryPoolCreateInfo queryInfo {VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+        queryInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+        queryInfo.queryCount = kTimestampsPerFrame * kFramesInFlight;
+        gpuTiming_ = vk_.vkCreateQueryPool(device_, &queryInfo, nullptr, &timestampPool_) == VK_SUCCESS;
+    }
 
     wakeFd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
     if (wakeFd_ < 0) {
@@ -552,6 +583,8 @@ bool VulkanRenderer::pickDevice() {
 
                 VkPhysicalDeviceProperties props;
                 vk_.vkGetPhysicalDeviceProperties(device, &props);
+                timestampValidBits_ = families[i].timestampValidBits;
+                timestampPeriodNs_ = props.limits.timestampPeriod;
                 ALOGI("Using %s (Vulkan %u.%u.%u), queue family %u", props.deviceName,
                       VK_API_VERSION_MAJOR(props.apiVersion), VK_API_VERSION_MINOR(props.apiVersion),
                       VK_API_VERSION_PATCH(props.apiVersion), i);
@@ -662,6 +695,8 @@ bool VulkanRenderer::createPyrowaveDecoder() {
     info.queue = decodeQueue_ ? decodeQueue_ : queue_;
     info.queueFamily = queueFamily_;
     info.queueMutex = &queueMutex_;
+    info.timestampValidBits = timestampValidBits_;
+    info.timestampPeriodNs = timestampPeriodNs_;
     if (decodeQueue_) {
         ALOGI("PyroWave decodes on its own queue, %s rendering",
               deviceSetup_.priorities[0] < deviceSetup_.priorities[1] ? "below" : "level with");
@@ -720,11 +755,30 @@ void VulkanRenderer::pyrowaveWaiterMain() {
         }
 
         frame->timing.arrivalNs = nowNs();
-        pyrowaveDecodeNs_ += frame->timing.arrivalNs - frame->decodeStartNs;
-        {
+
+        // What decoding took, without the waits: the CPU's share of it, then its run on the GPU.
+        // A decode can start on the GPU before the one before ends, so its run is counted from
+        // then. Untimed on the GPU, it's until the decode was done, waits and all.
+        int64_t gpuStartNs = 0;
+        int64_t gpuEndNs = 0;
+        if (!pyrowave_->gpuTimes(frame->readyValue, &gpuStartNs, &gpuEndNs) || gpuEndNs < gpuStartNs) {
+            gpuStartNs = 0;
+            gpuEndNs = 0;
+        }
+        const int64_t cpuNs = frame->decodeQueuedNs - frame->decodeStartNs - frame->decodeTimes.waitedNs;
+        if (gpuEndNs != 0) {
+            const int64_t runStartNs = std::max(gpuStartNs, lastDecodeGpuEndNs_);
+            decodedNs_ += cpuNs + std::max<int64_t>(gpuEndNs - runStartNs, 0);
+            lastDecodeGpuEndNs_ = std::max(gpuEndNs, lastDecodeGpuEndNs_);
+        }
+        else {
+            decodedNs_ += frame->timing.arrivalNs - frame->decodeStartNs;
+        }
+        // Without a trace, this needn't hold up the render thread
+        if (traceRecording_.load(std::memory_order_relaxed)) {
             std::lock_guard<std::mutex> lock(mutex_);
             trace_.decoded(frame->timing.hostPtsNs, frame->decodeStartNs, frame->decodeQueuedNs,
-                           frame->timing.arrivalNs);
+                           frame->timing.arrivalNs, frame->decodeTimes, gpuStartNs, gpuEndNs);
         }
         enqueueFrame(std::move(frame));
     }
@@ -778,6 +832,7 @@ VulkanRenderer::~VulkanRenderer() {
         closing_ = true;
         pending.swap(pending_);
         trace_.close();
+        traceRecording_ = false;
     }
     pending.clear();
 
@@ -799,6 +854,7 @@ VulkanRenderer::~VulkanRenderer() {
             if (fences_[i]) vk_.vkDestroyFence(device_, fences_[i], nullptr);
             if (imageAcquired_[i]) vk_.vkDestroySemaphore(device_, imageAcquired_[i], nullptr);
         }
+        if (timestampPool_) vk_.vkDestroyQueryPool(device_, timestampPool_, nullptr);
         if (commandPool_) vk_.vkDestroyCommandPool(device_, commandPool_, nullptr);
         if (vertShader_) vk_.vkDestroyShaderModule(device_, vertShader_, nullptr);
         if (fragShader_) vk_.vkDestroyShaderModule(device_, fragShader_, nullptr);
@@ -981,14 +1037,35 @@ void VulkanRenderer::onImageAvailable() {
             }
         }
 
-        // Waits for the decoder to finish writing the image
+        // The image comes with a fence for the decoder finishing writing it, which we wait on
+        // here. AImageReader_acquireNextImage() waits on it itself, but holding the reader's
+        // lock, which AImage_delete() needs too: releasing a frame we'd shown (renderFrame())
+        // then waited for the next one to decode. On an iPlay 70 mini Ultra that blocked
+        // renders for 1-5 ms, and with a present delay of one vsync, 6-9% of frames reached
+        // the screen a vsync late, in bursts of seconds.
         AImage* image = nullptr;
-        media_status_t status = ndk_->AImageReader_acquireNextImage(reader_, &image);
+        int fenceFd = -1;
+        media_status_t status = ndk_->AImageReader_acquireNextImageAsync
+                ? ndk_->AImageReader_acquireNextImageAsync(reader_, &image, &fenceFd)
+                : ndk_->AImageReader_acquireNextImage(reader_, &image);
         if (status != AMEDIA_OK) {
             if (status == AMEDIA_IMGREADER_MAX_IMAGES_ACQUIRED) {
                 ALOGW("All reader images are held");
             }
             return;
+        }
+        if (fenceFd >= 0) {
+            pollfd fence {fenceFd, POLLIN, 0};
+            int ready;
+            do {
+                ready = poll(&fence, 1, static_cast<int>(kFenceTimeoutNs / 1'000'000));
+            } while (ready < 0 && errno == EINTR);
+            close(fenceFd);
+            if (ready <= 0) {
+                ALOGE("Timed out waiting for the decoder to write a frame");
+                ndk_->AImage_delete(image);
+                continue;
+            }
         }
 
         auto frame = std::make_shared<VideoFrame>(ndk_, image);
@@ -1053,8 +1130,9 @@ bool VulkanRenderer::submitPyrowaveFrame(const uint8_t* data, size_t size, const
     }
 
     uint64_t readyValue = 0;
+    PyrowaveDecoder::DecodeTimes times;
     PyrowavePlanes* planes = pyrowave_->decode(data, size, gaps, gapCount, recordStarts, partial,
-                                               &readyValue);
+                                               &readyValue, &times);
     if (!planes) {
         return false;
     }
@@ -1064,6 +1142,7 @@ bool VulkanRenderer::submitPyrowaveFrame(const uint8_t* data, size_t size, const
     frame->timing.hostPtsNs = hostPtsNs;
     frame->decodeStartNs = startNs;
     frame->decodeQueuedNs = nowNs();
+    frame->decodeTimes = times;
     frame->lastPacketUs = lastPacketUs;
     {
         std::lock_guard<std::mutex> lock(decodingMutex_);
@@ -1387,13 +1466,35 @@ bool VulkanRenderer::renderFrame(const FramePtr& frame, uint64_t presentId, int6
     }
 
     const int slot = static_cast<int>(frameCounter_ % kFramesInFlight);
-    VkResult result = vk_.vkWaitForFences(device_, 1, &fences_[slot], VK_TRUE, kFenceTimeoutNs);
+    // The fence is nearly always done by now, so ask before waiting on it
+    VkResult result = vk_.vkGetFenceStatus ? vk_.vkGetFenceStatus(device_, fences_[slot]) : VK_NOT_READY;
+    const bool fenceWaited = result != VK_SUCCESS;
+    if (fenceWaited) {
+        result = vk_.vkWaitForFences(device_, 1, &fences_[slot], VK_TRUE, kFenceTimeoutNs);
+    }
     if (result != VK_SUCCESS) {
         ALOGE("Timed out waiting for the GPU: %d", result);
         return false;
     }
-    slotFrames_[slot].reset();
     const int64_t fencedNs = nowNs();
+    // Gives MediaCodec's image back to the reader (see onImageAvailable())
+    slotFrames_[slot].reset();
+    const int64_t releasedNs = nowNs();
+
+    // The fence covers the last present rendered in this slot, so its timestamps are written
+    if (gpuTiming_ && slotPresentIds_[slot] != 0) {
+        uint64_t ticks[kTimestampsPerFrame] = {};
+        if (vk_.vkGetQueryPoolResults(device_, timestampPool_, kTimestampsPerFrame * slot, kTimestampsPerFrame,
+                                      sizeof(ticks), ticks, sizeof(ticks[0]), VK_QUERY_RESULT_64_BIT) == VK_SUCCESS) {
+            const uint64_t mask = timestampValidBits_ >= 64 ? ~0ULL : (1ULL << timestampValidBits_) - 1;
+            const auto toNs = [&](uint64_t t) {
+                return static_cast<int64_t>(static_cast<double>(t & mask) * timestampPeriodNs_);
+            };
+            std::lock_guard<std::mutex> lock(mutex_);
+            trace_.gpuTimes(slotPresentIds_[slot], toNs(ticks[0]), toNs(ticks[3]), toNs(ticks[1]), toNs(ticks[2]));
+        }
+    }
+    slotPresentIds_[slot] = 0;
 
     uint32_t imageIndex = 0;
     result = vk_.vkAcquireNextImageKHR(device_, swapchain_, kAcquireTimeoutNs, imageAcquired_[slot],
@@ -1480,6 +1581,12 @@ bool VulkanRenderer::renderFrame(const FramePtr& frame, uint64_t presentId, int6
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vk_.vkBeginCommandBuffer(cmd, &beginInfo);
 
+    const bool timed = gpuTiming_ && presentId != 0;
+    if (timed) {
+        vk_.vkCmdResetQueryPool(cmd, timestampPool_, kTimestampsPerFrame * slot, kTimestampsPerFrame);
+        vk_.vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, timestampPool_, kTimestampsPerFrame * slot);
+    }
+
     // Take the decoder's buffer from the foreign (non-Vulkan) queue family. PyroWave's planes
     // are ours and stay in GENERAL, and the wait for their decode makes its writes visible.
     VkImageMemoryBarrier acquire {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
@@ -1494,6 +1601,9 @@ bool VulkanRenderer::renderFrame(const FramePtr& frame, uint64_t presentId, int6
         acquire.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
         vk_.vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                                  0, 0, nullptr, 0, nullptr, 1, &acquire);
+    }
+    if (timed) {
+        vk_.vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestampPool_, kTimestampsPerFrame * slot + 1);
     }
 
     VkRenderPassBeginInfo rpBegin {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
@@ -1514,6 +1624,9 @@ bool VulkanRenderer::renderFrame(const FramePtr& frame, uint64_t presentId, int6
                            0, sizeof(pc), &pc);
     vk_.vkCmdDraw(cmd, 3, 1, 0, 0);
     vk_.vkCmdEndRenderPass(cmd);
+    if (timed) {
+        vk_.vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestampPool_, kTimestampsPerFrame * slot + 2);
+    }
 
     // Hand the buffer back to the decoder
     if (!planar) {
@@ -1528,12 +1641,18 @@ bool VulkanRenderer::renderFrame(const FramePtr& frame, uint64_t presentId, int6
                                  0, 0, nullptr, 0, nullptr, 1, &release);
     }
 
+    if (timed) {
+        vk_.vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestampPool_, kTimestampsPerFrame * slot + 3);
+    }
     vk_.vkEndCommandBuffer(cmd);
 
-    // The swapchain image, and for PyroWave the decode into the planes
+    // The swapchain image, and for PyroWave the decode into the planes. Timed, everything waits
+    // for the image, so the start timestamp shows when it was free; only a draw's vertex work
+    // could otherwise go ahead of it, which for one triangle is nothing.
     const VkSemaphore waitSemaphores[2] = {imageAcquired_[slot], planar ? pyrowave_->timeline() : VK_NULL_HANDLE};
-    const VkPipelineStageFlags waitStages[2] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                                                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT};
+    const VkPipelineStageFlags waitStages[2] = {
+            timed ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT : VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT};
     const uint64_t waitValues[2] = {0, frame->readyValue};
     VkTimelineSemaphoreSubmitInfo timelineInfo {VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
     timelineInfo.waitSemaphoreValueCount = 2;
@@ -1557,6 +1676,9 @@ bool VulkanRenderer::renderFrame(const FramePtr& frame, uint64_t presentId, int6
     if (result != VK_SUCCESS) {
         ALOGE("vkQueueSubmit failed: %d", result);
         return false;
+    }
+    if (timed) {
+        slotPresentIds_[slot] = presentId;
     }
 
     VkPresentInfoKHR present {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
@@ -1598,7 +1720,7 @@ bool VulkanRenderer::renderFrame(const FramePtr& frame, uint64_t presentId, int6
     if (presentId != 0) {
         const int64_t queuedNs = nowNs();
         std::lock_guard<std::mutex> lock(mutex_);
-        trace_.rendered(presentId, startNs, fencedNs, acquiredNs, queuedNs);
+        trace_.rendered(presentId, startNs, fencedNs, acquiredNs, queuedNs, imageIndex, fenceWaited, releasedNs);
     }
 
     slotFrames_[slot] = frame;
@@ -1653,17 +1775,19 @@ void VulkanRenderer::collectPresentTimings() {
         // the screen: the compositor dropped them
         for (auto it = pendingPresents_.begin(); it != pendingPresents_.end() && it->first < t.presentID;) {
             if (it->second.ahead && !it->second.replaced) {
-                presentScheduler_.onAheadOutcome(it->second.slackNs, true, currentPeriodNs_);
+                presentScheduler_.onAheadOutcome(it->second.slackNs, it->second.vsyncNs, it->second.delayVsyncs,
+                                                 false, 0, 0, 0, currentPeriodNs_);
             }
             it = pendingPresents_.erase(it);
         }
 
         auto pending = pendingPresents_.find(t.presentID);
         if (pending != pendingPresents_.end() && pending->second.ahead && !pending->second.replaced) {
-            const int64_t target = pending->second.vsyncNs + pending->second.delayVsyncs * currentPeriodNs_;
-            presentScheduler_.onAheadOutcome(pending->second.slackNs,
-                                             static_cast<int64_t>(t.actualPresentTime) > target + currentPeriodNs_ / 2,
-                                             currentPeriodNs_);
+            presentScheduler_.onAheadOutcome(pending->second.slackNs, pending->second.vsyncNs,
+                                             pending->second.delayVsyncs, true,
+                                             static_cast<int64_t>(t.actualPresentTime),
+                                             static_cast<int64_t>(t.earliestPresentTime),
+                                             static_cast<int64_t>(t.presentMargin), currentPeriodNs_);
         }
 
         // With frames presented ahead, the delay is tuned for those. A frame that arrived late,
@@ -1676,7 +1800,8 @@ void VulkanRenderer::collectPresentTimings() {
             presentScheduler_.onPresented(pending->second.vsyncNs, pending->second.delayVsyncs, currentPeriodNs_,
                                           static_cast<int64_t>(t.actualPresentTime),
                                           static_cast<int64_t>(t.earliestPresentTime),
-                                          static_cast<int64_t>(t.presentMargin));
+                                          static_cast<int64_t>(t.presentMargin),
+                                          pending->second.ahead ? pending->second.slackNs : -1);
         }
         if (pending != pendingPresents_.end()) {
             pendingPresents_.erase(pending);
@@ -1684,6 +1809,7 @@ void VulkanRenderer::collectPresentTimings() {
     }
 
     std::lock_guard<std::mutex> lock(mutex_);
+    presentScheduler_.setAheadWindowNs(pacer_.presentAheadVsyncs() * pacer_.vsyncPeriodNs());
     pacer_.setPresentGuardNs(presentScheduler_.guardNs());
     for (uint32_t i = 0; i < count; i++) {
         const VkPastPresentationTimingGOOGLE& t = timings[i];
@@ -1699,9 +1825,16 @@ bool VulkanRenderer::tracing() {
     return trace_.recording();
 }
 
-void VulkanRenderer::noteReceived(int64_t hostPtsNs, int64_t receiveNs, int64_t enqueueNs) {
+void VulkanRenderer::noteReceived(int64_t hostPtsNs, int64_t receiveNs, int64_t enqueueNs, int64_t hostProcessingNs) {
+    // Called as the frame goes to the decoder, so the time on our clock is when decoding starts
+    const int64_t queuedNs = nowNs();
+    const int64_t commonToLocalNs = queuedNs - static_cast<int64_t>(LiGetMicroseconds()) * 1000;
+    uint32_t rttMs = 0, rttVarianceMs = 0;
+    if (!LiGetEstimatedRttInfo(&rttMs, &rttVarianceMs)) {
+        rttMs = 0;
+    }
     std::lock_guard<std::mutex> lock(mutex_);
-    trace_.received(hostPtsNs, receiveNs, enqueueNs);
+    trace_.received(hostPtsNs, receiveNs, enqueueNs, queuedNs, commonToLocalNs, hostProcessingNs, rttMs);
 }
 
 bool VulkanRenderer::ensureSwapchain() {
